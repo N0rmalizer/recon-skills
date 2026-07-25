@@ -44,7 +44,7 @@
 |------|--------------|
 | 1-3 | WordPress + CORS is epidemic |
 | 4 | 13 sector recon skills, standardized format |
-| 5 | Staging is the soft underbelly (staging.retail-chain.com) |
+| 5 | Staging is the soft underbelly (staging.[RETAIL_CHAIN]) |
 | 6 | SSRF confirmed via pingback, error logs = treasure |
 | 7 | IMDS role guessing, Yoast sitemap fallback enum |
 | 8 | WP install pages, Elementor 500 leak |
@@ -54,11 +54,11 @@
 
 | Variant | Confirmed On |
 |---------|-------------|
-| V1 (Origin reflection + creds) | landscaping-service.com, mattress-retailer.com, tools-retailer.com, ecommerce-wine.com, realestate-platform.com, entertainment-franchise.com |
+| V1 (Origin reflection + creds) | landscaping-service.com, [MATTRESS_RETAILER], [RETAILER], [WINE_STORE], [REAL_ESTATE], [ENTERTAINMENT] |
 | V2 (Null origin) | familydental.com |
 | V3 (Wildcard no creds) | patientportal.com, nothingbundtcakes.com, autobell.com |
 | V4 (Credentialed preflight) | Multiple WP endpoints |
-| V5 (Auth-endpoint CORS) | mattress-retailer.com gf/v2 |
-| V6 (Multi-origin) | realestate-platform.com |
-| V7 (Plugin-specific) | entertainment-franchise.com gravity-pdf/v1 |
-| V8 (Staging-only) | staging.retail-chain.com |
+| V5 (Auth-endpoint CORS) | [MATTRESS_RETAILER] gf/v2 |
+| V6 (Multi-origin) | [REAL_ESTATE] |
+| V7 (Plugin-specific) | [ENTERTAINMENT] gravity-pdf/v1 |
+| V8 (Staging-only) | staging.[RETAIL_CHAIN] |

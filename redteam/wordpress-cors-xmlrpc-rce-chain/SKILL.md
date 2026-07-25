@@ -283,14 +283,14 @@ s.post("https://$TARGET/wp-login.php?action=rp",
 
 **Pitfall:** The `rp_key` parameter is embedded in the email URL AND in the HTML form. Some WordPress versions auto-fill it, others require extracting it from the HTML form. Always extract from `r.text` using regex `name="rp_key"[^>]*value="([^"]+)"`.
 
-### Target:tools-retailer.com — CORS + Slider Revolution RCE
+### Target:[RETAILER] — CORS + Slider Revolution RCE
 
 1. CORS credential reflection — admin user exposed
 2. Slider Revolution plugin detected at `/wp-content/plugins/revslider/`
 3. CVE-2024-2534 (Revslider RCE) — authenticated exploit chain
 4. **Chain**: CORS admin session + plugin CVE → RCE
 
-### Target: senior-living-platform.com — CORS Credential Reflection + XMLRPC 80 Methods (June 2026)
+### Target: [SENIOR_LIVING] — CORS Credential Reflection + XMLRPC 80 Methods (June 2026)
 
 Senior living community website on nginx with full WordPress stack.
 

@@ -47,7 +47,7 @@ done
 
 ### Phase 2a — Source 1: crt.sh Certificate Transparency (Preferred for Local Business Sectors)
 
-For **local service sectors** (roofing, landscaping, plumbing, pool services, HVAC) where no national chains exist, **crt.sh is the primary discovery source**. These businesses often have descriptive domain names like `[name]roofing.com` or `[city]landscaping.com`.
+For **local service sectors** (roofing, landscaping, plumbing, pool services, HVAC) where no national chains exist, **crt.sh is the primary discovery source**. These businesses often have descriptive domain names like `[name][SECTOR_EXAMPLE]` or `[city][SECTOR_EXAMPLE]`.
 
 #### crt.sh Query Pattern
 
@@ -245,7 +245,7 @@ def test_domain(domain, sector):
     return findings
 
 # Usage
-domains = {"target1.com": "dental", "target2.com": "gym_fitness", ...}
+domains = {"[TARGET_1]": "dental", "[TARGET_2]": "gym_fitness", ...}
 for domain, sector in domains.items():
     f = test_domain(domain, sector)
     # Write findings.md
@@ -290,7 +290,7 @@ heartlanddental.com  pacificdental.com  dentalcarealliance.com
 
 ### Gym / Fitness
 ```
-f45training.com  barrys.com  crossfit.com  goldsgym.com
+[FITNESS_CHAIN]  barrys.com  crossfit.com  goldsgym.com
 24hourfitness.com  lafitness.com  orangetheory.com  planetfitness.com
 anytimefitness.com  snapfitness.com  crunch.com
 ```
@@ -340,22 +340,22 @@ bartlett.com  allstatetree.com  firstchoicetree.com
 
 ### Roofing (Local/Regional — crt.sh Discovered)
 ```
-aastroroofing.com  abcarnesroofing.com  americaschoiceroofers.com  arvadaroofing.com
-baconroofing.com  bakerroofing.com  bricorroofing.com  capitolroofing.com
-charlotteproroofing.com  coloradoproroofing.com  ehroofing.com  errdaddyroofing.com
-fifthwallroofing.com  freemanroofing.com  ghatley.com  hambroroofing.com
-hollisroofing.com  integrityrc.com  kbfamilyroofing.com  mcasroofing.com
-naroofing.com  pabcoroofing.com  roofon.com  roofwithfoster.com
-sandiegocountyroofing.com  springfieldroofing.com  tomtheroofer.com
-universityroof.com  vanguardroofingltd.com  wallaceroofing.com
+aastro[SECTOR_EXAMPLE]  abcarnes[SECTOR_EXAMPLE]  americaschoiceroofers.com  arvada[SECTOR_EXAMPLE]
+bacon[SECTOR_EXAMPLE]  baker[SECTOR_EXAMPLE]  bricor[SECTOR_EXAMPLE]  capitol[SECTOR_EXAMPLE]
+charlottepro[SECTOR_EXAMPLE]  coloradopro[SECTOR_EXAMPLE]  eh[SECTOR_EXAMPLE]  errdaddy[SECTOR_EXAMPLE]
+fifthwall[SECTOR_EXAMPLE]  freeman[SECTOR_EXAMPLE]  ghatley.com  hambro[SECTOR_EXAMPLE]
+hollis[SECTOR_EXAMPLE]  integrityrc.com  kbfamily[SECTOR_EXAMPLE]  mcas[SECTOR_EXAMPLE]
+na[SECTOR_EXAMPLE]  pabco[SECTOR_EXAMPLE]  roofon.com  roofwithfoster.com
+sandiegocounty[SECTOR_EXAMPLE]  springfield[SECTOR_EXAMPLE]  tomtheroofer.com
+universityroof.com  vanguardroofingltd.com  wallace[SECTOR_EXAMPLE]
 ```
 
 ### Landscaping (Local/Regional — crt.sh Discovered)
 ```
 delliquadrilandscape.com  dundeedig.com  guardyouryardpa.com
-landscapingsi.com  mileslandscaping.com  mosslandscaping.com
-mountainlandscapingkc.com  sarasotalandscaping.com  trinaslandscaping.com
-mosslandscaping.com  eolandscaping.com  brucewilsonlandscaping.com
+landscapingsi.com  miles[SECTOR_EXAMPLE]  moss[SECTOR_EXAMPLE]
+mountainlandscapingkc.com  sarasota[SECTOR_EXAMPLE]  trinas[SECTOR_EXAMPLE]
+moss[SECTOR_EXAMPLE]  eo[SECTOR_EXAMPLE]  brucewilson[SECTOR_EXAMPLE]
 ```
 
 ### HVAC (Local/Regional — crt.sh Discovered)
@@ -365,7 +365,7 @@ airzonahvac.com  bigfishhvac.com  dormarhvac.com  specializedhvac.com
 
 ### General Contractors & Other (crt.sh Discovered)
 ```
-allysonsflowers.com  americannationalco.com  canopyroofers.com
+allysonsflowers.com  [INSURANCE_CO]  canopyroofers.com
 gelinc.com  rvroofrepairflorida.com  spartanroofingbc.com
 ```
 

@@ -32,7 +32,7 @@ Batch expansion into 10 fresh sectors: 25 domains tested via Python script with 
 ### coastdental.com (Dental)
 WordPress with **9 users** exposed via REST API (Debbie Nicholson, Devin Gilliam, Howie Taylor, Malic Vann, Office FL/GA/TX, Press Release, Rafael Rondon RDH BS). CORS reflects origin but no credentials. Port 8080 open.
 
-### f45training.com (Gym/Fitness)
+### [FITNESS_CHAIN] (Gym/Fitness)
 WordPress 6.9 with **8 users** exposed including **'administrator'** account. XMLRPC open. Yoast SEO Premium 27.2, WPML 4.8.6. Behind CloudFlare but REST API fully open.
 
 ### brighthorizons.com (Daycare)

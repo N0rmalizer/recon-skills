@@ -156,7 +156,7 @@ curl --max-time 30 --connect-timeout 10 -s -X POST "https://$TARGET/api/profile"
 # Registration
 curl --max-time 30 --connect-timeout 10 -s -X POST "https://$TARGET/api/register" \
   -H "Content-Type: application/json" \
-  -d '{"name": "Test", "email": "test@new.com", "password": "test123", "verified": true, "admin": 1}'
+  -d '{"name": "Test", "email": "test@[DOMAIN_EXAMPLE]", "password": "test123", "verified": true, "admin": 1}'
 ```
 
 ---

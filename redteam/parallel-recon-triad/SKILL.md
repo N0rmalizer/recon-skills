@@ -408,7 +408,7 @@ Tier 5: Insurance, Accounting (more regulated but still vulnerable)
 ### Check Pattern per Target
 ```bash
 # 1. Live host
-curl -skI "https://DOMAIN" -m 10
+curl --max-time 30 --connect-timeout 10 -skI "https://DOMAIN"
 
 # 2. WordPress detection
 curl --max-time 30 --connect-timeout 10 -sk "https://DOMAIN/wp-json/wp/v2/users" -m 10
@@ -520,7 +520,7 @@ Structure the report around recurring patterns, not per-target findings. Use CLA
 ### CLASS 1: WordPress REST API User Enumeration
 - Frequency: ~9% of all targets
 - First Seen: Wave1 (recurring through Wave9)
-- Example Targets: yogaworks.com (3), f45training.com (8)
+- Example Targets: yogaworks.com (3), [FITNESS_CHAIN] (8)
 - WaveN NEW: newly confirmed targets this wave
 
 ### CLASS 2: CORS Origin Reflection with Credentials

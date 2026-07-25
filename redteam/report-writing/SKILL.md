@@ -588,7 +588,7 @@ Use agnostic patterns instead:
 BAD:  "ecommerce.example.com had PHPInfo + XMLRPC -> RCE"
 GOOD: "e-commerce target had PHPInfo + XMLRPC -> RCE"
 
-BAD:  "info@tools-retailer.com exposed via REST API"
+BAD:  "info@[RETAILER] exposed via REST API"
 GOOD: "corporate email pattern exposed via REST API"
 
 BAD:  "health-saas.example.com MySQL 3306 OPEN"

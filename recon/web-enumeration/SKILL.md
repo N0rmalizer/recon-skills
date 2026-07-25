@@ -24,7 +24,7 @@ import requests
 base = "https://target.com"
 files = [
     "/.env", "/.env.example", "/.env.production", "/.env.local",
-    "/.env.backup", "/.env.bak", "/.env.old", "/.env.dev",
+    "/.env.backup", "/.env.bak", "/.env.old", "/.[DEV_ENV]",
     "/.env.staging", "/config/.env",
     "/.git/config", "/.git/HEAD", "/.git/index",
     "/.git/refs/heads/master", "/.git/logs/HEAD",

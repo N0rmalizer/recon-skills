@@ -49,7 +49,7 @@ XSS is high-value when it combines **privileged context + persistent delivery + 
 - **Payment/financial flows** (`paypal.com`, checkout pages, currency converters) — XSS here enables credential harvesting and financial fraud at scale
 - **Stored XSS in collaborative features** (wikis, markdown renderers, issue trackers, RDoc, labels, tags) — one payload infects every viewer, multiplying impact
 - **SSO/signin pages** (e.g., `paypal.com/signin`) — XSS here is critical because it can steal auth tokens across the entire platform
-- **Shared SaaS tenant surfaces** (`*.myshopify.com`, `api.collabs.*`) — XSS in one tenant's context can bleed across tenant boundaries
+- **Shared SaaS tenant surfaces** (`*.[SHOPIFY_STORE]`, `api.collabs.*`) — XSS in one tenant's context can bleed across tenant boundaries
 - **Help/documentation sites** (`help.shopify.com`) — lower severity individually, but often have looser sanitization and trusted user perception
 - **SVG/file upload endpoints** — frequently bypasses CSP and sanitization simultaneously
 

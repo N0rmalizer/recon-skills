@@ -112,7 +112,7 @@ while read t; do
   echo "=== $t ==="
   
   # CORS credential reflection
-  cors=$(curl -skI "https://$t/wp-json/wp/v2/users" -H "Origin: https://evil.com" 2>/dev/null | grep -c "Access-Control-Allow-Credentials: true")
+  cors=$(curl --max-time 30 --connect-timeout 10 -skI "https://$t/wp-json/wp/v2/users" -H "Origin: https://evil.com" 2>/dev/null | grep -c "Access-Control-Allow-Credentials: true")
   [ "$cors" -gt 0 ] && echo "  [CRIT] CORS credential reflection!"
   
   # XMLRPC

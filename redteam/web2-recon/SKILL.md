@@ -441,7 +441,7 @@ python3 ~/tools/GitDorker/GitDorker.py -t GITHUB_TOKEN -d ~/tools/GitDorker/Dork
 When testing 15-20+ targets across multiple sectors, use a **dual-track approach**:
 
 **Track 1 — Manual Fast Probe (you do this while Track 2 runs)**
-1. Probe each domain with `curl -sI` for alive check + server headers (takes ~30s per 5 domains)
+1. Probe each domain with `curl --max-time 10 --connect-timeout 5 -sI` for alive check + server headers (takes ~30s per 5 domains)
 2. Immediately check promising signals: WordPress link headers, CORS origins, interesting cookies
 3. Run subfinder on interesting domains while they're fresh in mind
 4. Chase live subdomains immediately (app., dashboard., staging., etc.)
@@ -785,7 +785,7 @@ When testing 7+ targets simultaneously, batch independent operations in the same
 
 ```bash
 # Pattern: run httpx on all targets in parallel first
-for target in target1.com target2.com target3.com; do
+for target in [TARGET_1] [TARGET_2] [TARGET_3]; do
   httpx -sc -title -tech-detect -server -ip -csp-probe -tls-grab \
     -ports 80,443,8080,8443,3000,5000,8000,9090 -u https://$target \
     -o /tmp/${target}_httpx.txt &
@@ -923,7 +923,7 @@ Internal-looking subdomains often expose more surface than the marketing site �
 
 ### Live-host probe: how to fingerprint stack quickly
 
-`curl -sI <host>` headers are 80% of the fingerprint:
+`curl --max-time 10 --connect-timeout 5 -sI <host>` headers are 80% of the fingerprint:
 
 - `Server:` — apache / nginx / cloudflare / kestrel (= .NET Core) / openresty / envoy
 - `X-Powered-By:` — PHP version, ASP.NET version, Express.js

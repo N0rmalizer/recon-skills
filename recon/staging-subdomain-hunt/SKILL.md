@@ -247,7 +247,7 @@ done
 - **Wildcard certs hide subdomains.** If `*.example.com` is the only cert, individual subdomains won't appear in crt.sh. Use subfinder DNS brute force as fallback.
 - **Staging may require VPN.** Some staging environments are IP-restricted. Try from the worker IP, then from a residential proxy.
 - **WordPress install.php on production.** Some poorly maintained production sites also have this accessible. It's not always staging-specific. Check for "Welcome to WordPress" title text to confirm it's a fresh install.
-- **CORS on staging but not production is common.** Wave9 discovered CORS on mattress.example.com andtools-retailer.com that was MISSED in waves 6-8 because it was only tested on certain endpoints. Always test the full CORS matrix (10+ endpoints) on both production AND staging.
+- **CORS on staging but not production is common.** Wave9 discovered CORS on mattress.example.com and[RETAILER] that was MISSED in waves 6-8 because it was only tested on certain endpoints. Always test the full CORS matrix (10+ endpoints) on both production AND staging.
 
 ## Wave9 Production Results — Massive Internal Subdomain Leaks
 

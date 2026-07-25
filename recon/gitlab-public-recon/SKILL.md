@@ -221,7 +221,7 @@ fi
 
 ## Real Production Results
 
-### gov-finance-portal (gitlab.cge.rj.gov.br)
+### gov-finance-portal (gitlab.cge.[GOV_PORTAL].br)
 - **3 public repositories**: cge/hdi (Helpdesk system), cge/cnpj-sqlite, cge/exame-front-cge
 - **461,304 CPF records** in `servidores_sigrh.json` (state employee database)
 - `.env.example` with MongoDB host, LDAP config, email server credentials

@@ -72,7 +72,7 @@ curl --max-time 30 --connect-timeout 10 -sI "https://$TARGET/" | grep -i "strict
 
 # Check critical subdomains (login, api, auth)
 for sub in login auth api account pay www; do
-  HSTS=$(curl -sI "https://$sub.$TARGET/" 2>/dev/null | grep -i "strict-transport-security")
+  HSTS=$(curl --max-time 30 --connect-timeout 10 -sI "https://$sub.$TARGET/" 2>/dev/null | grep -i "strict-transport-security")
   if [ -z "$HSTS" ]; then
     echo "[!] MISSING HSTS: https://$sub.$TARGET/"
   else

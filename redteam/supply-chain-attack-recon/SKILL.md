@@ -88,7 +88,7 @@ curl --max-time 30 --connect-timeout 10 -sk https://target.com/main.js | grep -o
 
 # Look for scoped names that are NOT public on npm
 for pkg in @target/utils @target-internal/api @companybrand/sdk; do
-  status=$(curl -sI "https://registry.npmjs.org/$pkg" | head -1 | awk '{print $2}')
+  status=$(curl --max-time 30 --connect-timeout 10 -sI "https://registry.npmjs.org/$pkg" | head -1 | awk '{print $2}')
   echo "  $pkg → $status"
   # 404 → name unclaimed on public npm → DEPENDENCY-CONFUSION CANDIDATE
 done
@@ -175,7 +175,7 @@ for i in range(len(name)):
 
 # Check which candidates are UNCLAIMED on the registry
 for candidate in ...; do
-  status=$(curl -sI "https://registry.npmjs.org/$candidate" | head -1 | awk '{print $2}')
+  status=$(curl --max-time 30 --connect-timeout 10 -sI "https://registry.npmjs.org/$candidate" | head -1 | awk '{print $2}')
   [ "$status" = "404" ] && echo "  UNCLAIMED: $candidate"
 done
 ```

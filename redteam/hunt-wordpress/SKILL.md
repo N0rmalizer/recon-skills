@@ -230,7 +230,7 @@ fetch("https://TARGET/wp-json/wp/v2/users", {credentials:"include"})
 - ecommerce.example.com: 10 users exposed
 - mattress.example.com: 3 admins exposed
 - realestate.example.com: 3 users including 2 super admins
--tools-retailer.com: 1 super admin + PII
+-[RETAILER]: 1 super admin + PII
 - media.example.com: 9 users + 2 corporate emails
 - retail.example.com: CORS discovered in Wave 1 deep probe (NEW!)
 ```
@@ -641,7 +641,7 @@ for ns in \
 done
 ```
 
-**Field evidence:**tools-retailer.com had Slider Revolution confirmed via `/wp-json/sliderrevolution/sliders/` (HTTP 200 with 28KB of slider data). mattress.example.com had Gravity Forms confirmed via `/wp-json/gf/v2/` (HTTP 401). Elementor ontools-retailer.com returned HTTP 500 on `/favorites` — revealing the WordPress fatal error page.
+**Field evidence:**[RETAILER] had Slider Revolution confirmed via `/wp-json/sliderrevolution/sliders/` (HTTP 200 with 28KB of slider data). mattress.example.com had Gravity Forms confirmed via `/wp-json/gf/v2/` (HTTP 401). Elementor on[RETAILER] returned HTTP 500 on `/favorites` — revealing the WordPress fatal error page.
 
 ### Phase 8.5 — Staging Environment Deep Probe
 
@@ -804,7 +804,7 @@ CORS credential reflection -> Malicious page hosted on attacker.com ->
 Victim admin visits while logged -> JS exfiltrates session cookie + CSRF token ->
 Session hijacking -> Full admin ATO
 ```
-**Found on:** ecommerce.example.com, mattress.example.com, realestate.example.com,tools-retailer.com, media.example.com (5/7 deep targets)
+**Found on:** ecommerce.example.com, mattress.example.com, realestate.example.com,[RETAILER], media.example.com (5/7 deep targets)
 
 ### Chain B: Open Registration + XMLRPC -> RCE
 ```
@@ -827,7 +827,7 @@ Slider Revolution detected (revslider.php exists) ->
 CVE-2024-2534 (RCE) or CVE-2022-2944 (SQLi) ->
 Exploit plugin vulnerability -> Webshell -> RCE
 ```
-**Found on:**tools-retailer.com (Slider Revolution confirmed)
+**Found on:**[RETAILER] (Slider Revolution confirmed)
 
 ### Chain E: XMLRPC system.multicall -> Brute Force -> RCE
 ```
@@ -1208,7 +1208,7 @@ For operations spanning multiple targets (e.g., a Wave 2 across 7 sites), use th
 
 ```bash
 # Multi-target dispatch pattern
-for target in ecommerce.example.com mattress.example.comtools-retailer.com realestate.example.com; do
+for target in ecommerce.example.com mattress.example.com[RETAILER] realestate.example.com; do
   (
     # Per-target probe logic here...
     sleep $((RANDOM % 5))  # stagger start times

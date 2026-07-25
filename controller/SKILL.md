@@ -292,7 +292,7 @@ recon_output/
 ├── techniques/               — New techniques discovered during hunting
 ├── skills/                   — Generated skill files
 └── targets/
-    ├── target1.com.md         — individual deep-dive
+    ├── [TARGET_1].md         — individual deep-dive
     └── ...
 ```
 

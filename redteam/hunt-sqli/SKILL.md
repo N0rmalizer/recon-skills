@@ -20,7 +20,7 @@ SQL injection remains one of the highest-paying vulnerability classes in bug bou
 - **SaaS platforms with multi-tenant databases** — one injection can expose all customer data
 - **E-commerce/payment systems** — PII, card data, transaction records
 - **Search endpoints** — user-controlled input passed directly to queries (e.g., Rockstar Games `/search`)
-- **Analytics/tracking subdomains** — often built fast, tested less (e.g., `sctrack.email.uber.com.cn`)
+- **Analytics/tracking subdomains** — often built fast, tested less (e.g., `sctrack.email.[RIDESHARE_CO].cn`)
 - **Third-party plugins on enterprise installs** — WordPress plugins, CMS extensions running on corporate domains (Uber's Huge IT Video Gallery)
 - **Internal tooling exposed externally** — Apache Airflow, GitHub Enterprise, admin dashboards
 - **NoSQL backends (MongoDB)** — often overlooked, same injection class, different syntax

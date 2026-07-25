@@ -73,7 +73,7 @@ python3 EyeWitness.py \
 
 ```bash
 # Single-page applications need JS execution
-gowitness single -u https://target-spa.com \
+gowitness single -u https://[SPA_COMPANY] \
   -P ./screenshots/ \
   --chrome-window-x 1440 --chrome-window-y 900
 

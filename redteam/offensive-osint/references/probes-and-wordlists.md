@@ -332,7 +332,7 @@ Watch for these CNAME targets + the corresponding "available for claim" response
 | AWS S3 | `*.s3*.amazonaws.com` | `NoSuchBucket` |
 | AWS CloudFront | `*.cloudfront.net` | `Bad request` w/ specific X-Amz error |
 | Azure (multiple) | `*.azurewebsites.net`, `*.blob.core.windows.net`, `*.cloudapp.net`, `*.trafficmanager.net` | Various per-product 404 patterns |
-| Shopify | `shops.myshopify.com` | `Sorry, this shop is currently unavailable.` |
+| Shopify | `shops.[SHOPIFY_STORE]` | `Sorry, this shop is currently unavailable.` |
 | Squarespace | `*.squarespace.com` | `No Such Account` |
 | Tumblr | `*.tumblr.com` | `Whatever you were looking for doesn't currently exist.` |
 | WordPress | `*.wordpress.com` | `Do you want to register *.wordpress.com?` |

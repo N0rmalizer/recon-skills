@@ -213,7 +213,7 @@ ADMIN_PORT=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 5 --connect-time
 - Admin console at `/zimbraAdmin/` returns HTTP 500 (partial exposure)
 - SOAP endpoints: `/service/soap/` and `/service/soap/LoginRequest` active
 
-### gov-finance-portal (cge.webmail.rj.gov.br)
+### gov-finance-portal (cge.webmail.[GOV_PORTAL].br)
 - Zimbra webmail — SOAP auth functional
 - Combined with WordPress CORS + XML-RPC on same domain
 

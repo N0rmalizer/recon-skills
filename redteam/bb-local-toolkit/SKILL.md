@@ -582,7 +582,7 @@ Use these when chaining open redirect into OAuth code theft:
 | Missing protocol | `//evil.com` | Protocol-relative |
 | @-trick | `https://target.com@evil.com` | target.com becomes username |
 | Protocol-relative | `///evil.com` | Triple slash |
-| Tab/newline injection | `//evil%09.com` | Whitespace in hostname |
+| Tab/newline injection | `//evil%[EXAMPLE_DOMAIN]` | Whitespace in hostname |
 | Fragment trick | `https://evil.com#target.com` | Fragment misleads validation |
 | Null byte | `https://evil.com%00target.com` | Some parsers truncate at null |
 | Parameter pollution | `?next=target.com&next=evil.com` | Last value wins |

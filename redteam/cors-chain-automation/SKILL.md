@@ -31,7 +31,7 @@ Field recon across 600+ domains revealed 8 distinct CORS misconfiguration variat
 
 ### Critical Implementation Lesson — Test ALL Endpoints, Not Just /users
 
-**This is the #1 CORS detection mistake across all waves.** Earlier waves missed CORS on mattress.example.com and tools-retailer.com because CORS was tested only on `/wp/v2/users`. CORS credential reflection on WordPress affects ALL REST endpoints, not just users:
+**This is the #1 CORS detection mistake across all waves.** Earlier waves missed CORS on mattress.example.com and [RETAILER] because CORS was tested only on `/wp/v2/users`. CORS credential reflection on WordPress affects ALL REST endpoints, not just users:
 
 ```bash
 # WRONG — tests only /users:

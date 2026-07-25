@@ -120,7 +120,7 @@ done | sort -rn
 
 # ETag/304 oracle
 for id in {1..10}; do
-  etag=$(curl -skI "https://target.com/api/users/$id" | grep -i etag)
+  etag=$(curl --max-time 30 --connect-timeout 10 -skI "https://target.com/api/users/$id" | grep -i etag)
   echo "$id: $etag"
 done
 ```

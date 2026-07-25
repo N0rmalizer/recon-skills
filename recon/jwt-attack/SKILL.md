@@ -283,7 +283,7 @@ done
 
 ### delivery-platform — Hardcoded JWTs in JS Bundles
 - Bot JWT (HS256) embedded in `delivery-bot.web.app` JS bundle
-- Dashboard JWT (HS256) embedded in `app.delivery-platform.com` JS bundle
+- Dashboard JWT (HS256) embedded in `app.[DELIVERY_PLATFORM]` JS bundle
 - Both tokens valid for BFF API access (reads PII from Firestore)
 
 ### fintech-processor — 315 JWT Tokens in Efí Bank Logs

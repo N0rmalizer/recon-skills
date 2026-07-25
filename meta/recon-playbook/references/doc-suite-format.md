@@ -98,7 +98,7 @@ When generating the 3-doc suite for a target after Deep Invade (Phase 3 → Phas
 
 ## File Sizes (Empirical)
 
-| File | ecommerce-wine.com | retail-chain.com | mattress-retailer.com |
+| File | [WINE_STORE] | [RETAIL_CHAIN] | [MATTRESS_RETAILER] |
 |------|-----------|-------------|--------------|
 | MASTER_REPORT.md | 1,312 | 1,602 | 1,841 |
 | ATTACK_SURFACE.md | 647 | 301 | 985 |

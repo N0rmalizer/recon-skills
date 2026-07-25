@@ -39,7 +39,7 @@ fi
 for H in $HOSTS; do
   echo "=== $H ==="
   # -L follow redirects, -D - dump headers, -o body; cap body to keep context small
-  curl -sSL -m 12 -D - -o /tmp/fp_body "https://$H" 2>/dev/null | tr -d '\r'
+  curl --max-time 30 --connect-timeout 10 -sSL -D - -o /tmp/fp_body "https://$H" 2>/dev/null | tr -d '\r'
   # surface body-only platform markers
   grep -aoE '__NEXT_DATA__|/_next/|VIEWSTATE|rO0[AB]|laravel_session|Ignition|Telescope|Whitelabel|/actuator|application/grpc|socket\.io|swagger|\.js\.map' \
     /tmp/fp_body | sort -u
@@ -217,7 +217,7 @@ curl -sS -m 12 -b "$SESSION_COOKIE" "https://$TARGET/api/me" -w '\n%{http_code}\
 #   401/403                    → dead or insufficient — STOP, re-auth
 
 # bearer/JWT creds: same probe with Authorization
-curl -sS -m 12 -H "Authorization: Bearer $TOKEN" \
+curl --max-time 30 --connect-timeout 10 -sS -H "Authorization: Bearer ***" \
   "https://$TARGET/api/me" -w '\n%{http_code}\n'
 
 # raw user/pass: drive the real login flow once, capture Set-Cookie, then echo

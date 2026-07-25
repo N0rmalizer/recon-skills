@@ -140,15 +140,15 @@ probe_sector() {
     # Generate known US companies in this sector
     # Example: for "vet" or "pet_care" sector, known chains include:
     cat > "$OUTDIR/${sector}_domains.txt" << 'EOF'
-banfield.com
-vca.com
-petco.com
-medvet.com
-bluepearlvet.com
-petcureoncology.com
-animalclinic.com
-petvets.com
-veterinarypracticenews.com
+[VET_CLINIC]
+[VET_CHAIN]
+[PET_RETAILER]
+[VET_CORPORATE]
+[VET_HOSPITAL]
+[VET_SPECIALIST]
+[ANIMAL_CLINIC]
+[VET_CLINIC]
+[TRADE_PUBLICATION]
 EOF
   fi
 
@@ -299,7 +299,7 @@ revision_date: 2026-07-25
 license: MIT
 platforms: [linux]
 tags: [recon, sector, SECTORNAME]
-  category: recon
+category: recon
 ---
 
 # SECTOR NAME Recon Skill

@@ -333,7 +333,7 @@ for f in os.listdir(d):
 
 ### 8.3 Framework-Specific Checks
 
-**Angular** (real-world: stagingsdei.com from this session):
+**Angular** (real-world: [STAGING_ENV] from this session):
 - Look for `environment` or `environments` variables
 - Grep for `.com:PORT` patterns — reveals internal API gateways
 - Check `manifest.json` for all JS bundle paths
@@ -348,7 +348,7 @@ for f in os.listdir(d):
 
 ### 8.4 Real-World Example
 
-From this session's MedxGo recon on stagingsdei.com — source maps returned HTML (faux maps), so raw JS was analyzed:
+From this session's MedxGo recon on [STAGING_ENV] — source maps returned HTML (faux maps), so raw JS was analyzed:
 ```bash
 # 3.8MB Angular main.js — one grep line found the jackpot:
 python3 -c "
@@ -357,7 +357,7 @@ data = open('/tmp/js_main.js').read()
 for m in re.findall(r'[\"'"'"'](https?://[^\"'"'"'\\\\\)\s,;:]+:\d+)[\"'"'"']', data):
     print(m)
 "
-# → https://mean.stagingsdei.com:446
+# → https://mean.[STAGING_ENV]:446
 ```
 This was an undocumented internal MEAN stack API server. One grep line discovered a whole new attack surface.
 
