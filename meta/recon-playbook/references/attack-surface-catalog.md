@@ -121,3 +121,5 @@ Tabela final com 8-12 itens priorizados (Critico -> Alta -> Media -> Baixa)
 - Codigo inline com `backticks` para paths e comandos
 - Blocos ``` para codigo e dados brutos
 - Nao usar Unicode/emoji se o security scanner bloquear -- usar equivalentes ASCII
+
+```

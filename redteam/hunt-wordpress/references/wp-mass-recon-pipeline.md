@@ -34,7 +34,7 @@ while read t; do
   # Plugin detection
   for plugin in revslider elementskit elementor woocommerce gravityforms jetpack; do
     v=$(curl -sk "https://$t/wp-content/plugins/$plugin/readme.txt" 2>/dev/null | \
-      grep -i "stable tag" | grep -oP '[\d.]+')
+      grep -i "stable tag" | grep -oE '[\d.]+')
     [ -n "$v" ] && echo "  Plugin: $plugin v$v"
   done
 done < "$TARGETS"

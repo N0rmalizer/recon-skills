@@ -138,7 +138,7 @@ Recommendation:
 **Math check:**
 - Your discipline: 1 attempt per user lifetime
 - Smart Lockout default: lockout after 10 failed attempts; lockout duration starts at 60 seconds and grows with each subsequent lockout (not a flat 10-minute window)
-- Therefore: IFcommand line logs confirm exactly 1 attempt/user (no burst retries, no parallel-goroutine duplicate sends, nocommand line misconfiguration), you cannot mathematically cause Smart Lockout — verify `journal.jsonl` shows 1 attempt/user before asserting this
+- Therefore: IF command-line logs confirm exactly 1 attempt/user (no burst retries, no parallel-goroutine duplicate sends, no command-line misconfiguration), you cannot mathematically cause Smart Lockout — verify `journal.jsonl` shows 1 attempt/user before asserting this
 - Therefore: every NEW AADSTS50053 accumulating during the window (per before/after diff) was caused by someone else; pre-existing locks may stem from the legitimate user's own failures or a prior test run, so attribute only the newly-accumulating locks to an external party
 
 **Confirmation:**
@@ -152,7 +152,7 @@ Subject: Active external password-spray campaign detected during engagement
 
 Observation: During M365 ROPC validation against the <tenant> Entra tenant, <N>
 unique principals returned AADSTS50053 (Smart Lockout) when probed with a single
-password attempt at safe pace. Ourcommand line journal (journal.jsonl) confirms exactly
+password attempt at safe pace. Ourcommand-line journal (journal.jsonl) confirms exactly
 1 attempt per user with no duplicate sends, so under the Smart Lockout default
 (lockout after 10 failed attempts) we cannot have caused these lockouts. The
 attribution below applies to the <K> NEW locks that accumulated during our

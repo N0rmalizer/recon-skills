@@ -8,7 +8,6 @@ license: MIT
 platforms: [linux]
 compatibility: Requires curl, python3
 tags: [redteam, prototype-pollution, XSS, RCE, JavaScript, Node.js, jQuery]
-category: redteam
 related_skills:
   - hunt-nodejs
   - hunt-xss

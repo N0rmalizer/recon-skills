@@ -178,7 +178,7 @@ Severity is **Medium at best**, and only if delivered-to-inbox. Many programs ma
 
 ```bash
 # Check all security headers
-HEADERS=$(curl -sI "https://$TARGET/")
+HEADERS=$(curl --max-time 30 --connect-timeout 10 -sI "https://$TARGET/")
 
 # Check each critical header
 for HEADER in "Strict-Transport-Security" "Content-Security-Policy" "X-Frame-Options" \

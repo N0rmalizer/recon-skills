@@ -29,7 +29,7 @@ Map an organization's entire IP infrastructure by pivoting from domain to ASN (A
 
 ## Prerequisites
 
-- `terminal`whois, dnsx, mapcidr, httpx, and asnmap.
+- `terminal` whois, dnsx, mapcidr, httpx, and asnmap.
 - The target domain and/or a known IP belonging to the organization.
 - Shodan API key (optional, for deeper OSINT).
 

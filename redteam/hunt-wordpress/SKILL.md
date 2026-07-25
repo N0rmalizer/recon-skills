@@ -372,6 +372,9 @@ for path in /info.php /test.php /phpinfo.php /p.php /php_info.php; do
         fi
       fi
 done
+  fi
+done
+```
 
 ## Verification
 
@@ -409,9 +412,6 @@ All 3 tests verify the skill is properly structured and ready for use.
 ## Related Skills
 
 - **`password-spray-methodology`** — Universal password spray pipeline across all protocols + error code differentials
-  fi
-done
-```
 
 ---
 
@@ -695,7 +695,7 @@ for path in \
   size=$(wc -c < /tmp/debug_check)
   if [ "$code" = "200" ] && [ "$size" -gt 100 ]; then
     echo "[+] Found: $path ($size bytes)"
-    grep -ioP '(SQL:|Executing query:|query:).{0,200}' /tmp/debug_check | head -10
+    grep -ioE '(SQL:|Executing query:|query:).{0,200}' /tmp/debug_check | head -10
     grep -Eo '[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}' /tmp/debug_check | sort -u | head -10
     grep -Eo 'eyJ[a-zA-Z0-9_-]{20,}\.[a-zA-Z0-9_-]{20,}\.[a-zA-Z0-9_-]{10,}' /tmp/debug_check | head -5
   fi
@@ -716,7 +716,7 @@ grep -Eo '/var/www/[^"]+' error_log | sort -u | head -10
 grep -Eo 'PHP \w+:' error_log | sort | uniq -c | sort -rn
 
 # Extract SQL queries (may contain credentials, table names, column schemas)
-grep -iP '(SELECT|INSERT|UPDATE|DELETE|DROP|CREATE TABLE).{0,200}' error_log | head -20
+grep -iE '(SELECT|INSERT|UPDATE|DELETE|DROP|CREATE TABLE).{0,200}' error_log | head -20
 
 # Extract email addresses
 grep -Eo '[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}' error_log | sort -u
@@ -731,11 +731,11 @@ tail -1 error_log
 
 # Check for token/credential leakage
 grep -Eo 'eyJ[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}' error_log | head -5
-grep -iP '(password|pass|pwd)\s*[:=]\s*["'"'"'][^"'"'"']{4,}' error_log | head -10
-grep -iP '(api.?key|secret.?key|access.?key)\s*[:=]' error_log | head -10
+grep -iE '(password|pass|pwd)[[:space:]]*[:=][[:space:]]*["'"'"'][^"'"'"']{4,}' error_log | head -10
+grep -iE '(api.?key|secret.?key|access.?key)[[:space:]]*[:=]' error_log | head -10
 
 # PHP include/require paths (reveal plugin loading order)
-grep -iP '(require|include|require_once|include_once)\(.+\.php' error_log | head -20
+grep -iE '(require|include|require_once|include_once)\(.+\.php' error_log | head -20
 ```
 
 #### Error Log Deep Analysis — Credential Mining Technique
@@ -751,7 +751,7 @@ grep -Eo '/home/[^\"\\s)]+' "$ERROR_LOG" | sort -u | head -10
 grep -Eo '/var/www/[^\"\\s)]+' "$ERROR_LOG" | sort -u | head -10
 
 # 2. Extract SQL queries (may contain credentials, table names)
-grep -iP '(SELECT|INSERT|UPDATE|DELETE|DROP|CREATE TABLE).{0,200}' "$ERROR_LOG" | head -20
+grep -iE '(SELECT|INSERT|UPDATE|DELETE|DROP|CREATE TABLE).{0,200}' "$ERROR_LOG" | head -20
 
 # 3. Extract email addresses
 grep -Eo '[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}' "$ERROR_LOG" | sort -u
@@ -763,8 +763,8 @@ grep -Eo '(in |on line )\S+' "$ERROR_LOG" | sort -u | head -30
 grep -Eo 'PHP \w+:' "$ERROR_LOG" | sort | uniq -c | sort -rn
 
 # 6. Check for credentials/API keys
-grep -iP '(passwd|password|pwd)\s*[:=]\s*["'"'"'][^"'"'"']{4,}' "$ERROR_LOG" | head -10
-grep -iP '(api.?key|secret.?key|access.?key)\s*[:=]' "$ERROR_LOG" | head -10
+grep -iE '(passwd|password|pwd)[[:space:]]*[:=][[:space:]]*["'"'"'][^"'"'"']{4,}' "$ERROR_LOG" | head -10
+grep -iE '(api.?key|secret.?key|access.?key)[[:space:]]*[:=]' "$ERROR_LOG" | head -10
 grep -Eo 'eyJ[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}' "$ERROR_LOG" | head -5
 
 # 7. Date range analysis — error logs spanning YEARS mean legacy code
@@ -773,7 +773,7 @@ tail -1 "$ERROR_LOG"
 # e.g., ecommerce.example.com had errors from 2013 — 11+ year old code on the same server
 
 # 8. PHP include/require paths (reveals plugin loading order and custom code)
-grep -iP '(require|include|require_once|include_once)\(.+\.php' "$ERROR_LOG" | head -20
+grep -iE '(require|include|require_once|include_once)\(.+\.php' "$ERROR_LOG" | head -20
 ```
 
 **Why this matters:** PHP error_logs are often world-readable (644 permissions), contain full server path disclosures, span years of activity, and frequently contain SQL queries (with data), parsed credentials from register_globals era code, and __autoload() path attempts that reveal internal directory structure.

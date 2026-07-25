@@ -1,6 +1,6 @@
 ---
 name: wp-mass-recon
-description: Batch WP recon: users, CORS, XMLRPC, leaks across domains.
+description: "Batch WP recon: users, CORS, XMLRPC, leaks across domains."
 version: 1.1.0
 revision_date: 2026-07-25
 license: MIT

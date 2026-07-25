@@ -734,17 +734,17 @@ SeLeCt * FrOm uSeRs
 - [ ] Indirect injection via document/URL the AI processes
 - [ ] IDOR in chat history (enumerate conversation IDs)
 - [ ] System prompt extraction via roleplay/encoding
-- [ ] RCE via code executioncommand line abuse
+- [ ] RCE via code execution command-line abuse
 - [ ] ASCII smuggling (invisible unicode in LLM output)
 
 ### Agentic AI Hunting (OWASP ASI01-ASI10)
 
-When target has AI agents withcommand line access, these are the 10 attack classes:
+When target has AI agents with command-line access, these are the 10 attack classes:
 
 | ID | Vuln Class | What to Test |
 |----|-----------|-------------|
 | ASI01 | Prompt injection | Override system prompt via user input -- make agent ignore its rules |
-| ASI02 | Tool misuse | Make AI calltools with attacker-controlled params (SSRF via "fetch URL", RCE via code command-line) |
+| ASI02 | Tool misuse | Make AI call tools with attacker-controlled params (SSRF via "fetch URL", RCE via code command-line) |
 | ASI03 | Data exfil | Extract training data / PII via crafted prompts that leak context |
 | ASI04 | Privilege escalation | Use AI to access admin-onlytools -- agent has broader perms than user |
 | ASI05 | Indirect injection | Poison document/URL the AI processes -- hidden instructions in fetched content |
@@ -960,7 +960,7 @@ github.head_ref
 ### Category 6: AI Agent Security (NEW — 2025+)
 
 - [ ] **Unrestricted AI trigger** — `allowed_non_write_users: "*"` lets any user trigger AI agent execution
-- [ ] **Excessivecommand line grants** — AI agent given Bash/Write/Edittools in untrusted trigger context = attacker prompt → RCE
+- [ ] **Excessive command-line grants** — AI agent given Bash/Write/Edittools in untrusted trigger context = attacker prompt → RCE
 - [ ] **Prompt injection via workflow context** — `${{ github.event.issue.body }}` interpolated into AI agent prompt parameter
 
 ### Hunting Workflow

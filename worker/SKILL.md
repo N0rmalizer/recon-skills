@@ -10,7 +10,7 @@ tags: [worker, automation, meta]
 
 # Worker Cluster
 
-You are connected to a **4-container Docker cluster** via SSH. Three specialized workers are available, each with differenttoolsets and network profiles. The default worker (`worker`) is for general recon — switch to `worker-heavy` for reverse engineering or `worker-tor` for anonymous scanning.
+You are connected to a **4-container Docker cluster** via SSH. Three specialized workers are available, each with different toolsets and network profiles. The default worker (`worker`) is for general recon — switch to `worker-heavy` for reverse engineering or `worker-tor` for anonymous scanning.
 
 ## Architecture — Multi-Worker Cluster
 
@@ -178,7 +178,7 @@ rsync       3.3.0    File synchronization
 
 The Hermes host has a **Tirith security scanner** that blocks `write_file` on `/root/output/` and `/root/scripts/` paths with the error `"protected system/credential file"`. This affects **ALL file types** (.md, .json, .txt, .sh, .py), not just scripts.
 
-**The restriction is command-line-level, not filesystem-level.** The worker filesystem is writable via `terminal` (SSH) commands, only the Hermes `write_file`command line enforces the path restriction.
+**The restriction is command-line-level, not filesystem-level.** The worker filesystem is writable via `terminal` (SSH) commands, only the Hermes `write_file` command line enforces the path restriction.
 
 **Successful workarounds (use in order of preference):**
 
@@ -237,7 +237,7 @@ nmap -sV target.com -oA /root/output/nmap
 ```
 
 ### Continuous recon monitoring with cron
-Use the `cronjob`command line to schedule recurring recon. Pattern:
+Use the `cronjob` command-line to schedule recurring recon. Pattern:
 1. Create a recon collector script at `/root/scripts/<name>.sh` (use `execute_code` with `open()+os.chmod()` — `write_file` blocks `.sh` files)
 2. Set up a cron job with:
    - `schedule: "every 6h"` (adjust per target)
@@ -272,7 +272,7 @@ When a target blocks automated requests with Vercel Security Checkpoint, the con
 - **masscan**: If masscan fails with `failed to load libpcap shared library`, run `apk add libpcap` — the binary is installed but its runtime dependency isn't. Fix once per container.
 - **ss/ps BusyBox**: Alpine uses BusyBox versions — `ps` doesn't support `--sort`, `ss` is not available. Use `netstat` or `cat /proc/net/tcp` instead.
 - **No systemd**: Alpine uses OpenRC. Long-running background processes should use tmux or nohup, not systemd services.
-- **write_file blocks ALL files in /root/output/ and /root/scripts/**: The `write_file`command line (and `write_file` from hermes_tools in execute_code) refuses to write ANY file in these paths — not just .sh, but .md, .json, .txt, .py as well. Error: `"protected system/credential file"`. Workaround: use **`terminal` with Python `open()`** — the SSH terminal bypasses the command-line-level scanner:
+- **write_file blocks ALL files in /root/output/ and /root/scripts/**: The `write_file` command line (and `write_file` from hermes_tools in execute_code) refuses to write ANY file in these paths — not just .sh, but .md, .json, .txt, .py as well. Error: `"protected system/credential file"`. Workaround: use **`terminal` with Python `open()`** — the SSH terminal bypasses the command-line-level scanner:
   ```bash
   python3 -c "open('/root/output/file.md','w').write('''...content...''')"
   ```

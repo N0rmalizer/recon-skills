@@ -8,7 +8,6 @@ license: MIT
 platforms: [linux]
 compatibility: Requires curl, python3
 tags: [redteam, mass-assignment, API, ORM, authorization, field-injection]
-category: redteam
 related_skills:
   - hunt-api-misconfig
   - hunt-idor

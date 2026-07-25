@@ -8,7 +8,6 @@ license: MIT
 platforms: [linux]
 compatibility: Requires curl, ffuf
 tags: [redteam, authorization, function-level, API, verb-drift, route-shadowing]
-category: redteam
 related_skills:
   - hunt-idor
   - hunt-auth-bypass

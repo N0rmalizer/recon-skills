@@ -35,7 +35,7 @@ grep -Eo 'src="[^"]*\.js"' index.html | cut -d'"' -f2 | while read js; do
 done
 
 # Search for secrets in bundles
-grep -rPn "(apiKey|api_key|API_KEY|token|secret|password|clientId|client_id|auth0|firebase|supabase)[\"'\"]?\\s*[:=]\\s*[\"'\'][^\"'\']{8,}" *.js
+grep -rEn "(apiKey|api_key|API_KEY|token|secret|password|clientId|client_id|auth0|firebase|supabase)[\"'\"]?[[:space:]]*[:=][[:space:]]*[\"'\'][^\"'\']{8,}" *.js
 ```
 
 ## Source Map Reconstruction
@@ -81,7 +81,7 @@ base = "https://target.com:8080"  # Admin portal
 js = requests.get(f"{base}/static/js/main.*.js").text
 
 # 1. Extract ALL API URLs
-api_urls = re.findall(r'https?://[^\"\'\\s\\n,)>\\]]+', js)
+api_urls = re.findall(r'https?://[^\"\'[[:space:]]\\n,)>\\]]+', js)
 # 2. Find base API URL (the backend this admin talks to)
 # 3. Look for hardcoded credentials, API keys, auth patterns
 # 4. Extract route paths for the admin app

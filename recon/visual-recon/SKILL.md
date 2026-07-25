@@ -29,7 +29,7 @@ Automatically screenshot every live host to triage hundreds of subdomains visual
 
 ## Prerequisites
 
-- `terminal`gowitness, httpx, and curl.
+- `terminal` gowitness, httpx, and curl.
 - `gowitness` installed: `go install github.com/sensepost/gowitness@latest`.
 - A list of alive subdomains from `subdomain-enumeration`.
 
@@ -44,7 +44,7 @@ gowitness file -f alive_subs.txt -P ./screenshots/ --no-http
 ### Phase 1 — Mass Screenshot Capture
 
 ```bash
-# gowitness — fast, Go-based screenshotcommand line
+# gowitness — fast, Go-based screenshot tool
 gowitness file -f alive_subs.txt \
   -P ./screenshots/ \
   --no-http \

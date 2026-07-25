@@ -1,6 +1,6 @@
 ---
 name: hunt-fastapi
-description: Hunt FastAPI-specific vulnerabilities: dependency injection gaps, Pydantic coercion, and OpenAPI mining.
+description: "Hunt FastAPI-specific vulnerabilities: dependency injection gaps, Pydantic coercion, and OpenAPI mining."
 category: redteam
 version: 1.1.0
 revision_date: 2026-07-25
@@ -8,7 +8,6 @@ license: MIT
 platforms: [linux]
 compatibility: Requires curl, python3
 tags: [redteam, fastapi, Python, ASGI, Pydantic, OpenAPI, dependency-injection]
-category: redteam
 related_skills:
   - hunt-sqli
   - hunt-api-misconfig

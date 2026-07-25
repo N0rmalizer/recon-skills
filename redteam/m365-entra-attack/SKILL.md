@@ -369,7 +369,7 @@ For the report:
 ```bash
 pip install --break-system-packages msftrecon o365spray  # may need to clone msftrecon from GitHub
 brew install pandoc                                       # for report generation
-go install -v github.com/projectdiscovery/...             # PDcommand linekit for general recon
+go install -v github.com/projectdiscovery/...             # PD command-line toolkit for general recon
 ```
 
 Pre-built `m365_validator.py` template at engagement working directory `engagement_log/m365_validator.py`. Adapt the `attempt()` function to your engagement.

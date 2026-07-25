@@ -6,7 +6,7 @@ revision_date: 2026-07-25
 category: redteam
 tags: [recon, parallel, triad, methodology, redteam]
 version: 1.2.0
-  related_skills:
+related_skills:
   - recon-playbook
   - sector-recon-methodology
   - deep-invade
@@ -148,7 +148,7 @@ Place initial targets in:
 
 ### 3. Cron Waves (sequential 20min waves)
 ```bash
-# Use the cronjobcommand line — exactly 3 agents per wave, sequential:
+# Use the cronjob command-line — exactly 3 agents per wave, sequential:
 cronjob action=create \
   name=SCOPE_NAME-orchestrator \
   schedule="every 20m" \
@@ -550,7 +550,7 @@ Calculate which sectors consistently yield findings:
 
 Categorize recommendations:
 - **CRITICAL** — New high-value targets/findings that demand immediate follow-up
-- **HIGH** — Technique improvements,command line chain gaps, OOB SSRF setup
+- **HIGH** — Technique improvements, command-line chain gaps, OOB SSRF setup
 - **MEDIUM** — Sector expansion candidates, wordlist generation
 - **RETIRE** — Techniques that no longer work or targets that got fully patched
 
@@ -597,7 +597,7 @@ cronjob action=create \
 ### Pitfalls
 
 - **Delegate_task runs once**: agents complete and stop. Sequential 20min cron ensures next wave starts ~5min after previous finishes.
-- **Large heredoc with cat > file may truncate**: The terminalcommand line can reject very large heredoc content (200+ lines) passed via `<< 'ENDOFFILE'` with "Could not determine home directory" or similar errors. For large files (>8KB or >150 lines), use a Python script approach instead:
+- **Large heredoc with cat > file may truncate**: The terminal command line can reject very large heredoc content (200+ lines) passed via `<< 'ENDOFFILE'` with "Could not determine home directory" or similar errors. For large files (>8KB or >150 lines), use a Python script approach instead:
   ```bash
   # INSTEAD OF: cat > /path/file << 'ENDOFFILE'
   # USE:
@@ -699,3 +699,5 @@ All tests verify parallel recon readiness.
 - `references/cron-template.md` — copy-paste cron prompt template with all 3 tasks
 - `references/proxy-alpine-setup.md` — Tor + proxychains4 setup for Alpine workers
 - `references/skill-catalog.md` — complete skill catalog with descriptions
+
+```

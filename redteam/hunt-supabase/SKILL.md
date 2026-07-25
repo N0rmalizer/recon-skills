@@ -36,11 +36,11 @@ curl --max-time 30 --connect-timeout 10 -sk "https://$TARGET" | grep -Eo 'src="[
 done
 
 # Search for Supabase URL pattern
-grep -rPn 'https://[a-z0-9-]+\.supabase\.co' /tmp/*.js
-grep -rPn 'supabaseUrl|SUPABASE_URL|supabaseKey|SUPABASE_ANON_KEY' /tmp/*.js
+grep -rEn 'https://[a-z0-9-]+\.supabase\.co' /tmp/*.js
+grep -rEn 'supabaseUrl|SUPABASE_URL|supabaseKey|SUPABASE_ANON_KEY' /tmp/*.js
 
 # Search for Supabase JWT anon key
-grep -rPn 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\.\S+' /tmp/*.js
+grep -rEn 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\.[^[:space:]]+' /tmp/*.js
 
 # Quick one-liner
 curl --max-time 30 --connect-timeout 10 -sk "https://$TARGET" | grep -Eo 'https://[a-z0-9-]+\.supabase\.co'

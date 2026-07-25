@@ -346,12 +346,12 @@ The race window equals the time between worker N's `SELECT ... FOR UPDATE` and w
 
 ### Wireshark validation
 
-To confirm your attackcommand line is genuinely producing one-packet sync (vs accidentally fragmenting):
+To confirm your attack tooling is genuinely producing one-packet sync (vs accidentally fragmenting):
 
 1. Capture the loopback or your egress interface during the attack: `sudo tcpdump -i lo0 -w race.pcap port 443` (or interface 0).
 2. Open in Wireshark, filter `tls and tcp.port == 443`.
 3. Find the TLS record containing the END_STREAM flush. It should contain **N H2 DATA frames with END_STREAM set, in one TLS record, in one TCP segment.**
-4. If you see N TLS records or N TCP segments, yourcommand line is sequencing. The race window is your inter-segment gap — typically too wide.
+4. If you see N TLS records or N TCP segments, your tooling is sequencing. The race window is your inter-segment gap — typically too wide.
 
 The Turbo Intruder `engine=Engine.BURP2` implementation guarantees single-packet delivery on HTTP/2 targets when the request body fits in MTU. For larger bodies, see the "Race-window estimation" subsection below.
 

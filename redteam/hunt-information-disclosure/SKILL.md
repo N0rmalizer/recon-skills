@@ -8,7 +8,6 @@ license: MIT
 platforms: [linux]
 compatibility: Requires curl, python3, httpx
 tags: [redteam, information-disclosure, error-leakage, source-maps, config, enumeration]
-category: redteam
 related_skills:
   - source-leak-hunt
   - js-secrets-extraction

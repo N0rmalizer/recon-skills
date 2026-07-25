@@ -301,7 +301,7 @@ Pre-delivery checklist:
 - [ ] Cleanup statement explicitly says what was created and what was removed
 - [ ] IoC section enables the SOC to reconstruct what they saw
 - [ ] Spell-check (especially client company name, product names)
-- [ ] Allcommand line versions noted in methodology
+- [ ] All command-line versions noted in methodology
 - [ ] Status field set correctly on every finding (especially patched-mid-engagement)
 
 ---

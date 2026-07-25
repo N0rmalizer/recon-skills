@@ -31,7 +31,7 @@ ALL_TARGETS="$OUTDIR/recon_output/new_targets/all_targets.txt"
 ALL_MASSIVE="$OUTDIR/recon_output/new_targets/all_massive.txt"
 
 # Extract all domains from both files
-grep -ohP '[a-zA-Z0-9][a-zA-Z0-9.-]*\.[a-z]{2,}' "$ALL_TARGETS" "$ALL_MASSIVE" | sort -u > /tmp/targets_deduped.txt
+grep -ohE '[a-zA-Z0-9][a-zA-Z0-9.-]*\.[a-z]{2,}' "$ALL_TARGETS" "$ALL_MASSIVE" | sort -u > /tmp/targets_deduped.txt
 echo "Already tested: $(wc -l < /tmp/targets_deduped.txt) domains"
 
 # 2. Check what findings files exist

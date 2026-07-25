@@ -35,7 +35,7 @@ If step 1 passes but step 2 fails → **LOW: HTML storage without exploitable si
 **How to Check for Sinks:**
 ```bash
 # In JS bundles — search for dangerous rendering patterns
-grep -rPn 'dangerouslySetInnerHTML|innerHTML|outerHTML|v-html|\[innerHTML\]|\{@html\}|insertAdjacentHTML|document\.write\(|eval\(' /tmp/target_js/
+grep -rEn 'dangerouslySetInnerHTML|innerHTML|outerHTML|v-html|\[innerHTML\]|\{@html\}|insertAdjacentHTML|document\.write\(|eval\(' /tmp/target_js/
 
 # If NONE appear near the reflected field → NOT exploitable XSS
 # If found → verify the specific field reaches that sink

@@ -1,6 +1,6 @@
 ---
 name: deep-invade
-description: Deep pentest WP: SSRF, plugin CVE, JS mine, port scan chain.
+description: "Deep pentest WP: SSRF, plugin CVE, JS mine, port scan chain."
 version: 1.1.0
 revision_date: 2026-07-25
 license: MIT

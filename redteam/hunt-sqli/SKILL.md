@@ -453,44 +453,12 @@ Key indicators:
 - Application calls `PDO::quote()` before `PDO::prepare()` (pattern: quote-then-prepare)
 - NUL byte in parameter causes query corruption even when quoting is "correct"
 
-## Verification
-
-Run this self-test to confirm sqli hunting readiness:
-
-1. **Skill integrity** — confirm the skill file is readable and well-formed:
-   ```bash
-   grep -q "name: hunt-sqli" SKILL.md && echo "PASS: skill frontmatter present" || echo "FAIL"
-   grep -q "revision_date:" SKILL.md && echo "PASS: revision date present" || echo "FAIL"
-   ```
-
-2. **Category check** — confirm the skill has a category:
-   ```bash
-   grep -q "category:" SKILL.md && echo "PASS: category present" || echo "FAIL"
-   ```
-
-3. **Pitfalls section** — confirm pitfalls are documented:
-   ```bash
-   grep -q "^## Pitfalls" SKILL.md && echo "PASS: pitfalls section present" || echo "FAIL"
-   ```
-
-All 3 tests verify the skill is properly structured and ready for use.
-
----
-
-## Pitfalls
-- **Error-based SQLi without data extraction** — 500 errors with SQL fragments prove injection but not exploitability. Need data extraction, not just errors.
-- **Blind SQLi without data extraction** — boolean/time-based blind is harder to exploit but still valid. Demonstrate at least table name extraction.
-- **sqlmap dumping without manual confirmation** — sqlmap false positives happen. Manually verify at least one extracted piece of data.
-- **Second-order SQLi** — data stored now, exploited later. The injection point and exploitation point are different endpoints.
-- **NoSQL vs SQL confusion** — MongoDB `$gt`, `$ne` are NoSQL injection, not SQLi. Different attack class.
-
----
-
 ## Related Skills & Chains
 
 - **`hunt-rce`** — A SQLi against a DB user with `FILE`, `xp_cmdshell`, or `COPY FROM PROGRAM` privileges is an RCE primitive, not just a data-read. Chain primitive: MSSQL union-based SQLi → `EXEC xp_cmdshell 'whoami'` → RCE as `NT AUTHORITY\SYSTEM`; Postgres SQLi with `pg_read_server_files` or `COPY ... FROM PROGRAM 'id'` → RCE; MySQL SQLi with `FILE` → write webshell to web-root via `INTO OUTFILE`.
 - **`hunt-idor`** — Once SQLi gives you arbitrary read on the users table, you have the IDs/UUIDs needed to enumerate IDOR endpoints at scale. Chain primitive: blind SQLi extracts `users.uuid` column → feed UUIDs into `/api/users/{uuid}/profile` → confirmed mass IDOR-with-PII rather than a theoretical broken-access-control.
 - **`hunt-nosqli`** — NoSQL injection (MongoDB $regex, $where, $ne) uses a different syntax but the same logic as SQLi. Chain primitive: when SQLi fails on an Express/Mongo stack, switch to `{\"username\": {\"$gt\": \"\"}, \"password\": {\"$gt\": \"\"}}` — auth bypass through a different DB paradigm entirely.
-- **`hunt-ldap`** — LDAP injection and SQLi share the same root cause (unsanitized input in a query language) but target directory services instead of relational databases. Chain primitive: LDAP injection on an AD-backed login bypasses auth with `(&(uid=*)(userPassword={password}))` — same injection class, different parser.** — Classic `' OR 1=1 --` in login forms or session tables is auth-bypass-via-SQLi. Chain primitive: SQLi on the `password_reset_tokens` table → read or insert a token row for `admin@target.com` → ATO without ever seeing the original password.
+- **`hunt-ldap`** — LDAP injection and SQLi share the same root cause (unsanitized input in a query language) but target directory services instead of relational databases. Chain primitive: LDAP injection on an AD-backed login bypasses auth with `(&(uid=*)(userPassword={password}))` — same injection class, different parser.
+- **`hunt-auth-bypass`** — Classic `' OR 1=1 --` in login forms or session tables is auth-bypass-via-SQLi. Chain primitive: SQLi on the `password_reset_tokens` table → read or insert a token row for `admin@target.com` → ATO without ever seeing the original password.
 - **`security-arsenal`** — Reach for the SQLi payload tree (WAF-bypass union variants `/**/UnIoN/**/SeLeCt/**/`, MSSQL `WAITFOR DELAY '0:0:10'`, MySQL `SLEEP(10)`, Postgres `pg_sleep(10)`, Oracle `DBMS_PIPE.RECEIVE_MESSAGE`, NoSQLi `{"$ne": null}` / `{"$where": "sleep(5000)"}`, second-order via stored-then-rendered fields).
 - **`triage-validation`** — Apply the Reproducibility Gate before reporting. A 200ms delta on a sleep-10 payload is noise, not blind SQLi. Require statistical evidence (5 trials at 0s vs 5 trials at 10s, non-overlapping confidence intervals) or an OOB DNS callback with a unique marker. The hunt-sqli internal sentinel/baseline pattern exists for exactly this.

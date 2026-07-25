@@ -37,13 +37,13 @@ grep -Eo 'src="[^"]*\.js"' /tmp/index.html | cut -d'"' -f2 | while read js; do
 done
 
 # Search for Firebase API keys in all downloaded JS
-grep -rPn 'AIza[0-9A-Za-z_-]{35}' /tmp/*.js
+grep -rEn 'AIza[0-9A-Za-z_-]{35}' /tmp/*.js
 
 # Search for firebaseConfig
-grep -rPn 'firebaseConfig|firebase.initializeApp|apiKey|authDomain' /tmp/*.js --include="*.js"
+grep -rEn 'firebaseConfig|firebase.initializeApp|apiKey|authDomain' /tmp/*.js --include="*.js"
 
 # Search for Firebase URLs
-grep -rPn 'firebaseio|firestore|firebasestorage|firebaseapp' /tmp/*.js --include="*.js"
+grep -rEn 'firebaseio|firestore|firebasestorage|firebaseapp' /tmp/*.js --include="*.js"
 
 # Quick one-liner for any page
 curl --max-time 30 --connect-timeout 10 -sk "https://$TARGET" | grep -Eo 'AIza[0-9A-Za-z_-]{35}'

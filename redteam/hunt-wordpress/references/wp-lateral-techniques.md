@@ -206,7 +206,7 @@ Alpine containers lack `grep -P`. For complex extractions from XML/JSON, pipe th
 
 ```bash
 # INSTEAD OF:
-curl -sk "https://TARGET/sitemap.xml" | grep -oP '<loc>[^<]+</loc>'
+curl -sk "https://TARGET/sitemap.xml" | grep -oE '<loc>[^<]+</loc>'
 
 # USE:
 curl -sk "https://TARGET/sitemap.xml" | python3 -c "

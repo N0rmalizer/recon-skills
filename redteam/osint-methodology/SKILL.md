@@ -168,7 +168,7 @@ Finding:
 
 ## 4. Source Hygiene & Citations
 
-For every artifact you capture, record: **URL + UTC timestamp + SHA-256 hash +command line version + run_id**.
+For every artifact you capture, record: **URL + UTC timestamp + SHA-256 hash +command-line version + run_id**.
 
 - Hash all downloaded files with SHA-256.
 - Screenshot in PNG (lossless, smaller than full-page WARC for evidence packs).
@@ -206,7 +206,7 @@ Resources & techniques:
 - Disposable phone numbers: Burner, Silent Link (some platforms reject VoIP — keep a backlog of numbers).
 - Hardware passkeys for any high-value persona; store recovery codes offline.
 - Audit every browser extension before installation. Supply-chain attacks on popular extensions have repeatedly targeted investigators — assume the popular ones are at higher risk, not lower.
-- Maintain chain-of-custody: timestamp every action, hash every key artifact, recordcommand line versions per case.
+- Maintain chain-of-custody: timestamp every action, hash every key artifact, recordcommand-line versions per case.
 - Personas should look like real low-engagement accounts: profile photo (synthetic), bio, a few low-effort posts spread across weeks before the persona is "used."
 
 References:
@@ -337,7 +337,7 @@ Make the work usable.
 - Risk scoring per finding (CVSS + program-specific weights).
 - Asset graph export (D3-friendly nodes/links, GraphML, JSON).
 - Client-facing report (executive summary + technical detail + remediation — see §31).
-- Reproduction package (run_id,command line versions, raw evidence, JSONL log).
+- Reproduction package (run_id,command-line versions, raw evidence, JSONL log).
 - Bug bounty submission (if applicable — see §30).
 
 ### 7.5 Pipeline Priority Order (highest signal density first)
@@ -456,7 +456,7 @@ When you have a mixed bag of assets and limited probe budget, prioritize by what
 | Role indicator | Priority | Why |
 |---|---|---|
 | `ceo@`, `cfo@`, `cto@`, `ciso@` | HIGHEST | Exec accounts have highest breach value (BEC, finance authority, board access). |
-| `it@`, `helpdesk@`, `support@`, `security@` | HIGH | IT/security accounts have privilegedcommand line access; helpdesk accounts handle reset workflows. |
+| `it@`, `helpdesk@`, `support@`, `security@` | HIGH | IT/security accounts have privileged command-line access; helpdesk accounts handle reset workflows. |
 | `dev`, `engineer`, `architect`, `dba` | MEDIUM | Developer accounts often have GitHub / cloud / CI access. |
 | `sales`, `marketing`, `hr`, `finance` | MEDIUM | SaaS access (Salesforce, HubSpot, Workday); finance enables BEC. |
 | Generic role accounts (`info@`, `noreply@`, `contact@`) | LOW | Often unmonitored or alias forwarded; less personal context. |
@@ -1176,12 +1176,12 @@ Running a large dork corpus across multiple engines:
 ### 24.4 Evidence Preservation for Offensive Engagements
 
 - Per-engagement / per-scan SQLite store.
-- JSONL run log with `run_id`, every event one line, UTC timestamps,command line versions.
+- JSONL run log with `run_id`, every event one line, UTC timestamps,command-line versions.
 - SHA-256 every downloaded artifact.
 - PNG screenshots.
 - Raw HTTP requests/responses, capped at 2 KiB body per side.
 - Evidence served read-only from operator's machine.
-- Reproduction package: `run_id` +command line versions + JSONL log + asset/findings DB.
+- Reproduction package: `run_id` +command-line versions + JSONL log + asset/findings DB.
 
 ---
 
@@ -1409,7 +1409,7 @@ Pretexts work when they tap a target's existing context. Build pretexts from har
 - **Executives:** finance authority (BEC-style "wire approval needed"), board materials shared, M&A NDA review, executive assistant request.
 - **Developers / engineers:** GitHub security alert, CI build failed, package security advisory, conference CFP follow-up.
 - **HR / Finance:** payroll vendor change, expense report rejection, benefits enrollment deadline, vendor invoice discrepancy.
-- **IT / Security:** vendor security update notification, on-call escalation, monitoringcommand line alert.
+- **IT / Security:** vendor security update notification, on-call escalation, monitoring command-line alert.
 
 ### 29.5 Operational discipline for phishing infrastructure
 
@@ -1643,7 +1643,7 @@ Deliver alongside the report:
 <engagement-id>-reproduction-package.zip
 ├── README.md                    # how to use the package
 ├── engagement-metadata.json     # client, dates, scope, lead
-├──tools-used.txt               #command line name + version, one per line
+├──tools-used.txt               # command-line name + version, one per line
 ├── run-log.jsonl                # every event during engagement
 ├── assets.db                    # SQLite of all discovered assets
 ├── findings.db                  # SQLite of all findings
