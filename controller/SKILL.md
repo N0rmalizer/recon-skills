@@ -1,9 +1,9 @@
 ---
 name: controller
-description: Hermes Agent features guide — cron, delegation, memory, automation, YOLO mode, dual-agent hunting, and slash commands for the Telegram setup
+description: Agent orchestration guide — cron scheduling, task delegation, parallel execution, memory management, and automation patterns
 license: MIT
 category: recon-skills
-tags: [hermes, gateway, telegram, cron, delegation, memory, automation, yolo, dual-agent, redteam]
+tags: [orchestration, automation, delegation, cron, parallel-execution, agent-ops]
 revision_date: 2026-07-25
 platforms: [linux]
 compatibility: N/A (reference documentation)

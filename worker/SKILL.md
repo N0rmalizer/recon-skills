@@ -1,6 +1,6 @@
 ---
 name: worker
-description: Multi-worker cluster environment — recon, heavy/RE, and Tor workers accessible via SSH
+description: Worker cluster reference — tool inventory, SSH access patterns, and execution environment for recon, binary analysis, and anonymous operations
 version: 1.1.0
 revision_date: 2026-07-25
 license: MIT
