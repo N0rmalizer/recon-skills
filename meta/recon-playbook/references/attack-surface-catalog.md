@@ -1,14 +1,14 @@
 # Attack Surface Catalog Reference
 
-Estrutura padrao para documentar a superficie de ataque de um alvo apos todas as fases de recon. Gere este arquivo por alvo em `/root/output/recon_us/<domain>/ATTACK_SURFACE.md`.
+Estrutura padrao para documentar a superficie de ataque de um alvo apos todas as fases de recon. Gere este arquivo por alvo em `/root/output/recon_output/<domain>/ATTACK_SURFACE.md`.
 
 Este documento é parte de um **suite de 3 documentos** gerados após deep invade:
 
 | Documento | Propósito | Localização |
 |-----------|-----------|-------------|
-| `MASTER_REPORT.md` | Relatório completo com todas as descobertas, CVEs, attack chains, PoCs, waves | `/root/output/recon_us/<domain>/MASTER_REPORT.md` |
-| `ATTACK_SURFACE.md` | (este) Catálogo de endpoints, portas, serviços, CORS, tecnologia | `/root/output/recon_us/<domain>/ATTACK_SURFACE.md` |
-| `EXPLOIT_CHAINS.md` | Cadeias de exploração com PoCs curl passo a passo | `/root/output/recon_us/<domain>/EXPLOIT_CHAINS.md` |
+| `MASTER_REPORT.md` | Relatório completo com todas as descobertas, CVEs, attack chains, PoCs, waves | `/root/output/recon_output/<domain>/MASTER_REPORT.md` |
+| `ATTACK_SURFACE.md` | (este) Catálogo de endpoints, portas, serviços, CORS, tecnologia | `/root/output/recon_output/<domain>/ATTACK_SURFACE.md` |
+| `EXPLOIT_CHAINS.md` | Cadeias de exploração com PoCs curl passo a passo | `/root/output/recon_output/<domain>/EXPLOIT_CHAINS.md` |
 
 Gere ATTACK_SURFACE.md e EXPLOIT_CHAINS.md em paralelo via delegate_task (Flash), enquanto Pro escreve MASTER_REPORT.md diretamente. Consulte o skill `recon-playbook` seção Phase 3.5 para o fluxo completo.
 

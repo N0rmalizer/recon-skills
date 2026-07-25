@@ -1,26 +1,24 @@
 ---
 name: port-service-discovery
 description: Nmap scan for MySQL, Redis, FTP, SSH, internal API services.
-version: 1.0.0
-author: agentiko
+version: 1.1.0
+revision_date: 2026-07-25
 license: MIT
 platforms: [linux]
-compatibility: Requires agentiko worker (curl, nmap, python3, masscan, subfinder, httpx, nuclei)
-metadata:
-  hermes:
-    tags: [recon, port-scan, mysql, FTP, SSH, internal-api]
-    category: recon
-    related_skills:
-      - deep-invade
-      - wp-mass-recon
-      - cross-attack-chains
-      - staging-subdomain-hunt
-      - xmlrpc-exploitation
+compatibility: Requires curl, nmap, masscan
+tags: [recon, port-scan, mysql, FTP, SSH, internal-api]
+category: recon
+related_skills:
+  - deep-invade
+  - wp-mass-recon
+  - cross-attack-chains
+  - staging-subdomain-hunt
+  - xmlrpc-exploitation
 ---
 
 # Port & Service Discovery Skill
 
-Fast port scanning with nmap to discover exposed services (MySQL, FTP, SSH, SMTP, internal APIs, Redis, MongoDB) on WordPress and web targets. MySQL on port 3306 open to the internet is one of the rarest but most critical findings — confirmed on patientportal.com (healthcare SaaS). Port scanning reveals the infrastructure layer that HTTP-based recon misses.
+Fast port scanning with nmap to discover exposed services (MySQL, FTP, SSH, SMTP, internal APIs, Redis, MongoDB) on WordPress and web targets. MySQL on port 3306 open to the internet is one of the rarest but most critical findings — confirmed on health-saas.example.com (healthcare SaaS). Port scanning reveals the infrastructure layer that HTTP-based recon misses.
 
 ## When to Use
 
@@ -31,7 +29,7 @@ Fast port scanning with nmap to discover exposed services (MySQL, FTP, SSH, SMTP
 
 ## Prerequisites
 
-- `terminal` tool with nmap (available on worker container).
+- `terminal` with nmap (available on worker container).
 - Target domain or IP address.
 - For full port scan: patience (can take 10-60 minutes for all 65535 ports).
 
@@ -76,7 +74,7 @@ nmap -f -F TARGET
 
 ```bash
 TARGET="$1"
-OUTDIR="/root/output/ports"
+OUTDIR="$OUTDIR/ports"
 mkdir -p "$OUTDIR"
 
 echo "[*] Fast scan (top 100 ports) on $TARGET..."
@@ -90,7 +88,7 @@ grep 'open' "$OUTDIR/${TARGET}_fast.nmap" || echo "  None found"
 
 ```bash
 TARGET="$1"
-OUTDIR="/root/output/ports"
+OUTDIR="$OUTDIR/ports"
 
 # Get comma-separated list of open ports
 OPEN_PORTS=$(grep '^[0-9]' "$OUTDIR/${TARGET}_fast.nmap" | awk -F/ '{print $1}' | tr '\n' ',' | sed 's/,$//')
@@ -110,7 +108,7 @@ fi
 
 ```bash
 TARGET="$1"
-OUTDIR="/root/output/ports"
+OUTDIR="$OUTDIR/ports"
 
 echo "[*] Critical exposure assessment:"
 
@@ -154,17 +152,18 @@ for port in 8080 8081 8082 8084 8088 8443 3000 5000 9000 9090; do
   if grep -q "${port}.*open" "$OUTDIR/${TARGET}_fast.nmap" 2>/dev/null; then
     echo ""
     echo "[HIGH] Port $port OPEN — probing HTTP..."
-    http_code=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 5 "http://$TARGET:$port/" 2>/dev/null)
+    http_code=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 5 --connect-timeout 5 "http://$TARGET:$port/" 2>/dev/null)
 
     if [[ "$http_code" != "000" ]]; then
       echo "  HTTP $http_code on port $port"
-      title=$(curl -sk --max-time 5 "http://$TARGET:$port/" 2>/dev/null | grep -oP '<title>\K[^<]+')
+      title=$(curl -sk --max-time 5 --connect-timeout 5 "http://$TARGET:$port/" 2>/dev/null | grep -Eo '<title>\K[^<]+')
       [[ -n "$title" ]] && echo "  Title: $title"
 
       # Check for Swagger/API docs
       for api_path in "swagger.json" "api-docs" "swagger-ui.html" "graphql" "actuator/health"; do
-        api_code=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 5 "http://$TARGET:$port/$api_path")
+        api_code=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 5 --connect-timeout 5 "http://$TARGET:$port/$api_path")
         [[ "$api_code" == "200" ]] && echo "  [API] http://$TARGET:$port/$api_path (HTTP 200)"
+        sleep 0.2
       done
     fi
   fi
@@ -195,7 +194,7 @@ fi
 
 ```bash
 TARGET="$1"
-OUTDIR="/root/output/ports"
+OUTDIR="$OUTDIR/ports"
 
 # If no ports found in top-100, expand to top-1000
 if ! grep -q 'open' "$OUTDIR/${TARGET}_fast.nmap" 2>/dev/null; then
@@ -219,16 +218,16 @@ TARGET="$1"
 echo "[*] WAF/CDN detection:"
 
 # Check for Cloudflare
-cf_header=$(curl -skI --max-time 5 "https://$TARGET/" 2>/dev/null | grep -i "cf-ray\|cloudflare")
+cf_header=$(curl -skI --max-time 5 --connect-timeout 5 "https://$TARGET/" 2>/dev/null | grep -i "cf-ray\|cloudflare")
 [[ -n "$cf_header" ]] && echo "  Cloudflare detected"
 
 # Check for AWS CloudFront
-cf_header=$(curl -skI --max-time 5 "https://$TARGET/" 2>/dev/null | grep -i "x-amz-cf\|cloudfront")
+cf_header=$(curl -skI --max-time 5 --connect-timeout 5 "https://$TARGET/" 2>/dev/null | grep -i "x-amz-cf\|cloudfront")
 [[ -n "$cf_header" ]] && echo "  AWS CloudFront detected"
 
 # Check origin IP (bypass CDN)
 echo "[*] Historical DNS records for origin IP discovery:"
-# SecurityTrails, DNSDumpster, etc. — use web_extract for these
+# SecurityTrails, DNSDumpster, etc. — use HTTP fetch for these
 echo "  Manual: securitytrails.com/domain/$TARGET/dns/a"
 echo "  Manual: dnsdumpster.com"
 

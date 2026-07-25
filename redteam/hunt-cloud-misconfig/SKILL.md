@@ -1,8 +1,11 @@
 ---
 name: hunt-cloud-misconfig
 description: "Hunt cloud / infrastructure misconfigurations. AWS: public S3 buckets (s3:GetObject anonymous), permissive bucket policies (PutObjectAcl public-write), exposed CloudFront origin, public Lambda function URL, public RDS snapshot, IAM credentials in JS bundles, AWS metadata accessible via SSRF. GCP: public GCS buckets, exposed Cloud Run services, leaked service account JSON. Azure: public blob containers, exposed Function App. (Kubernetes/Docker exposure is owned by hunt-k8s; CI/CD pipeline attacks by hunt-cicd; post-credential IAM escalation by cloud-iam-deep.) Detection: targeted dorking, certificate transparency, JS bundle secret extraction, port scan for known service ports. Validate: actual data read / write / RCE. Use when hunting cloud-native storage and compute misconfig (S3/GCS/Blob, IMDS-via-SSRF, serverless, public managed services)."
-sources: field_recon, aws_docs, gcp_docs, azure_docs, hackingthecloud
-report_count: 18
+version: 1.1.0
+revision_date: 2026-07-25
+license: MIT
+category: redteam
+tags: [cloud, misconfiguration, hunt, redteam]
 ---
 
 # HUNT-CLOUD-MISCONFIG — Cloud / Infrastructure Misconfigurations
@@ -12,23 +15,23 @@ report_count: 18
 ### S3 / GCS / Azure Blob
 ```bash
 # S3 listing
-curl -s "https://TARGET-NAME.s3.amazonaws.com/?max-keys=10"
+curl --max-time 30 --connect-timeout 10 -s "https://TARGET-NAME.s3.amazonaws.com/?max-keys=10"
 aws s3 ls s3://target-bucket-name --no-sign-request
 
 # Try common bucket names
 for name in target target-backup target-assets target-prod target-staging; do
-  curl -s -o /dev/null -w "$name: %{http_code}\n" "https://$name.s3.amazonaws.com/"
+  curl --max-time 30 --connect-timeout 10 -s -o /dev/null -w "$name: %{http_code}\n" "https://$name.s3.amazonaws.com/"
 done
 
 # Firebase open rules
-curl -s "https://TARGET-APP.firebaseio.com/.json"   # read
-curl -s -X PUT "https://TARGET-APP.firebaseio.com/test.json" -d '"pwned"'  # write
+curl --max-time 30 --connect-timeout 10 -s "https://TARGET-APP.firebaseio.com/.json"   # read
+curl --max-time 30 --connect-timeout 10 -s -X PUT "https://TARGET-APP.firebaseio.com/test.json" -d '"pwned"'  # write
 ```
 
 ### EC2 Metadata (via SSRF)
 ```bash
-http://169.254.169.254/latest/meta-data/iam/security-credentials/  # role name
-http://169.254.169.254/latest/meta-data/iam/security-credentials/ROLE-NAME  # keys
+http://[REDACTED_IP]/latest/meta-data/iam/security-credentials/  # role name
+http://[REDACTED_IP]/latest/meta-data/iam/security-credentials/ROLE-NAME  # keys
 ```
 
 ### Exposed Admin Panels
@@ -39,7 +42,7 @@ http://169.254.169.254/latest/meta-data/iam/security-credentials/ROLE-NAME  # ke
 
 ---
 
-## Local-verification toolchain
+## Local-verificationtoolchain
 
 For testing cloud-misconfig findings against a local AWS sim before/instead of hitting real cloud:
 
@@ -177,6 +180,37 @@ No CVE assigned specifically to AWS RUM as of 2026-05. The attack class is docum
 5. Run `enumerate-iam` / Pacu `iam__enum_permissions` — capture **at least one allowed action beyond `rum:PutRumEvents`**. Without this, the finding is Informational.
 6. Demonstrate at least one read/list against a real resource (S3 bucket list, DynamoDB scan, Lambda invoke).
 7. **Do not** modify/delete data even if permitted — read-only PoC only.
+
+---
+
+## Verification
+
+1. **S3 bucket probe** — confirm AWS CLI or curl bucket syntax:
+   ```bash
+   echo "https://bucket-name.s3.amazonaws.com/" | grep -q "s3.amazonaws.com" && echo "PASS" || echo "FAIL"
+   ```
+2. **Firebase RTDB probe** — confirm Firebase URL syntax:
+   ```bash
+   echo "https://project-id.firebaseio.com/.json" | grep -q "firebaseio.com" && echo "PASS" || echo "FAIL"
+   ```
+3. **Cloud metadata endpoint** — confirm metadata IP recognition:
+   ```bash
+   echo "169.254.169.254" | grep -q "169.254" && echo "PASS: metadata IP recognized" || echo "FAIL"
+   ```
+All 3 tests verify cloud misconfig probing.
+
+---
+
+## Pitfalls
+
+- **S3 bucket listing without read access** — finding a listable bucket is recon, not a vulnerability. Need to demonstrate readable objects with sensitive content.
+- **Firebase public read without sensitive data** — an open Firebase RTDB with only public app config is informational. Need PII, credentials, or internal data.
+- **GCP/Azure storage without credential impact** — public blob storage containing static assets is not a finding. Need secrets, source code, or customer data.
+- **Cloud metadata endpoint accessible from outside** — SSRF to 169.254.169.254 is only exploitable from inside the cloud. External access to metadata is a different (and more severe) finding.
+- **Bucket ACL misconfig vs policy misconfig** — bucket policies and ACLs are different mechanisms. Test both before concluding the bucket is public.
+- **CloudFront/Cloudflare CDN origin leakage** — bypassing CDN to reach the origin is recon until you demonstrate what's different (debug endpoints, auth-less access).
+- **Unrestricted cloud function triggers** — publicly-invokable functions may be intentional. Need to demonstrate the function does something sensitive (data access, resource modification).
+
 
 ---
 

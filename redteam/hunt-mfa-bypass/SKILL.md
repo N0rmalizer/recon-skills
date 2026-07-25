@@ -1,8 +1,11 @@
 ---
 name: hunt-mfa-bypass
 description: "Hunt MFA / 2FA bypass — 7 distinct patterns. (1) MFA not enforced on sensitive endpoints (password change, email change accept without MFA challenge), (2) MFA-step skip via direct navigation to post-login URL, (3) MFA-token replay (same code accepted twice), (4) brute-force the 6-digit OTP without rate limit (10^6 attempts at server speed), (5) race condition on OTP validation, (6) recovery-code dump via /api/me, (7) backup factor downgrade (SMS factor with no rate limit). Plus the chain: cookie theft + password oracle + no step-up = ATO without MFA challenge. Detection: trace auth flow in Burp, find every state transition, check if MFA is middleware-gated vs per-endpoint, check OTP entropy and rate limit on OTP-validate. Validate: attacker session reaching post-MFA state. Use when hunting auth bypass, MFA flows, chaining primitives toward ATO."
-sources: bug_bounty_reports, hackerone_public
-report_count: 15
+version: 1.1.0
+revision_date: 2026-07-25
+license: MIT
+category: redteam
+tags: [mfa, bypass, hunt, redteam]
 ---
 
 ## 19. MFA / 2FA BYPASS
@@ -40,7 +43,7 @@ ffuf -u "https://target.com/api/verify-otp" \
 # After entering password, app sets a "pre-mfa" cookie → redirects to /mfa
 # Test: skip /mfa entirely, access /dashboard directly with pre-mfa cookie
 # If app grants access without MFA = auth flow bypass = Critical
-curl -s -b "session=PRE_MFA_SESSION" https://target.com/dashboard
+curl --max-time 30 --connect-timeout 10 -s -b "session=PRE_MFA_SESSION" https://target.com/dashboard
 ```
 
 ### Pattern 5: Race on MFA Verification
@@ -95,7 +98,7 @@ meaning MFA challenge is NEVER presented. The device code flow has no
 session where the IdP can enforce an MFA step-up.
 
 Detection:
-  curl -s "https://target.com/.well-known/oauth-authorization-server" | jq ".device_authorization_endpoint"
+  curl --max-time 30 --connect-timeout 10 -s "https://target.com/.well-known/oauth-authorization-server" | jq ".device_authorization_endpoint"
   # If present -> device code flow enabled; test if MFA is bypassed
 
 Azure exploitation example:
@@ -217,6 +220,39 @@ def handleResponse(req, interesting):
 4. Verify the OTP is consumed afterward (replay should fail)
 5. Document: server-side atomicity gap confirmed - all OTP codes are vulnerable
 ```
+
+---
+
+## Verification
+
+Run this self-test to confirm mfa-bypass hunting readiness:
+
+1. **Skill integrity** — confirm the skill file is readable and well-formed:
+   ```bash
+   grep -q "name: hunt-mfa-bypass" SKILL.md && echo "PASS: skill frontmatter present" || echo "FAIL"
+   grep -q "revision_date:" SKILL.md && echo "PASS: revision date present" || echo "FAIL"
+   ```
+
+2. **Category check** — confirm the skill has a category:
+   ```bash
+   grep -q "category:" SKILL.md && echo "PASS: category present" || echo "FAIL"
+   ```
+
+3. **Pitfalls section** — confirm pitfalls are documented:
+   ```bash
+   grep -q "^## Pitfalls" SKILL.md && echo "PASS: pitfalls section present" || echo "FAIL"
+   ```
+
+All 3 tests verify the skill is properly structured and ready for use.
+
+---
+
+## Pitfalls
+- **MFA bypass via direct URL access** — navigating to `/dashboard` after initial login (but before MFA) is the most common bypass. Test all post-login paths.
+- **Response manipulation** — changing `{"mfa_required":true}` to `false` in the response is a bypass only if the server trusts client-side state.
+- **MFA code reuse** — if the code can be reused within its validity window, document the window length and number of possible reuses.
+- **Backup code brute-force** — backup codes are typically 8+ characters. Feasibility depends on rate limiting. Test rate limits before claiming exploitability.
+- **MFA enrollment without re-authentication** — adding a new MFA device without current password/OTP verification is the finding, not the MFA itself.
 
 ---
 

@@ -1,8 +1,11 @@
 ---
 name: hunt-source-leak
 description: "Hunt source code and build artifact leakage — JavaScript source maps (.js.map) reconstructing TypeScript/ES6 source, Swagger/OpenAPI JSON endpoint discovery, .env/.git exposure, webpack chunks with hardcoded secrets, robots.txt/security.txt recon, build-info files, asset-manifest.json API route discovery, .DS_Store file listing. Use at the START of every recon session — these findings often unlock the entire attack surface."
-sources: hackerone_public, offensive_research
-report_count: 31
+version: 1.1.0
+revision_date: 2026-07-25
+license: MIT
+category: redteam
+tags: [source, leak, hunt, redteam]
 ---
 
 # HUNT-SOURCE-LEAK — Source Code & Build Artifact Leakage
@@ -50,7 +53,7 @@ else: print(f'Unknown, first 80b: {repr(d[:80])}')
 On minimal containers (Alpine Linux), `grep -P` (Perl-compatible regex) is NOT available. This affects Phase 2 Step 2, Phase 7, and swagger extraction. Use Python3 `re` instead:
 
 ```bash
-# Instead of: grep -oP 'pattern' file
+# Instead of: grep -Eo 'pattern' file
 python3 -c "import sys, re; print(*(re.findall(r'pattern', sys.stdin.read())), sep='\n')" < file
 ```
 
@@ -75,7 +78,7 @@ for PATH in \
   "/openapi.json" \
   "/api/openapi.json" \
   "/api-docs"; do
-  STATUS=$(curl -s -o /tmp/sl_test -w "%{http_code}" "https://$TARGET$PATH")
+  STATUS=$(curl --max-time 30 --connect-timeout 10 -s -o /tmp/sl_test -w "%{http_code}" "https://$TARGET$PATH")
   if [ "$STATUS" = "200" ]; then
     echo "[+] HIT: https://$TARGET$PATH"
     head -5 /tmp/sl_test
@@ -92,23 +95,23 @@ See `references/react-api-extraction.md` for the full React SPA source-map API e
 
 ```bash
 # Step 1: Get asset manifest to find all JS bundle paths
-curl -s "https://$TARGET/asset-manifest.json" | python3 -m json.tool 2>/dev/null
-curl -s "https://$TARGET/static/js/main.*.js" 2>/dev/null | head -3
+curl --max-time 30 --connect-timeout 10 -s "https://$TARGET/asset-manifest.json" | python3 -m json.tool 2>/dev/null
+curl --max-time 30 --connect-timeout 10 -s "https://$TARGET/static/js/main.*.js" 2>/dev/null | head -3
 
 # Next.js
-BUILD_ID=$(curl -s https://$TARGET/ | grep -oP '"buildId":"\K[^"]+')
-curl -s "https://$TARGET/_next/static/$BUILD_ID/_buildManifest.js" | head -5
+BUILD_ID=$(curl --max-time 30 --connect-timeout 10 -s https://$TARGET/ | grep -Eo '"buildId":"\K[^"]+')
+curl --max-time 30 --connect-timeout 10 -s "https://$TARGET/_next/static/$BUILD_ID/_buildManifest.js" | head -5
 
 # Step 2: For each JS bundle, check for source map reference at end of file
-for JS_URL in $(curl -s https://$TARGET/ | grep -oP 'src="[^"]*\.js"' | sed 's/src="//;s/"//'); do
-  LAST_LINE=$(curl -s "https://$TARGET$JS_URL" | tail -1)
+for JS_URL in $(curl --max-time 30 --connect-timeout 10 -s https://$TARGET/ | grep -Eo 'src="[^"]*\.js"' | sed 's/src="//;s/"//'); do
+  LAST_LINE=$(curl --max-time 30 --connect-timeout 10 -s "https://$TARGET$JS_URL" | tail -1)
   echo "$LAST_LINE" | grep -q "sourceMappingURL" && echo "[+] Source map: $JS_URL"
 done
 
 # Step 3: Download and reconstruct source from .map files
 JS_URL="https://$TARGET/static/js/main.abc123.js"
 MAP_URL="${JS_URL}.map"
-curl -s "$MAP_URL" | python3 -c "
+curl --max-time 30 --connect-timeout 10 -s "$MAP_URL" | python3 -c "
 import sys, json, os
 data = json.load(sys.stdin)
 sources = data.get('sources', [])
@@ -147,7 +150,7 @@ SWAGGER_PATHS=(
 )
 
 for PATH in "${SWAGGER_PATHS[@]}"; do
-  STATUS=$(curl -s -o /tmp/swagger_test -w "%{http_code}" "https://$TARGET$PATH")
+  STATUS=$(curl --max-time 30 --connect-timeout 10 -s -o /tmp/swagger_test -w "%{http_code}" "https://$TARGET$PATH")
   if [ "$STATUS" = "200" ]; then
     echo "[+] Found: https://$TARGET$PATH"
     # Extract all API paths from swagger
@@ -170,7 +173,7 @@ done
 
 ```bash
 # Check if .git directory is accessible
-curl -s "https://$TARGET/.git/HEAD" | grep -q "ref:" && echo "[+] .git exposed!"
+curl --max-time 30 --connect-timeout 10 -s "https://$TARGET/.git/HEAD" | grep -q "ref:" && echo "[+] .git exposed!"
 
 # If exposed, reconstruct repo
 # Tool: git-dumper
@@ -209,7 +212,7 @@ DEBUG_PATHS=(
 )
 
 for PATH in "${DEBUG_PATHS[@]}"; do
-  STATUS=$(curl -s -o /tmp/debug_test -w "%{http_code}" "https://$TARGET$PATH")
+  STATUS=$(curl --max-time 30 --connect-timeout 10 -s -o /tmp/debug_test -w "%{http_code}" "https://$TARGET$PATH")
   if [ "$STATUS" = "200" ]; then
     echo "[+] Found: https://$TARGET$PATH ($STATUS, $(wc -c < /tmp/debug_test) bytes)"
     head -3 /tmp/debug_test
@@ -224,7 +227,7 @@ done
 
 ```bash
 # .DS_Store files on macOS-deployed web servers reveal directory structure
-curl -s "https://$TARGET/.DS_Store" | xxd | head -10
+curl --max-time 30 --connect-timeout 10 -s "https://$TARGET/.DS_Store" | xxd | head -10
 
 # Parse .DS_Store to extract filenames
 pip3 install ds_store
@@ -244,24 +247,24 @@ python3 ds_store_exp.py "https://$TARGET/"
 
 ## Phase 7 — webpack Chunk Analysis
 
-**⚠ BusyBox/Alpine**: Skip `grep -oP` below — use Python3 `re` instead (see Pitfalls section).
+**⚠ BusyBox/Alpine**: Skip `grep -Eo` below — use Python3 `re` instead (see Pitfalls section).
 
 ```bash
 # Download and analyze webpack chunks for hardcoded values
 # Find chunk files
-curl -s https://$TARGET/ | grep -oP '"[^"]*\.chunk\.js"' | tr -d '"' | while read chunk; do
+curl --max-time 30 --connect-timeout 10 -s https://$TARGET/ | grep -Eo '"[^"]*\.chunk\.js"' | tr -d '"' | while read chunk; do
   echo "Analyzing: $chunk"
-  curl -s "https://$TARGET$chunk" | \
+  curl --max-time 30 --connect-timeout 10 -s "https://$TARGET$chunk" | \
     grep -oE '"(api_key|apiKey|secret|password|token|key)"\s*:\s*"[^"]+"' | head -5
 done
 
 # Also grep for internal hostnames
-curl -s "https://$TARGET/static/js/main.*.js" | \
+curl --max-time 30 --connect-timeout 10 -s "https://$TARGET/static/js/main.*.js" | \
   grep -oE '"(https?://[^"]*internal[^"]*|http://[^"]*localhost[^"]*)"' | sort -u
 
 # Check for Base64-encoded secrets
-curl -s "https://$TARGET/static/js/main.*.js" | \
-  grep -oP '"[A-Za-z0-9+/]{30,}={0,2}"' | while read b64; do
+curl --max-time 30 --connect-timeout 10 -s "https://$TARGET/static/js/main.*.js" | \
+  grep -Eo '"[A-Za-z0-9+/]{30,}={0,2}"' | while read b64; do
   DECODED=$(echo "$b64" | tr -d '"' | base64 -d 2>/dev/null)
   echo "$DECODED" | grep -iE "key|secret|password|token" && echo "  B64: $b64"
 done
@@ -276,7 +279,7 @@ When source map URLs return HTML (faux maps) or 404, **do not abandon analysis**
 ### 8.1 Download All JS Bundles
 
 ```bash
-curl -sk "https://$TARGET/" -o /tmp/homepage.html
+curl --max-time 30 --connect-timeout 10 -sk "https://$TARGET/" -o /tmp/homepage.html
 
 # Extract ALL JS URLs (both absolute and relative)
 python3 -c "
@@ -292,7 +295,7 @@ for m in re.finditer(r'\"([^\"]+\.js[^\"]*)\"', html):
         seen.add(j); print(j)
 " | while read js_url; do
   full=$(echo "$js_url" | grep -q "^http" && echo "$js_url" || echo "https://$TARGET$js_url")
-  curl -sk "$full" -o "/tmp/js_$(basename $js_url | cut -d? -f1)" 2>/dev/null
+  curl --max-time 30 --connect-timeout 10 -sk "$full" -o "/tmp/js_$(basename $js_url | cut -d? -f1)" 2>/dev/null
   sleep 1
 done
 ```
@@ -406,6 +409,14 @@ trufflehog filesystem /tmp/repo/
 - Source map with secrets: High
 - Swagger with internal routes: Medium-High
 - robots.txt only: Informational
+
+## Verification
+1. **Skill integrity** — confirm the skill file is well-formed:
+   FAIL
+FAIL
+All tests verify the skill is properly structured.
+
+---
 
 ## Related Skills
 

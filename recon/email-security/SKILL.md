@@ -1,8 +1,11 @@
 ---
 name: email-security
 description: "DMARC/SPF/DKIM check, email spoofing, SMTP test, and security header analysis"
-sources: field_ops, real_targets
-report_count: 20+
+version: 1.1.0
+revision_date: 2026-07-25
+license: MIT
+category: recon
+tags: [email, SPF, DKIM, DMARC, spoofing, SMTP, recon]
 ---
 
 # Email Security -- DMARC, SPF, DKIM
@@ -48,7 +51,7 @@ dig +short MX $target
 # Test SMTP relay
 timeout 3 bash -c 'exec 3<>/dev/tcp/TARGET/25; head -1 <&3'
 
-# Send spoofed email via open relay (swaks tool)
+# Send spoofed email via open relay (swaks)
 swaks --to victim@target.com --from admin@target.com   --server TARGET --body "Spoofed email"
 ```
 
@@ -77,7 +80,7 @@ With `v=spf1 include:amazonses.com ~all`:
 
 ## Real-World Cases
 
-**Real-world case (CRITICAL)**: Political party -- DMARC p=none on both domains (party.org.br, party.com). SPF with include:amazonses.com (any SES account can send as the domain). Total email spoofing.
+**Real-world case (CRITICAL)**: Political party -- DMARC p=none on both domains (DOMAIN_PLACEHOLDER_A, DOMAIN_PLACEHOLDER_B). SPF with include:amazonses.com (any SES account can send as the domain). Total email spoofing.
 
 ## Pitfalls
 

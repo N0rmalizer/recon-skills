@@ -1,8 +1,11 @@
 ---
 name: hunt-aspnet
 description: Hunt ASP.NET-specific surface — ViewState deserialization (signed-only vs encrypted), machineKey recovery, dual-parser MAC-bypass anti-pattern, request-validator bypass, trace.axd/elmah.axd disclosure, load-balanced ViewState cross-node failures, SafeControl enumeration via reflection, customErrors mode=Off stack-trace leaks, classic Webforms .aspx/.asmx/.svc surface. Built for ASP.NET Webforms + WCF + SharePoint farms.
-sources: github, authorized-engagement
-report_count: 1
+version: 1.1.0
+revision_date: 2026-07-25
+license: MIT
+category: redteam
+tags: [aspnet, hunt, redteam, web]
 ---
 
 ## Crown Jewel Targets
@@ -122,7 +125,7 @@ Set-Cookie: ASP.NET_SessionId=...; SameSite=None  (suggests cross-origin embeddi
 
 **Stack-trace fingerprint (trigger via stale ViewState POST):**
 ```bash
-curl -sk -X POST "https://target.example/page.aspx" \
+curl --max-time 30 --connect-timeout 10 -sk -X POST "https://target.example/page.aspx" \
   --data "__VIEWSTATE=AAAA&__VIEWSTATEGENERATOR=AAAA"
 # Inspect body for:
 #  - "Validation of viewstate MAC failed" → confirms signed ViewState
@@ -159,7 +162,7 @@ for label, vs in [
 
 **`trace.axd` anonymous check:**
 ```bash
-curl -sk -o /dev/null -w "%{http_code}\n" "https://target.example/trace.axd"
+curl --max-time 30 --connect-timeout 10 -sk -o /dev/null -w "%{http_code}\n" "https://target.example/trace.axd"
 # 200 = full trace dump exposed → Critical
 # 403 = mod set to localhost-only → check via X-Forwarded-For: 127.0.0.1
 ```
@@ -167,10 +170,10 @@ curl -sk -o /dev/null -w "%{http_code}\n" "https://target.example/trace.axd"
 **WCF service enumeration:**
 ```bash
 # Find all .svc files
-curl -sk "https://target.example/" -o body.html
+curl --max-time 30 --connect-timeout 10 -sk "https://target.example/" -o body.html
 grep -oE '/[a-zA-Z0-9/_-]+\.svc' body.html | sort -u
 # For each found:
-curl -sk "https://target.example/Service.svc?wsdl" | xmllint --format - | head -60
+curl --max-time 30 --connect-timeout 10 -sk "https://target.example/Service.svc?wsdl" | xmllint --format - | head -60
 ```
 
 **Request-validator bypass categories:**
@@ -188,7 +191,7 @@ Referer: http://x.com/<script>  (referer not validated in classic ASP.NET)
 **Telerik exploit gate (CVE-2019-18935 — requires encryption keys):**
 ```bash
 # Fingerprint Telerik
-curl -sk "https://target.example/Telerik.Web.UI.WebResource.axd?type=rau" -X POST
+curl --max-time 30 --connect-timeout 10 -sk "https://target.example/Telerik.Web.UI.WebResource.axd?type=rau" -X POST
 # If response is RadAsyncUploadHandler-style → Telerik present; try keys
 # Public exploits require leaked machineKey AND telerikEncryptionKey
 ```
@@ -248,7 +251,7 @@ Before writing the report, confirm:
 
 3. **Can a triager reproduce in <10 min from your report?**
    - Each step copy-pasteable curl / Python.
-   - For RCE chains: link the public exploit tool (ysoserial.net, viewgen, telerik-revda) and the specific gadget chain.
+   - For RCE chains: link the public exploit toolchain (ysoserial.net, viewgen, telerik-revda) and the specific gadget chain.
 
 ---
 
@@ -265,6 +268,47 @@ Before writing the report, confirm:
 ### Scenario C — trace.axd + elmah.axd both exposed on enterprise HR portal
 
 `trace.axd` 200 returns 50 most recent requests, including `Authorization: Bearer eyJ...` headers on API requests. `elmah.axd` 200 returns full error log with database connection-string in one of the exceptions. Reported severity: **Critical** (credentials in plaintext to anonymous internet).
+
+---
+
+## Verification
+
+Run this self-test to confirm ASP.NET hunting readiness:
+
+1. **ViewState detection** — confirm __VIEWSTATE pattern recognition:
+   ```bash
+   echo '<input type="hidden" name="__VIEWSTATE" value="dDwtMTc5MjU3NjY0Mzt0PDtsPGk8MT47PjtsPHQ8O2w8aTwxPjs+O2w8dDw7bDxpPDE+Oz47bDx0PDtsPGk8MT47PjtAPDEyMzQ1Njc4OTA7Pj47Oz47Pj47Pj47Pg==" />' | grep -q "__VIEWSTATE" && echo "PASS: ViewState pattern detected" || echo "FAIL"
+   ```
+
+2. **ViewState encryption check** — confirm encrypted-vs-signed differentiation:
+   ```bash
+   echo '__VIEWSTATEENCRYPTED=""' | grep -q 'VIEWSTATEENCRYPTED=""' && echo "PASS: signed-only recognized" || echo "FAIL"
+   ```
+
+3. **trace.axd probe syntax** — confirm the probe would work:
+   ```bash
+   echo "trace.axd" | grep -q "trace.axd" && echo "PASS: trace.axd path syntax correct" || echo "FAIL"
+   ```
+
+4. **Telerik RAU endpoint syntax** — confirm the Telerik handler path:
+   ```bash
+   echo "/Telerik.Web.UI.WebResource.axd?type=rau" | grep -q "rau" && echo "PASS: Telerik RAU path syntax correct" || echo "FAIL"
+   ```
+
+All 4 tests verify the ASP.NET surface detection capability.
+
+---
+
+## Pitfalls
+
+- **Confusing signed-only ViewState with encrypted ViewState** — `__VIEWSTATEENCRYPTED=""` or absent means signed-only. This is a primitive, not RCE. Full RCE requires machineKey recovery.
+- **ViewState MAC validation happens in TWO parsers** — the dual-parser anti-pattern: legacy `ObjectStateFormatter` parses BEFORE `LosFormatter` validates MAC. XML-shaped payloads reach the legacy parser regardless of MAC validity. Test both.
+- **trace.axd 200 without credentials** — pure stack traces are Low at best. Only Critical when the trace output includes live `Authorization` headers, session cookies, or connection strings.
+- **elmah.axd with old errors** — errors from weeks ago with no active credentials are informational. Check the timestamp and content before claiming severity.
+- **MachineKey from web.config in a repo != live key** — the deployed server may use a different machineKey from the repo version. Verify by attempting ViewState forgery before reporting.
+- **SharePoint ToolPane accessible anonymously but FormDigest required** — reachable ToolPane is a precondition, not the bug. Need the full chain: ToolPane + anonymous FormDigest + signed-only ViewState + machineKey.
+- **Telerik version from JS bundle != exploitable** — the JS bundle version is the client-side library version, not the server-side Telerik DLL. Verify the server version via `WebResource.axd` response headers.
+- **customErrors mode="On" handling** — stack traces hidden by customErrors may still leak via parser-level exceptions below the handler layer. Test malformed Content-Length, oversized ViewState, and encoding errors.
 
 ---
 

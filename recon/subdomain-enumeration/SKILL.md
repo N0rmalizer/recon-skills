@@ -1,20 +1,18 @@
 ---
 name: subdomain-enumeration
 description: Map subdomains via crt.sh and subfinder at recon kickoff.
-version: 1.0.0
-author: agentiko
+version: 1.1.0
+revision_date: 2026-07-25
 license: MIT
 platforms: [linux]
-compatibility: Requires agentiko worker (curl, nmap, python3, masscan, subfinder, httpx, nuclei)
-metadata:
-  hermes:
-    tags: [recon, subdomain, DNS, crt.sh, asset-discovery]
-    category: recon
-    related_skills:
-      - wp-mass-recon
-      - staging-subdomain-hunt
-      - deep-invade
-      - recon-playbook
+compatibility: Requires curl, subfinder, httpx, dnsx, dig, jq
+tags: [recon, subdomain, DNS, crt.sh, asset-discovery]
+category: recon
+related_skills:
+  - wp-mass-recon
+  - staging-subdomain-hunt
+  - deep-invade
+  - recon-playbook
 ---
 
 # Subdomain Enumeration Skill
@@ -25,14 +23,14 @@ Comprehensive subdomain discovery using certificate transparency logs (crt.sh), 
 
 - Starting recon on any target domain.
 - Production site is well-secured — find softer entry points.
-- After `wp-mass-recon` — enumerate subdomains for each WordPress target.
+- After `skill_view(name='wp-mass-recon')` — enumerate subdomains for each WordPress target.
 - Building a complete asset inventory for a target organization.
 
 ## Prerequisites
 
-- `terminal` tool with curl, httpx, dig, jq.
+- curl, httpx, dig, jq, dnsx.
 - `subfinder` available on the worker container.
-- Wordlist for DNS brute force at `/root/tools/subdomains.txt`.
+- Wordlist for DNS brute force at `./tools/subdomains.txt`.
 
 ## How to Run
 
@@ -40,7 +38,7 @@ Comprehensive subdomain discovery using certificate transparency logs (crt.sh), 
 DOMAIN="example.com"
 
 # Passive: crt.sh
-curl -sk "https://crt.sh/?q=%25.$DOMAIN&output=json" | jq -r '.[].name_value' | sed 's/\*\.//g' | sort -u > crtsh.txt
+curl --max-time 30 --connect-timeout 10 -sk "https://crt.sh/?q=%25.$DOMAIN&output=json" | jq -r '.[].name_value' | sed 's/\*\.//g' | sort -u > crtsh.txt
 
 # Passive: subfinder
 subfinder -d "$DOMAIN" -silent > subfinder.txt
@@ -58,7 +56,7 @@ httpx -silent -l all_subs.txt -threads 50 -status-code -tech-detect -title -o al
 |--------|--------|----------|-------|
 | crt.sh | Certificate transparency | Excellent (most certs) | Fast (1-5s) |
 | subfinder | Passive APIs (VirusTotal, Shodan, DNSdumpster, etc.) | Very good | Fast (30-60s) |
-| dig bruteforce | DNS A/AAAA/CNAME resolution | Good (uncovers non-HTTP) | Medium (5-15 min) |
+| dnsx | Bulk DNS A/AAAA/CNAME resolution (100x faster than dig) | Good (uncovers non-HTTP) | Fast (10-30s) |
 | httpx probe | Live HTTP/HTTPS check | Best for web attack surface | Fast (30-60s) |
 | Google dork | `site:example.com` | Supplemental | Manual |
 
@@ -68,14 +66,14 @@ httpx -silent -l all_subs.txt -threads 50 -status-code -tech-detect -title -o al
 
 ```bash
 DOMAIN="$1"
-OUTDIR="/root/output/subdomains/$DOMAIN"
+OUTDIR="$OUTDIR/subdomains/$DOMAIN"
 mkdir -p "$OUTDIR"
 
 echo "[*] Passive enumeration for $DOMAIN..."
 
 # crt.sh — certificate transparency logs
 echo "[*] crt.sh query..."
-curl -sk --max-time 30 "https://crt.sh/?q=%25.$DOMAIN&output=json" 2>/dev/null | \
+curl -sk --max-time 30 --connect-timeout 10 "https://crt.sh/?q=%25.$DOMAIN&output=json" 2>/dev/null | \
   jq -r '.[].name_value' 2>/dev/null | \
   sed 's/\*\.//g' | \
   sed 's/^www\.//' | \
@@ -85,7 +83,7 @@ crt_count=$(wc -l < "$OUTDIR/crtsh.txt")
 echo "  crt.sh: $crt_count entries"
 
 # Also query with %25. (wildcard)
-curl -sk --max-time 30 "https://crt.sh/?q=%25.%25.$DOMAIN&output=json" 2>/dev/null | \
+curl -sk --max-time 30 --connect-timeout 10 "https://crt.sh/?q=%25.%25.$DOMAIN&output=json" 2>/dev/null | \
   jq -r '.[].name_value' 2>/dev/null | \
   sed 's/\*\.//g' | \
   sort -u > "$OUTDIR/crtsh_wildcard.txt"
@@ -111,16 +109,18 @@ echo "[+] Total unique subdomains (passive): $total"
 
 ```bash
 DOMAIN="$1"
-OUTDIR="/root/output/subdomains/$DOMAIN"
+OUTDIR="$OUTDIR/subdomains/$DOMAIN"
 
 echo "[*] Resolving subdomains..."
 
-# Batch resolve with dig (faster than individual lookups)
-while read -r sub; do
-  dig +short "$sub" A 2>/dev/null | grep -v '^$' | while read -r ip; do
-    echo "$sub => $ip"
-  done
-done < "$OUTDIR/all_passive.txt" > "$OUTDIR/resolved.txt"
+# Batch resolve with dnsx (100x faster than dig loop)
+dnsx -silent -l "$OUTDIR/all_passive.txt" -a -resp-only -o "$OUTDIR/resolved_raw.txt" 2>/dev/null
+# Format output: subdomain => IP
+while read -r line; do
+  sub=$(echo "$line" | cut -d' ' -f1)
+  ip=$(echo "$line" | cut -d' ' -f2)
+  echo "$sub => $ip"
+done < "$OUTDIR/resolved_raw.txt" > "$OUTDIR/resolved.txt"
 
 resolved=$(wc -l < "$OUTDIR/resolved.txt")
 echo "[+] $resolved subdomains resolved to IPs"
@@ -141,7 +141,7 @@ done
 
 ```bash
 DOMAIN="$1"
-OUTDIR="/root/output/subdomains/$DOMAIN"
+OUTDIR="$OUTDIR/subdomains/$DOMAIN"
 
 echo "[*] Probing live hosts..."
 
@@ -164,7 +164,7 @@ echo "  404: $(grep -c '\[404\]' "$OUTDIR/alive.txt")"
 # Categorize by technology
 echo ""
 echo "[*] By technology:"
-grep -oP '\[[a-z-]+\]' "$OUTDIR/alive.txt" | tr -d '[]' | sort | uniq -c | sort -rn | head -15
+grep -Eo '\[[a-z-]+\]' "$OUTDIR/alive.txt" | tr -d '[]' | sort | uniq -c | sort -rn | head -15
 
 # WordPress subdomains
 echo ""
@@ -183,7 +183,7 @@ dig +short "$DOMAIN" TXT 2>/dev/null | grep -i 'spf\|v=spf' | head -3
 
 ```bash
 DOMAIN="$1"
-OUTDIR="/root/output/subdomains/$DOMAIN"
+OUTDIR="$OUTDIR/subdomains/$DOMAIN"
 
 echo "[*] Categorizing subdomains..."
 
@@ -227,11 +227,12 @@ grep -iE 'old|old\.|v1|v2|legacy|archive|backup|bak' "$OUTDIR/all_passive.txt"
 
 ```bash
 DOMAIN="$1"
-OUTDIR="/root/output/subdomains/$DOMAIN"
+OUTDIR="$OUTDIR/subdomains/$DOMAIN"
 
 echo "[*] Checking for subdomain takeover opportunities..."
 
 # Check for dangling CNAMEs (subdomains pointing to non-existent services)
+# For bulk CNAME check: dnsx -silent -l all_passive.txt -cname -resp-only
 while read -r sub; do
   cname=$(dig +short "$sub" CNAME 2>/dev/null)
   if [[ -n "$cname" ]]; then
@@ -256,6 +257,7 @@ while read -r sub; do
       fi
     fi
   fi
+  sleep 0.5
 done < "$OUTDIR/all_passive.txt"
 ```
 
@@ -272,3 +274,54 @@ done < "$OUTDIR/all_passive.txt"
 - Resolved IPs MUST be cross-referenced with known CDN IPs (Cloudflare, CloudFront, Fastly) to avoid mistaking CDN IPs for origin.
 - Subdomain takeover candidates MUST have their CNAME target manually verified as unclaimed.
 - All live subdomains should be documented with: URL, HTTP status, technology stack, and page title.
+
+### Phase 7 — Permutation & Prediction
+
+Generate smart mutations from already-discovered subdomains to find hidden services:
+
+```bash
+# gotator — generates permutations
+gotator -sub all_subs.txt -perm permutations.txt -depth 1 -numbers 3 -md | sort -u > subs_permuted.txt
+
+# Resolve permutations
+puredns resolve subs_permuted.txt -r resolvers.txt -o subs_permuted_alive.txt
+
+# Common permutation patterns for the wordlist
+# %s-dev, dev-%s, %s-staging, staging-%s, %s-prod, %s-internal
+# %s-admin, admin-%s, %s-api, api-%s, %s-test, test-%s
+# %s-stg, stg-%s, %s-uat, uat-%s, %s-www, www-%s
+```
+
+### Phase 8 — TLD Expansion
+
+A company that owns `target.com` often neglects `target.io`, `target.net`, `target.xyz`:
+
+```bash
+# tldbrute — discovers registered TLD variants
+tldbrute -d target.com
+
+# Manual IANA TLD list approach
+wget -q https://data.iana.org/TLD/tlds-alpha-by-domain.txt
+ROOT=$(echo "target.com" | cut -d. -f1)
+cat tlds-alpha-by-domain.txt | tr '[:upper:]' '[:lower:]' \
+  | while read tld; do echo "$ROOT.$tld"; sleep 0.2; done \
+  | httpx -silent -mc 200 > tlds_alive.txt
+
+# Expand existing subdomains across TLDs
+cat all_subs.txt | while read sub; do
+  cat tlds-alpha-by-domain.txt | tr '[:upper:]' '[:lower:]' \
+    | sed "s/^/$sub./"
+done | dnsx -silent > subs_tld_expanded.txt
+```
+
+### Phase 9 — Live Certificate Monitoring
+
+Catch new subdomains the moment they're issued:
+
+```bash
+# gungnir — real-time certificate transparency monitoring
+gungnir -d target.com
+
+# certwatcher — alternative CT log monitor
+certwatcher -d target.com --webhook https://hooks.slack.com/xxx
+```

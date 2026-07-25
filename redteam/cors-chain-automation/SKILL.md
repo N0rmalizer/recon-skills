@@ -1,8 +1,11 @@
 ---
 name: cors-chain-automation
 description: "Multi-endpoint CORS credential test automation — batch-probes API endpoints for CORS misconfiguration, distinguishes exploitable reflect-any-origin + credentials from false positives (ACAO: * alone), generates browser PoCs, and chains findings to subdomain takeover or CSRF. Built on technique from hunt-cors with automation for bulk recon across large target sets. Use when you have a list of API endpoints or targets and need to systematically find credential-exploitable CORS issues at scale."
-sources: field_recon, hackerone_public, portswigger_research
-report_count: 14
+version: 1.1.0
+revision_date: 2026-07-25
+license: MIT
+category: redteam
+tags: [cors, automation, chain, redteam]
 ---
 
 # CORS-CHAIN-AUTOMATION — Multi-Endpoint CORS Credential Test Automation
@@ -17,30 +20,30 @@ Field recon across 600+ domains revealed 8 distinct CORS misconfiguration variat
 
 | # | Variation | ACAO | ACAC | Example Target | Wave Found |
 |---|-----------|------|------|---------------|------------|
-| V1 | Origin Reflection + Credentials (Classic) | Reflected | true | yardcare.com, restonic.com | W1 |
-| V2 | Null Origin Reflection (Sandboxed Iframe Bypass) | null | true | familydental.com | W6 |
-| V3 | Wildcard (No Credentials) | * | false | patientportal.com, nothingbundtcakes.com | W5 |
+| V1 | Origin Reflection + Credentials (Classic) | Reflected | true | landscaping.example.com, mattress.example.com | W1 |
+| V2 | Null Origin Reflection (Sandboxed Iframe Bypass) | null | true | dental.example.com | W6 |
+| V3 | Wildcard (No Credentials) | * | false | health-saas.example.com, bakery.example.com | W5 |
 | V4 | Credentialed Preflight (OPTIONS only) | Reflected on OPTIONS | true on OPTIONS | Multiple WP endpoints | W8 |
-| V5 | Auth-Required Endpoint Leak (401/403 still emit CORS) | Reflected | true | restonic.com gf/v2 | W7 |
-| V6 | Multi-Origin Reflection (any origin works) | Multiple | true | realpro.com | W6 |
-| V7 | Plugin-Specific CORS (only on plugin REST namespaces) | Reflected | true | defy.com (gravity-pdf/v1) | W5 |
-| V8 | Staging-Environment-Only CORS | Reflected | true | staging.biglots.com | W5 |
+| V5 | Auth-Required Endpoint Leak (401/403 still emit CORS) | Reflected | true | mattress.example.com gf/v2 | W7 |
+| V6 | Multi-Origin Reflection (any origin works) | Multiple | true | realestate.example.com | W6 |
+| V7 | Plugin-Specific CORS (only on plugin REST namespaces) | Reflected | true | media.example.com (gravity-pdf/v1) | W5 |
+| V8 | Staging-Environment-Only CORS | Reflected | true | staging.retail.example.com | W5 |
 
 ### Critical Implementation Lesson — Test ALL Endpoints, Not Just /users
 
-**This is the #1 CORS detection mistake across all waves.** Earlier waves missed CORS on restonic.com and toolking.com because CORS was tested only on `/wp/v2/users`. CORS credential reflection on WordPress affects ALL REST endpoints, not just users:
+**This is the #1 CORS detection mistake across all waves.** Earlier waves missed CORS on mattress.example.com and tools-retailer.com because CORS was tested only on `/wp/v2/users`. CORS credential reflection on WordPress affects ALL REST endpoints, not just users:
 
 ```bash
 # WRONG — tests only /users:
-curl -sk -I "https://$TARGET/wp-json/wp/v2/users" -H "Origin: https://evil.com" | grep -i "access-control"
+curl --max-time 30 --connect-timeout 10 -sk -I "https://$TARGET/wp-json/wp/v2/users" -H "Origin: https://evil.com" | grep -i "access-control"
 
 # CORRECT — test ALL endpoints:
 for ep in /wp-json/wp/v2/users /wp-json/wp/v2/posts /wp-json/wp/v2/pages \
   /wp-json/wp/v2/media /wp-json/wp/v2/comments /wp-json/wp/v2/statuses \
   /wp-json/wp/v2/tags /wp-json/wp/v2/categories /wp-json/wp/v2/settings \
   /wp-json/wc/v3/products /wp-json/gf/v2/forms /wp-json/wp-site-health/v1; do
-  cors=$(curl -sk -I "https://$TARGET${ep}" -H "Origin: https://evil.com" 2>/dev/null | grep -iE "access-control-allow-origin|access-control-allow-credentials")
-  code=$(curl -sk -o /dev/null -w "%{http_code}" "https://$TARGET${ep}" -H "Origin: https://evil.com" 2>/dev/null)
+  cors=$(curl --max-time 30 --connect-timeout 10 -sk -I "https://$TARGET${ep}" -H "Origin: https://evil.com" 2>/dev/null | grep -iE "access-control-allow-origin|access-control-allow-credentials")
+  code=$(curl --max-time 30 --connect-timeout 10 -sk -o /dev/null -w "%{http_code}" "https://$TARGET${ep}" -H "Origin: https://evil.com" 2>/dev/null)
   echo "${ep} — HTTP ${code} | ${cors:-NO CORS}"
 done
 ```
@@ -52,7 +55,7 @@ Even endpoints returning 401/403 (auth required) still emit CORS headers — and
 Some sites only leak CORS headers on OPTIONS preflight, not on GET. Always test both:
 
 ```bash
-curl -sk -X OPTIONS "https://$TARGET/wp-json/wp/v2/users" \
+curl --max-time 30 --connect-timeout 10 -sk -X OPTIONS "https://$TARGET/wp-json/wp/v2/users" \
   -H "Origin: https://evil.com" \
   -H "Access-Control-Request-Method: GET" | grep -iE "access-control"
 ```
@@ -62,23 +65,23 @@ curl -sk -X OPTIONS "https://$TARGET/wp-json/wp/v2/users" \
 Sandboxed iframes send `Origin: null`. Some sites whitelist it. Test explicitly:
 
 ```bash
-curl -sk -I "https://$TARGET/wp-json/wp/v2/users" -H "Origin: null" | grep -iE "access-control"
+curl --max-time 30 --connect-timeout 10 -sk -I "https://$TARGET/wp-json/wp/v2/users" -H "Origin: null" | grep -iE "access-control"
 ```
 
 ```bash
 # Quick triage: probe 3 CORS patterns on a target
-curl -s -D - -o /dev/null "https://$TARGET/api/me" \
+curl --max-time 30 --connect-timeout 10 -s -D - -o /dev/null "https://$TARGET/api/me" \
   -H "Origin: https://evil.com" \
   -H "Cookie: $COOKIE" | grep -i "access-control"
 
-curl -s -D - -o /dev/null "https://$TARGET/api/me" \
+curl --max-time 30 --connect-timeout 10 -s -D - -o /dev/null "https://$TARGET/api/me" \
   -H "Origin: null" \
   -H "Cookie: $COOKIE" | grep -i "access-control"
 
 # Multiple origins test
 for origin in "https://evil.com" "https://eviltarget.com" "https://x.target.com.evil.com"; do
   echo "=== $origin ==="
-  curl -s -D - -o /dev/null "https://$TARGET/api/me" -H "Origin: $origin" -H "Cookie: $COOKIE" | grep -i "access-control"
+  curl --max-time 30 --connect-timeout 10 -s -D - -o /dev/null "https://$TARGET/api/me" -H "Origin: $origin" -H "Cookie: $COOKIE" | grep -i "access-control"
 done
 ```
 
@@ -99,7 +102,7 @@ ENDPOINTS=(
 )
 
 for endpoint in "${ENDPOINTS[@]}"; do
-  result=$(curl -s -D - -o /dev/null "https://$TARGET$endpoint" \
+  result=$(curl --max-time 30 --connect-timeout 10 -s -D - -o /dev/null "https://$TARGET$endpoint" \
     -H "Origin: https://evil.com" -H "Cookie: $COOKIE" 2>/dev/null | grep -i "access-control")
   [ -n "$result" ] && echo "=== $endpoint ===" && echo "$result"
 done
@@ -127,7 +130,7 @@ for origin in "${PATTERNS[@]}"; do
   
   # Test multiple endpoints
   for ep in /api/me /api/user /api/profile /api/session /api/tokens /api/csrf; do
-    response=$(curl -s -D - -o /dev/null "https://$TARGET$ep" \
+    response=$(curl --max-time 30 --connect-timeout 10 -s -D - -o /dev/null "https://$TARGET$ep" \
       -H "Origin: $origin" ${COOKIE:+-H "Cookie: $COOKIE"} 2>/dev/null)
     
     acao=$(echo "$response" | grep -i "access-control-allow-origin" | tr -d '\r')
@@ -161,7 +164,7 @@ TESTS["Null-origin"]="null"
 echo "=== CORS Regex Classification for $TARGET ==="
 for test_name in "${!TESTS[@]}"; do
   origin="${TESTS[$test_name]}"
-  result=$(curl -s -D - -o /dev/null "https://$TARGET$ENDPOINT" \
+  result=$(curl --max-time 30 --connect-timeout 10 -s -D - -o /dev/null "https://$TARGET$ENDPOINT" \
     -H "Origin: $origin" -H "Cookie: $COOKIE" 2>/dev/null | grep -i "access-control-allow-origin")
   echo "[$test_name] Origin: $origin → ${result:-NO MATCH}"
 done
@@ -256,6 +259,20 @@ while read line; do
 done < "$CORS_RESULTS"
 ```
 
+## Pitfalls
+
+- **Testing only /users endpoint** — the #1 CORS detection mistake. CORS credential reflection on WordPress affects ALL REST endpoints, not just users. Test `/wp/v2/users`, `/wp/v2/posts`, `/wp/v2/pages`, `/wp/v2/media`, and plugin-specific namespaces.
+- **Confusing ACAO:* alone with exploitable CORS** — `Access-Control-Allow-Origin: *` without `Access-Control-Allow-Credentials: true` is safe. Only origin-reflection + credentials is exploitable.
+- **Skipping OPTIONS preflight** — some sites only emit CORS headers on OPTIONS, not GET. Always test both methods.
+- **Missing null-origin test** — sandboxed iframes send `Origin: null`. Some sites whitelist it. Test explicitly.
+- **Single-origin test** — testing only `Origin: https://evil.com` misses multi-origin reflection patterns. Test at least 4 patterns: evil.com, subdomain bypass, null, and preflight.
+- **Auth-required endpoints still leak** — even 401/403 responses can emit CORS headers. If an admin is logged in, those become 200s with cross-origin readable data.
+- **Staging-only CORS not documented** — if CORS is only exploitable on staging, document this clearly. Production may have different controls.
+- **Browser PoC without credentials:include** — the generated PoC must use `credentials: 'include'` or the browser won't send cookies and the attack won't work.
+- **Shell loops for >5 endpoint iterations** — zsh array expansion can silently fail. Use Python for bulk CORS probing beyond 5 endpoints.
+
+---
+
 ## Attack Surface Signals
 
 - Endpoints returning `Access-Control-Allow-Origin` header
@@ -291,6 +308,36 @@ From field recon across 58 companies:
 - 5/7 deep targets had CORS credential reflection on WP REST API (reflect-any-origin + ACAC)
 - All 5 allowed credentialed cross-origin read of user lists, post content, and media files
 - CORS findings chained to subdomain takeover → full same-origin JS execution
+
+## Verification
+
+Run this self-test to confirm CORS probing works:
+
+1. **Basic CORS probe** — test origin reflection on a known endpoint:
+   ```bash
+   curl --max-time 30 --connect-timeout 10 -s -D - -o /dev/null "https://httpbin.org/get" -H "Origin: https://evil.com" | grep -i "access-control"
+   ```
+
+2. **OPTIONS preflight test** — confirm preflight probing syntax:
+   ```bash
+   curl --max-time 30 --connect-timeout 10 -s -X OPTIONS "https://httpbin.org/get" -H "Origin: https://evil.com" -H "Access-Control-Request-Method: GET" -D - -o /dev/null | head -5
+   ```
+
+3. **Null origin test** — confirm null origin syntax:
+   ```bash
+   curl --max-time 30 --connect-timeout 10 -s -D - -o /dev/null "https://httpbin.org/get" -H "Origin: null" -w "HTTP %{http_code}
+"
+   ```
+
+4. **PoC template integrity** — verify the browser PoC template is present:
+   ```bash
+   grep -q "credentials: 'include'" SKILL.md && echo "PASS: PoC template includes credentials" || echo "FAIL"
+   grep -q "fetch(" SKILL.md && echo "PASS: fetch() PoC pattern present" || echo "FAIL"
+   ```
+
+All 4 tests verify the core CORS probing capability.
+
+---
 
 ## Related Skills
 

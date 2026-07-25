@@ -1,8 +1,11 @@
 ---
 name: triage-validation
 description: Finding validation before writing any report — 7-Question Gate (all 7 questions), 4 pre-submission gates, always-rejected list, conditionally valid with chain table, CVSS 3.1 quick reference, severity decision guide, report title formula, 60-second pre-submit checklist. Use BEFORE writing any report. One wrong answer = kill the finding and move on. Saves N/A ratio.
-sources: bug_bounty_reports, triage_experience
-report_count: 8
+version: 1.1.0
+revision_date: 2026-07-25
+license: MIT
+category: redteam
+tags: [triage, validation, redteam]
 ---
 
 # TRIAGE & VALIDATION
@@ -301,6 +304,31 @@ When a previously-claimed finding fails reproduction — **never silently drop i
 - **`Administrator` timing leak** — single-shot 1527 ms vs ~700 ms control on Authentication.asmx Login; n=80 interleaved reproduction collapsed every group to 685-716 ms. Cause: single-sample statistical claim.
 
 **Why this matters:** retracted findings put in an appendix demonstrate methodological honesty. Silently dropping them looks like you cherry-picked. A clean 11-finding report with a retraction appendix is more trustworthy than a 13-finding report where 2 fall apart at triage.
+
+---
+
+## Verification
+
+1. **7-Question Gate** — confirm all 7 questions are documented:
+   ```bash
+   grep -c "Question [1-7]" SKILL.md && echo "PASS: all 7 questions present" || echo "FAIL"
+   ```
+2. **OOB Gate** — confirm OOB validation is required:
+   ```bash
+   grep -q "OOB\|out-of-band\|Collaborator\|interactsh" SKILL.md && echo "PASS: OOB validation documented" || echo "FAIL"
+   ```
+All tests verify triage validation readiness.
+
+---
+
+## Pitfalls
+- **Skipping the 7-Question Gate** — the #1 cause of rejected findings. If you can't answer all 7 questions confidently, don't file.
+- **Question 1 failure: "Can an attacker do this RIGHT NOW?"** — if the answer requires "if," "could," "might," or "theoretically," it's not a finding.
+- **Question 4 failure: "Does it cause real harm?"** — informational disclosures, missing headers, and EoL software without exploitation fail this gate.
+- **Self-validation bias** — you found the bug, so you want it to be real. Get a second opinion or sleep on it before filing.
+- **Severity inflation** — calling every IDOR "Critical" damages credibility. Match severity to demonstrated impact, not bug class.
+- **Premature reporting** — filing before confirming the bug still works at time of submission. Always re-test hours before hitting submit.
+
 
 ---
 

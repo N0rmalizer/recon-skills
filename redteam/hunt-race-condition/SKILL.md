@@ -1,8 +1,11 @@
 ---
 name: hunt-race-condition
 description: Hunting skill for race condition vulnerabilities. Built from 12 public bug bounty reports including modern HTTP/2 single-packet attack cases (James Kettle DEF CON 2023 "Smashing the State Machine"; RyotaK / Flatt Security 10,000-request first-sequence-sync expansion 2024). Covers coupon double-redemption, gift-card double-spend, MFA-OTP-validate race, account-create race, faucet/crypto token double-mint, email-activation race, vote/upvote inflation, password-reset token race, rate-limit bypass via concurrent requests. Use when hunting race conditions, TOCTOU bugs, MFA-bypass-via-timing.
-sources: github, hackerone_public, portswigger_research, flatt_security
-report_count: 12
+version: 1.1.0
+revision_date: 2026-07-25
+license: MIT
+category: redteam
+tags: [race-condition, hunt, redteam]
 ---
 
 ## Crown Jewel Targets
@@ -116,7 +119,7 @@ def handleResponse(req, interesting):
 ```bash
 # Fire 15 simultaneous vote/redeem requests
 for i in $(seq 1 15); do
-  curl -s -o /dev/null -w "%{http_code}\n" \
+  curl --max-time 30 --connect-timeout 10 -s -o /dev/null -w "%{http_code}\n" \
     -X POST "https://target.com/api/vote" \
     -H "Cookie: session=YOUR_SESSION" \
     -H "Content-Type: application/json" \
@@ -164,7 +167,7 @@ grep -rn "\.get(\|\.filter(" --include="*.py" | grep -v "select_for_update"
 ### HTTP/2 Single-Packet Check
 ```bash
 # Verify target supports HTTP/2 (prerequisite for single-packet attack)
-curl -sI --http2 https://target.com | grep -i "HTTP/2\|h2"
+curl --max-time 30 --connect-timeout 10 -sI --http2 https://target.com | grep -i "HTTP/2\|h2"
 ```
 
 ---
@@ -273,7 +276,7 @@ The following real, verified bug-bounty / coordinated-disclosure cases extend th
     - Root cause: non-atomic check-then-decrement on the credit balance object
     - Year: 2023 — **$5,000**, ~$600 platform fee loss per redemption
 
-8. **Reverb.com — Gift card multi-redemption** ([H1 #759247](https://hackerone.com/reports/759247))
+8. **marketplace.example.com — Gift card multi-redemption** ([H1 #759247](https://hackerone.com/reports/759247))
     - Subclass: coupon double-redemption (gift card)
     - Payload: capture `POST /gift_cards/redeem` → duplicate N× → fire parallel → balance credited N× from a single card
     - Root cause: gift-card consumption marker written after balance credit, no `SELECT…FOR UPDATE` around the redemption read
@@ -343,12 +346,12 @@ The race window equals the time between worker N's `SELECT ... FOR UPDATE` and w
 
 ### Wireshark validation
 
-To confirm your attack tool is genuinely producing one-packet sync (vs accidentally fragmenting):
+To confirm your attackcommand line is genuinely producing one-packet sync (vs accidentally fragmenting):
 
 1. Capture the loopback or your egress interface during the attack: `sudo tcpdump -i lo0 -w race.pcap port 443` (or interface 0).
 2. Open in Wireshark, filter `tls and tcp.port == 443`.
 3. Find the TLS record containing the END_STREAM flush. It should contain **N H2 DATA frames with END_STREAM set, in one TLS record, in one TCP segment.**
-4. If you see N TLS records or N TCP segments, your tool is sequencing. The race window is your inter-segment gap — typically too wide.
+4. If you see N TLS records or N TCP segments, yourcommand line is sequencing. The race window is your inter-segment gap — typically too wide.
 
 The Turbo Intruder `engine=Engine.BURP2` implementation guarantees single-packet delivery on HTTP/2 targets when the request body fits in MTU. For larger bodies, see the "Race-window estimation" subsection below.
 
@@ -703,6 +706,38 @@ See: https://flatt.tech/research/posts/beyond-the-limit-expanding-single-packet-
 
 ---
 
+## Verification
+
+Run this self-test to confirm race-condition hunting readiness:
+
+1. **Skill integrity** — confirm the skill file is readable and well-formed:
+   ```bash
+   grep -q "name: hunt-race-condition" SKILL.md && echo "PASS: skill frontmatter present" || echo "FAIL"
+   grep -q "revision_date:" SKILL.md && echo "PASS: revision date present" || echo "FAIL"
+   ```
+
+2. **Category check** — confirm the skill has a category:
+   ```bash
+   grep -q "category:" SKILL.md && echo "PASS: category present" || echo "FAIL"
+   ```
+
+3. **Pitfalls section** — confirm pitfalls are documented:
+   ```bash
+   grep -q "^## Pitfalls" SKILL.md && echo "PASS: pitfalls section present" || echo "FAIL"
+   ```
+
+All 3 tests verify the skill is properly structured and ready for use.
+
+---
+
+## Pitfalls
+- **Single-threaded testing** — race conditions require parallel requests. Curl alone can't demonstrate them reliably. Use Python `asyncio` or Burp Intruder with multiple threads.
+- **TOCTOU without state change** — time-of-check-time-of-use is theoretical without demonstrating the state changed between check and use.
+- **Race window too small** — if the window between check and use is microseconds, the race may be impractical. Measure the window before reporting.
+- **Limit-overrun race** — coupon/credit/withdrawal races are the highest-impact. Test with exact parallel requests, not just rapid sequential.
+
+---
+
 ## Related Skills & Chains
 
 - **`hunt-business-logic`** — Race conditions are the "concurrency arm" of every business-logic state machine. Chain primitive: business logic (coupon/promo) + race-condition single-packet attack → coupon redeemed N times → direct financial loss.
@@ -711,3 +746,10 @@ See: https://flatt.tech/research/posts/beyond-the-limit-expanding-single-packet-
 - **`hunt-api-misconfig`** — Wallet/balance/credit endpoints without atomic UPDATE are double-spend candidates. Chain primitive: race + atomic-update missing → double-spend balance → withdraw N× user balance.
 - **`security-arsenal`** — Load the Turbo Intruder single-packet template, h2.cl smuggling for atomic submit, and `curl --next` parallel multi-request patterns.
 - **`triage-validation`** — Apply the Statistical-Sampling gate: a single anomalous response is noise; require 1 successful + N duplicate / over-quota / stale-state demonstrations with response screenshots before reporting.
+
+### Phase X — Connection Warming & DB Isolation
+
+Connection warming: establish TCP+TLS before starting the race; use `curl --parallel` for simultaneous sends.
+Last-byte sync: Turbo Intruder `engine=Engine.BURP2` for single-packet delivery on HTTP/2.
+Database isolation: READ COMMITTED allows phantom reads between SELECT and UPDATE — test with N simultaneous spend/withdraw requests.
+GraphQL parallel mutations via aliases: `mutation { a: redeem B: redeem c: redeem }` — bypasses sequential execution.

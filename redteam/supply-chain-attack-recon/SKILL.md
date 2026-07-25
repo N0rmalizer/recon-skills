@@ -1,8 +1,11 @@
 ---
 name: supply-chain-attack-recon
 description: External recon for software supply-chain attack surface — package-namespace squatting candidates, dependency-confusion vulnerabilities, GitHub Actions injection openings, container image registry exposure, SBOM mining, internal-package-name leakage, and CI/CD configuration exposure. Reconnaissance and identification ONLY — actual package publishing / typosquat attacks are EXTERNAL-OFFENSIVE and require explicit written sign-off because they can affect the entire npm/PyPI ecosystem. Use when the target has a public GitHub org, when their build artifacts/SBOMs are reachable, when their docker images are on Docker Hub/GHCR, or when you find internal package names in their JS bundles.
-sources: alex-birsan-dependency-confusion, supply-chain-research, github-actions-security, cisa-advisories, mandiant-tag, github-security-blog, snyk-research
-report_count: 12
+version: 1.1.0
+revision_date: 2026-07-25
+license: MIT
+category: redteam
+tags: [supply-chain, attack, recon, redteam]
 ---
 
 ## When to use
@@ -45,7 +48,7 @@ TARGET="<brand>"  # set to target brand name
 
 # Direct guesses
 for guess in $TARGET "${TARGET}-tech" "${TARGET}corp" "${TARGET}-io" "${TARGET}-eng"; do
-  curl -sI "https://github.com/$guess" | grep -E "HTTP|status" | head -1
+  curl --max-time 30 --connect-timeout 10 -sI "https://github.com/$guess" | grep -E "HTTP|status" | head -1
 done
 
 # Via WHOIS / email-domain → GitHub search
@@ -80,8 +83,8 @@ gh repo clone "$ORG/$repo_name"
 
 ```bash
 # JS bundles are the easiest source of internal npm names
-curl -sk https://target.com/main.js | grep -oE '@[a-z-]+/[a-z-]+' | sort -u
-curl -sk https://target.com/main.js | grep -oE 'require\("[^"]+"\)' | sort -u
+curl --max-time 30 --connect-timeout 10 -sk https://target.com/main.js | grep -oE '@[a-z-]+/[a-z-]+' | sort -u
+curl --max-time 30 --connect-timeout 10 -sk https://target.com/main.js | grep -oE 'require\("[^"]+"\)' | sort -u
 
 # Look for scoped names that are NOT public on npm
 for pkg in @target/utils @target-internal/api @companybrand/sdk; do
@@ -120,20 +123,20 @@ For each internal-looking package name discovered:
 NAME="@target-internal/utils"   # example
 
 # npm check
-curl -sI "https://registry.npmjs.org/$NAME" | head -1
+curl --max-time 30 --connect-timeout 10 -sI "https://registry.npmjs.org/$NAME" | head -1
 # 404 → name is registerable → DEPENDENCY-CONFUSION POSSIBLE
 
 # pypi check (no scopes, just name)
 NAME="target_utils"
-curl -sI "https://pypi.org/project/$NAME/" | head -1
+curl --max-time 30 --connect-timeout 10 -sI "https://pypi.org/project/$NAME/" | head -1
 # 404 → name is registerable
 
 # rubygems
-curl -sI "https://rubygems.org/api/v1/gems/$NAME.json" | head -1
+curl --max-time 30 --connect-timeout 10 -sI "https://rubygems.org/api/v1/gems/$NAME.json" | head -1
 
 # Go modules — slightly different, since module names are URLs
 # Check if module path is reachable
-curl -sI "https://proxy.golang.org/github.com/$ORG/$NAME/@latest" | head -1
+curl --max-time 30 --connect-timeout 10 -sI "https://proxy.golang.org/github.com/$ORG/$NAME/@latest" | head -1
 ```
 
 **Severity calibration:** Just because a name is unclaimed doesn't mean it's exploitable. You also need:
@@ -232,7 +235,7 @@ done
 
 ```bash
 # Docker Hub
-curl -s "https://hub.docker.com/v2/repositories/$ORG/?page_size=100" | jq -r '.results[].name'
+curl --max-time 30 --connect-timeout 10 -s "https://hub.docker.com/v2/repositories/$ORG/?page_size=100" | jq -r '.results[].name'
 
 # GHCR (GitHub Container Registry) — public images visible in repo packages tab
 gh api "users/$ORG/packages?package_type=container" 2>/dev/null
@@ -240,7 +243,7 @@ gh api "orgs/$ORG/packages?package_type=container" 2>/dev/null
 
 # For each image, list tags
 for img in image1 image2; do
-  curl -s "https://hub.docker.com/v2/repositories/$ORG/$img/tags?page_size=20" | jq -r '.results[].name'
+  curl --max-time 30 --connect-timeout 10 -s "https://hub.docker.com/v2/repositories/$ORG/$img/tags?page_size=20" | jq -r '.results[].name'
 done
 
 # Pull and inspect layers
@@ -268,7 +271,7 @@ gh api "repos/$ORG/$REPO/releases" --jq '.[] | .assets[] | select(.name | test("
 
 # Exact-version-pinned deps → known-CVE chaining
 # Compare versions to nuclei nvd templates or osv.dev for known vulns
-curl -s "https://api.osv.dev/v1/query" -d '{"package": {"name": "lodash", "ecosystem": "npm"}, "version": "4.17.10"}'
+curl --max-time 30 --connect-timeout 10 -s "https://api.osv.dev/v1/query" -d '{"package": {"name": "lodash", "ecosystem": "npm"}, "version": "4.17.10"}'
 ```
 
 ---
@@ -298,14 +301,14 @@ grep -r "url.*\(.*nexus" .
 
 ```bash
 # Some orgs maintain a public npm scope mirroring their brand
-curl -s "https://registry.npmjs.org/-/v1/search?text=scope:$ORG&size=50" | jq '.objects[].package.name'
+curl --max-time 30 --connect-timeout 10 -s "https://registry.npmjs.org/-/v1/search?text=scope:$ORG&size=50" | jq '.objects[].package.name'
 
 # Public PyPI presence
-curl -s "https://pypi.org/simple/" | grep "$ORG" | head -20
+curl --max-time 30 --connect-timeout 10 -s "https://pypi.org/simple/" | grep "$ORG" | head -20
 
 # Check if scope is taken — if it's NOT, an attacker could register
 # (relevant for any internal package using that scope)
-curl -sI "https://registry.npmjs.org/-/org/$ORG"
+curl --max-time 30 --connect-timeout 10 -sI "https://registry.npmjs.org/-/org/$ORG"
 ```
 
 ---
@@ -435,7 +438,7 @@ Twelve well-documented public cases, mapped to the recon surface above. Each ent
 
 - **Flow:** Attackers gained access to Codecov's Docker image build process via a credential mistake in the image-creation flow, then modified the `Bash Uploader` script (`https://codecov.io/bash`) to exfiltrate environment variables to a third-party IP. The modification persisted from 31 Jan 2021 to 1 Apr 2021 — two months before detection by a customer who noticed an SHA-256 mismatch.
 - **Root cause:** Docker image build leaked a credential allowing modification of the served bash script; no integrity verification (no signed pinned hash) on the customer side.
-- **Impact:** Every CI run worldwide that piped `curl -s https://codecov.io/bash | bash` for 2 months exfiltrated env vars. Confirmed downstream victims: HashiCorp (rotated GPG key), Twilio, Rapid7 (source-code partial exposure), Mercari, Confluent, Atlassian.
+- **Impact:** Every CI run worldwide that piped `curl --max-time 30 --connect-timeout 10 -s https://codecov.io/bash | bash` for 2 months exfiltrated env vars. Confirmed downstream victims: HashiCorp (rotated GPG key), Twilio, Rapid7 (source-code partial exposure), Mercari, Confluent, Atlassian.
 - **References:**
   - Codecov post-mortem: https://about.codecov.io/security-update/
   - HashiCorp advisory: https://discuss.hashicorp.com/t/hcsec-2021-12-codecov-security-event-and-hashicorp-gpg-key-exposure/23512
@@ -562,6 +565,27 @@ Twelve well-documented public cases, mapped to the recon surface above. Each ent
 - **Maintainer-account compromise > technical CVE** for npm/PyPI ecosystem — 6 of 12 cases.
 - **Cascading supply chain is now normal** — 3CX from X_TRADER; Codecov → HashiCorp → HashiCorp's downstream users. Assume your target's vendors' vendors are in scope conceptually.
 - **CI runners are the highest-value foothold** — every case where attacker code executed on a CI runner yielded cloud / GitHub / secrets in bulk.
+
+---
+
+## Verification
+
+1. **Dependency scanning** — confirm tool availability:
+   ```bash
+   which npm-audit 2>/dev/null || which npm 2>/dev/null && echo "PASS: npm available" || echo "NOTE: npm not installed"
+   pip3 show pip-audit 2>/dev/null | grep -q "Name:" && echo "PASS: pip-audit installed" || echo "NOTE: pip-audit not installed"
+   ```
+All tests verify supply chain readiness.
+
+---
+
+## Pitfalls
+- **Assuming all third-party dependencies are in scope** — check the bug bounty scope. Third-party services (Zendesk, Intercom, statuspage) are typically out of scope.
+- **Dependency version without CVE** — knowing a library version without a matching exploitable CVE is informational.
+- **npm/pip package typosquatting without proof** — demonstrating a typosquatted package EXISTS doesn't prove the target uses it. Need package.json/requirements.txt evidence.
+- **CI/CD supply chain vs runtime supply chain** — poisoning a build-time dependency and a runtime dependency have different impacts. Distinguish them.
+- **Vendor email compromise as supply chain** — compromising a vendor's email to send malicious updates is different from code dependency attacks. Both are supply chain but different TTPs.
+
 
 ---
 

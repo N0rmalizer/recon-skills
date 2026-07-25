@@ -1,8 +1,11 @@
 ---
 name: wp-plugin-automation
 description: "Scripts and workflows to batch-test popular WordPress plugin CVEs across hundreds of domains. Covers automated plugin detection, version extraction from readme.txt, CVE matching against a curated matrix of high-impact plugin vulnerabilities (ElementsKit, Revslider, WPDM, Gravity Forms, Contact Form 7, Jetpack, WP File Manager, GSpeech), and exploitation PoC generation. Use after initial WordPress detection recon — when you have a target list of WP domains and need to find which specific plugin CVEs are exploitable at scale."
-sources: field_recon, hackerone_public, cve_database
-report_count: 14
+version: 1.1.0
+revision_date: 2026-07-25
+license: MIT
+category: redteam
+tags: [wordpress, plugin, automation, redteam]
 ---
 
 # WP-PLUGIN-AUTOMATION — Batch WordPress Plugin CVE Testing
@@ -19,11 +22,11 @@ cat targets.txt | while read t; do
   echo "=== $t ==="
   # Extract plugin readme versions
   for p in revslider elementskit elementor woocommerce gravityforms jetpack; do
-    v=$(curl -sk "https://$t/wp-content/plugins/$p/readme.txt" | grep -i "stable tag\|version" | head -1)
+    v=$(curl --max-time 30 --connect-timeout 10 -sk "https://$t/wp-content/plugins/$p/readme.txt" | grep -i "stable tag\|version" | head -1)
     [ -n "$v" ] && echo "PLUGIN: $p=$v"
   done
   # REST API namespace enumeration
-  curl -sk "https://$t/wp-json/" | python3 -c "import sys,json; d=json.load(sys.stdin); [print('REST:',n) for n in d.get('namespaces',[])]" 2>/dev/null
+  curl --max-time 30 --connect-timeout 10 -sk "https://$t/wp-json/" | python3 -c "import sys,json; d=json.load(sys.stdin); [print('REST:',n) for n in d.get('namespaces',[])]" 2>/dev/null
 done
 ```
 
@@ -53,9 +56,9 @@ while read t; do
   echo "=== Scanning $t ==="
   for plugin_entry in "${PLUGINS[@]}"; do
     IFS=':' read -r slug dir <<< "$plugin_entry"
-    readme=$(curl -sk -o /dev/null -w "%{http_code}" "https://$t/wp-content/plugins/$dir/readme.txt")
+    readme=$(curl --max-time 30 --connect-timeout 10 -sk -o /dev/null -w "%{http_code}" "https://$t/wp-content/plugins/$dir/readme.txt")
     [ "$readme" != "404" ] && [ "$readme" != "000" ] && \
-      version=$(curl -sk "https://$t/wp-content/plugins/$dir/readme.txt" | grep -i "stable tag\|version" | head -1 | grep -oP '[\d.]+') && \
+      version=$(curl --max-time 30 --connect-timeout 10 -sk "https://$t/wp-content/plugins/$dir/readme.txt" | grep -i "stable tag\|version" | head -1 | grep -Eo '[\d.]+') && \
       echo "  [+] $slug: v$version"
   done
 done < "$TARGETS"
@@ -113,21 +116,21 @@ while read t; do
   [ "$cors" -gt 0 ] && echo "  [CRIT] CORS credential reflection!"
   
   # XMLRPC
-  xrpc=$(curl -sk -o /dev/null -w "%{http_code}" "https://$t/xmlrpc.php" 2>/dev/null)
+  xrpc=$(curl --max-time 30 --connect-timeout 10 -sk -o /dev/null -w "%{http_code}" "https://$t/xmlrpc.php" 2>/dev/null)
   [ "$xrpc" = "200" ] && echo "  [HIGH] XMLRPC active"
   
   # Debug log
-  dlog=$(curl -sk -o /dev/null -w "%{http_code}" "https://$t/wp-content/debug.log" 2>/dev/null)
+  dlog=$(curl --max-time 30 --connect-timeout 10 -sk -o /dev/null -w "%{http_code}" "https://$t/wp-content/debug.log" 2>/dev/null)
   [ "$dlog" = "200" ] && echo "  [HIGH] Debug log exposed"
   
   # PHPInfo
   for p in /info.php /phpinfo.php /test.php; do
-    code=$(curl -sk -o /dev/null -w "%{http_code}" "https://$t$p" 2>/dev/null)
+    code=$(curl --max-time 30 --connect-timeout 10 -sk -o /dev/null -w "%{http_code}" "https://$t$p" 2>/dev/null)
     [ "$code" = "200" ] && echo "  [HIGH] PHPInfo at $p"
   done
   
   # Open registration
-  reg=$(curl -sk "https://$t/wp-login.php?action=register" 2>/dev/null | grep -c "multipart")
+  reg=$(curl --max-time 30 --connect-timeout 10 -sk "https://$t/wp-login.php?action=register" 2>/dev/null | grep -c "multipart")
   [ "$reg" -gt 0 ] && echo "  [HIGH] Open registration"
   
   echo "---"
@@ -138,16 +141,16 @@ done < "$TARGETS"
 ```bash
 # WooCommerce API discovery
 for path in /wp-json/wc/v3/ /wp-json/wc/v3/products /wp-json/wc/v3/orders /wp-json/wc/v3/customers; do
-  code=$(curl -sk -o /dev/null -w "%{http_code}" "https://$TARGET$path")
+  code=$(curl --max-time 30 --connect-timeout 10 -sk -o /dev/null -w "%{http_code}" "https://$TARGET$path")
   [ "$code" != "404" ] && echo "[+] $path — HTTP $code"
 done
 
 # Application Passwords endpoint
-code=$(curl -sk -o /dev/null -w "%{http_code}" "https://$TARGET/wp-admin/authorize-application.php")
+code=$(curl --max-time 30 --connect-timeout 10 -sk -o /dev/null -w "%{http_code}" "https://$TARGET/wp-admin/authorize-application.php")
 [ "$code" != "404" ] && echo "[+] Application Passwords endpoint accessible"
 
 # Check for REST API user enumeration
-curl -sk "https://$TARGET/wp-json/wp/v2/users?per_page=100" | jq '.[] | {id, name, slug}'
+curl --max-time 30 --connect-timeout 10 -sk "https://$TARGET/wp-json/wp/v2/users?per_page=100" | jq '.[] | {id, name, slug}'
 ```
 
 ## Attack Surface Signals
@@ -172,10 +175,34 @@ From 58-company mass recon:
 - 5/7 deep targets had CORS credential reflection on WP REST API
 - 2/7 had open registration + XMLRPC upload → full RCE chain
 
+## Verification
+
+1. **Plugin detection** — confirm WPScan or manual detection:
+   ```bash
+   which wpscan 2>/dev/null && echo "PASS: wpscan installed" || echo "NOTE: wpscan not installed"
+   ```
+2. **Version extraction** — confirm readme.txt parsing:
+   ```bash
+   echo "Stable tag: 5.2.1" | grep -q "Stable tag" && echo "PASS: version tag recognized" || echo "FAIL"
+   ```
+All tests verify WP plugin automation readiness.
+
+---
+
+## Pitfalls
+- **Automated scanning without version validation** — detecting a plugin slug doesn't tell you the version. Use readme.txt, style.css headers, or changelog to get the version.
+- **False positives from plugin detection** — some themes/plugins detect by HTML comments that are false positives. Verify with at least 2 independent signals.
+- **Bulk scanning without rate limiting** — scanning 1000 sites for plugin versions without delays triggers WAFs and IP bans.
+- **Unmaintained plugin without CVE** — a plugin last updated in 2018 is a risk indicator, not a vulnerability. Need a CVE or demonstrated exploit.
+- **Premium plugin version guessing** — premium plugins don't have public SVN repos. Version detection requires different techniques (changelog, readme checksums).
+
+
+---
+
 ## Related Skills
 
 - hunt-wordpress — primary skill for WordPress recon
-- recon-churches — church sites have highest plugin vulnerability rate
+- recon-sector — sector-specific recon (churches have highest plugin vulnerability rate)
 - hunt-rce — plugin CVEs are a primary RCE path
 - hunt-file-upload — file upload CVEs from plugin vulnerabilities
 - hunt-sqli — SQL injection CVEs from plugin SQLi flaws

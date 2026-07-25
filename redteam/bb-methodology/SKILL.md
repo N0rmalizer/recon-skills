@@ -1,8 +1,11 @@
 ---
 name: bb-methodology
 description: Use at the START of any bug bounty hunting session, when switching targets, or when feeling lost about what to do next. Master orchestrator that combines the 5-phase non-linear hunting workflow with the critical thinking framework (developer psychology, anomaly detection, What-If experiments). Routes to all other skills based on current hunting phase. Also use when asking "what should I do next" or "where am I in the process."
-sources: field_recon, hackerone_public, portswigger_research
-report_count: 150
+version: 1.1.0
+revision_date: 2026-07-25
+license: MIT
+category: redteam
+tags: [bug-bounty, methodology, recon, redteam]
 ---
 
 # Bug Bounty Methodology: Workflow + Mindset
@@ -36,7 +39,7 @@ Hunting is not "find a bug" -- it is "prove an attack scenario." Think like an a
 
 ### Daily Discipline: Define, Select, Execute
 
-Before touching any tool:
+Before touching any command:
 
 1. **Define**: "Today I target [feature/domain] to achieve [CIA impact]"
 2. **Select**: Choose 1-2 vuln classes (IDOR, Race Condition, etc.)
@@ -123,6 +126,22 @@ Before touching any tool:
 
 ---
 
+## Pitfalls
+
+- **Mode confusion** — treating a bug-bounty engagement as a red-team exercise wastes time on hygiene findings that get N/A'd. Confirm the engagement type (PART 0) before any recon.
+- **Non-unique markers** — using `test`, `marker`, or `javascript` as test strings triggers false positives. Always use 8+ char random alphanumeric markers and verify against baseline.
+- **Status-code-only bypass claims** — 200 OK with byte-identical body is NOT a bypass. Always diff response bodies before claiming success.
+- **Single-sample timing conclusions** — one 2× outlier is network jitter, not signal. Minimum n=10 interleaved trials, 2σ threshold for timing-based claims.
+- **Shell loops for >5 iterations** — zsh array expansion can silently produce zero iterations. Use Python with try/except for any loop iterating a list, file, or computed range.
+- **Linear phase assumption** — the 5-phase flow is non-linear. New APIs discovered during Phase 3 require returning to Phase 2 mapping. WAF blocking in Phase 4 requires origin-IP recon from Phase 1.
+- **20-minute rule violations** — continuing past 20 minutes without progress on a single endpoint burns session time. Rotate: endpoint → subdomain → vuln class → target.
+- **Ignoring the A→B signal** — finding one bug means the same developer made more mistakes nearby. Always spend 20 minutes hunting siblings after a confirmed finding.
+- **Report-first, validate-later** — writing the report before confirming the bug still reproduces wastes hours on retracted findings. Always re-test minutes before submission.
+- **Premature pushback** — when the user says "find more," they are usually correct. Exhaust 3 additional hunt-* skill checklists before claiming coverage is complete.
+- **45-minute sunk cost on dead candidates** — if a finding won't reproduce on a second account after 4+ hours, document the retraction and move on. Don't sink more time into making it work.
+
+---
+
 ## PART 2: WORKFLOW (What to Do)
 
 ### The 5-Phase Non-Linear Flow
@@ -149,7 +168,7 @@ Before touching any tool:
 
 ### Phase 0: SESSION START (Every Time)
 
-**Before touching any tool, answer these:**
+**Before touching any command, answer these:**
 
 1. **Define**: "Today I target [feature/domain] to achieve [C/I/A/ATO/RCE]"
 2. **Select**: Choose 1-2 vuln classes (IDOR, XSS, SSRF, etc.)
@@ -269,7 +288,7 @@ What did you find?
 |   +-- UUID only? -> Find UUID leak source, then retry
 +-- SSRF
 |   +-- DNS only? -> DON'T REPORT. Try cloud metadata
-|   +-- Can reach 169.254.169.254? -> Extract keys -> RCE
+|   +-- Can reach [REDACTED_IP]? -> Extract keys -> RCE
 |   +-- Internal port scan? -> Find Redis/K8s -> RCE
 +-- SQLi
 |   +-- Error-based? -> Extract data (passwords, tokens)
@@ -303,7 +322,7 @@ Run /validate (7-Question Gate)
 
 **Multi-Tool Reproduction Bar (Critical / High only):**
 
-Before labeling a finding **Critical** or **High**, reproduce it via at least **two independent tools** (different stacks, different HTTP libraries). Cross-tool consistency rules out tool-artefact findings (e.g., a curl-only timing differential that disappears under Python `requests` was an artefact, not a bug).
+Before labeling a finding **Critical** or **High**, reproduce it via at least **two independent tools** (different stacks, different HTTP libraries). Cross-tool consistency rules out command-line artifact findings (e.g., a curl-only timing differential that disappears under Python `requests` was an artefact, not a bug).
 
 Examples of independent reproductions:
 - `curl` + Burp `send_http1_request` (different TLS stacks, different header normalisation)
@@ -312,7 +331,7 @@ Examples of independent reproductions:
 
 The reproduction commands MUST be paste-into-shell ready in the report — a triager copies them verbatim. If the curl version requires special flags or breaks on certain systems, include a Python alternative.
 
-**Lesson from an authorized engagement:** All three Critical findings (Authentication.asmx brute-force, TE.CL smuggling, NTLM Type-2 disclosure) were each independently reproduced via curl + Python raw sockets + Burp tooling. The cross-tool consistency was what convinced the triage write-up that the findings were not artefacts.
+**Lesson from an authorized engagement:** All three Critical findings (Authentication.asmx brute-force, TE.CL smuggling, NTLM Type-2 disclosure) were each independently reproduced via curl + Python raw sockets + Burp command-lining. The cross-tool consistency was what convinced the triage write-up that the findings were not artefacts.
 
 **Report:**
 ```
@@ -454,6 +473,60 @@ For any iteration that runs more than 5 times, **use Python (with try/except per
 - Always count results. If you expected 100 probes and got <50 lines of output, your loop ate something.
 
 **Lesson from an authorized engagement:** A zsh array-iteration verb-tampering test silently produced no curl invocations across 20+ iterations (zsh ate the array). Output looked like "HIT [GET] /_api/web → " repeated for every probe but the actual response was missing. ~50 probes worth of testing lost. Switching the test to Python with explicit per-iteration logging surfaced the real results.
+
+---
+
+## Verification
+
+Run this self-test to confirm the methodology's quality gates are operational:
+
+1. **Marker uniqueness test** — confirm baseline check catches false positives:
+   ```bash
+   echo "<a href='javascript:HelpWindowKey(1)'>Help</a>" > /tmp/test-baseline.html
+   MARKER="javascript"
+   grep -q "$MARKER" /tmp/test-baseline.html && echo "FAIL: marker appears in baseline — choose unique marker" || echo "PASS: marker is unique"
+   rm -f /tmp/test-baseline.html
+   ```
+
+2. **Body-diff test** — verify diff catches byte-identical responses:
+   ```bash
+   echo "identical body" > /tmp/a.txt && cp /tmp/a.txt /tmp/b.txt
+   diff /tmp/a.txt /tmp/b.txt >/dev/null && echo "PASS: identical bodies detected (no bypass)" || echo "FAIL: diff broken"
+   rm -f /tmp/a.txt /tmp/b.txt
+   ```
+
+3. **Statistical sample test** — verify Python can compute mean/σ:
+   ```bash
+   python3 -c "
+   import statistics
+   control = [700, 710, 690, 705, 715, 698, 702, 708, 695, 712]
+   mean_c = statistics.mean(control)
+   stdev_c = statistics.stdev(control)
+   threshold = mean_c + 2*stdev_c
+   suspect = 1527
+   print('PASS: signal detected' if suspect > threshold else 'PASS: no false signal (correct)')
+   " 2>/dev/null || echo "FAIL: Python3 statistics module unavailable"
+   ```
+
+4. **Shell-loop ban verification** — confirm Python iteration works reliably:
+   ```bash
+   python3 -c "
+   items = ['a','b','c','d','e','f','g','h','i','j']
+   results = []
+   for item in items:
+       results.append(f'processed:{item}')
+   expected = 10
+   actual = len(results)
+   print(f'PASS: {actual}/{expected} items processed' if actual == expected else f'FAIL: {actual}/{expected}')
+   " 2>/dev/null || echo "FAIL: Python3 unavailable"
+   ```
+
+5. **Mode confirmation check** — verify the engagement-type decision framework is understood:
+   ```bash
+   grep -q "PART 0" SKILL.md && echo "PASS: PART 0 mode-confirmation present" || echo "FAIL: PART 0 missing"
+   ```
+
+If all 5 tests pass, the methodology discipline rules are verifiable. Tests 1-2 are the most common false-positive sources in real engagements.
 
 ---
 

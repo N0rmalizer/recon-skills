@@ -1,10 +1,10 @@
-# agentiko — Complete Skill Catalog (207 skills)
+# Complete Skill Catalog (207 skills)
 
-Comprehensive catalog of all skills in the agentiko ecosystem. Generated from field analysis of the complete Hermes skill index at `~/.hermes/skills/`.
+Comprehensive catalog of all skills in the skill ecosystem. Generated from field analysis of the complete skill index.
 
 ---
 
-## 1. agentiko Custom Skills (33)
+## 1. Custom Skills (33)
 
 ### recon/ (21) — Discovery, fingerprinting, batch scanning
 
@@ -69,19 +69,16 @@ Comprehensive catalog of all skills in the agentiko ecosystem. Generated from fi
 | `findmy` | Track devices and people via FindMy |
 | `imessage` | Send and read iMessages |
 
-### sector/ (2) — Sector-specific recon templates
+### recon-sector (1) — Parameterized sector recon
+
+Replaced 25 individual `recon-*` skills. See `redteam/recon-sector/SKILL.md` and `references/sectors.yaml` for the 25-sector database.
+
+### Methodology (6) — Hunting workflow and OSINT
 
 | Skill | Description |
 |-------|-------------|
-| `recon-carpet-cleaning` | Carpet cleaning company WP recon patterns |
-| `recon-solar-installers` | Solar installer company WP recon patterns |
-
-### Environment (2)
-
-| Skill | Description |
-|-------|-------------|
-| `agentiko-hermes` | Hermes Agent guide: cron, delegation, YOLO, slash commands |
-| `agentiko-worker` | Worker environment: tools, paths, pitfalls |
+| `controller` | agent orchestration guide: cron, delegation, YOLO, slash commands |
+| `worker` | Worker environment: tools, paths, pitfalls |
 
 ---
 
@@ -143,35 +140,6 @@ Comprehensive catalog of all skills in the agentiko ecosystem. Generated from fi
 | `hunt-misc` | 225 reports | Catch-all for non-classified |
 | `hunt-dispatch` | Internal | Skill-set loader for /hunt orchestrator |
 
-### recon-* (27) — Sector-specific WordPress recon
-
-| Skill | Sector | Expected WP Rate | Top Finding |
-|-------|--------|-----------------|-------------|
-| `recon-automotive-dealers` | Car dealerships | 0% (enterprise) | Skip — enterprise platforms |
-| `recon-bakeries` | Bakeries | ~18% CORS | Wildcard CORS, 28+ leaked files observed |
-| `recon-breweries` | Breweries | ~15% | Age gate patterns, Untappd API |
-| `recon-cafes` | Cafes | ~20% | Toast POS, Square Online |
-| `recon-carwashes` | Car washes | ~20% source leaks | .env, Dockerfile, actuator |
-| `recon-churches` | Churches | ~30% | Highest unpatched WP rate |
-| `recon-daycare` | Daycare | ~20% | Child PII, contact forms |
-| `recon-dentists` | Dentists | ~35% | Patient portals, insurance forms |
-| `recon-fire-restoration` | Fire restoration | ~10% | Servpro franchise pattern |
-| `recon-gyms` | Gyms | ~40% | Mindbody/ClubReady integration |
-| `recon-hvac` | HVAC | ~35% | Emergency forms, booking |
-| `recon-landscaping` | Landscaping | ~50% | CORS + WP users (Tier 1) |
-| `recon-laundromats` | Laundromats | ~20% | Cents/LaundryLocker |
-| `recon-mattress-stores` | Mattress | ~25% | Financing APIs, Affirm/Klarna |
-| `recon-moving-companies` | Moving | ~6% | Fewer WP, more SaaS |
-| `recon-pet-grooming` | Pet grooming | ~20% | Gingr/PetExec portals |
-| `recon-plumbing` | Plumbing | ~35% | Emergency booking (Tier 1) |
-| `recon-pools` | Pool services | ~45% | CORS + WP users (Tier 1) |
-| `recon-property-management` | Property | ~30% | Tenant portals, PII |
-| `recon-roofing` | Roofing | ~45% | CORS + source leaks (Tier 1) |
-| `recon-salons` | Salons | ~30% | Booksy/Vagaro integration |
-| `recon-smb-services` | General SMB | ~30% | Contact form PII leakage |
-| `recon-tree-services` | Tree service | ~30% | Free estimate forms |
-| `recon-sector-expansion` | Any sector | Variable | Multi-sector batch expansion |
-
 ### Methodology (6) — Hunting workflow and OSINT
 
 | Skill | Description |
@@ -227,7 +195,7 @@ architecture-diagram, ascii-art, ascii-video, baoyu-infographic, claude-design, 
 github-auth, github-code-review, github-issues, github-pr-workflow, github-repo-management, codebase-inspection
 
 ### Software Development (10)
-plan, spike, systematic-debugging, test-driven-development, python-debugpy, node-inspect-debugger, requesting-code-review, simplify-code, hermes-agent-skill-authoring, skill-library-maintenance
+plan, spike, systematic-debugging, test-driven-development, python-debugpy, node-inspect-debugger, requesting-code-review, simplify-code, skill-library-maintenance
 
 ### MLOps (6)
 huggingface-hub, llama-cpp, serving-llms-vllm, evaluating-llms-harness, weights-and-biases, segment-anything-model, audiocraft-audio-generation
@@ -242,7 +210,7 @@ youtube-content, gif-search, heartmula, songsee
 arxiv, blogwatcher, llm-wiki, polymarket
 
 ### Autonomous AI (4)
-claude-code, codex, opencode, hermes-agent
+claude-code, codex, opencode
 
 ### Other
 email/himalaya, data-science/jupyter-live-kernel, note-taking/obsidian, smart-home/openhue, social-media/xurl, computer-use, dogfood, yuanbao
@@ -251,6 +219,6 @@ email/himalaya, data-science/jupyter-live-kernel, note-taking/obsidian, smart-ho
 
 ## Skill Index by Category Path
 
-When loading skills via `skill_view()` or referencing in cron jobs, use the skill's registered name (not the filesystem path). The Hermes skill index resolves these automatically. To browse: use `skills_list()` with optional category filter.
+When loading skills via `skill_view()` or referencing in cron jobs, use the skill's registered name (not the filesystem path). The skill index resolves these automatically. To browse: use `skills_list()` with optional category filter.
 
-For skills in the redteam/ directory, the name alone works (e.g., `hunt-xss`, `web2-recon`). For agentiko skills, use the name as listed in the agentiko custom section above.
+For skills in the redteam/ directory, the name alone works (e.g., `hunt-xss`, `web2-recon`). For custom skills, use the name as listed in the custom section above.

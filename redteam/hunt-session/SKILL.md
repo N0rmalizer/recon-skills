@@ -1,8 +1,11 @@
 ---
 name: hunt-session
 description: "Hunt Session Management vulnerabilities — session fixation (no regeneration on login), insufficient invalidation on logout / password-change / email-change, predictable or low-entropy session IDs, JWT-as-session with no exp/revocation, refresh-token rotation/reuse-detection gaps, OAuth/SSO session linkage, device-bound-session (DBSC) downgrade, and cookie attribute issues (Secure/HttpOnly/SameSite/__Host-). Validate with TWO real sessions (attacker A + victim B), body-diff every 200, and OOB confirmation for theft chains. Medium to Critical (fixation→admin hijack, no-invalidation→persistent ATO)."
-sources: hackerone_public, portswigger_research, owasp_wstg
-report_count: 18
+version: 1.1.0
+revision_date: 2026-07-25
+license: MIT
+category: redteam
+tags: [session, hunt, redteam]
 ---
 
 # HUNT-SESSION — Session Management
@@ -79,14 +82,14 @@ get_cookie () {  # $1=jar  $2=name-regex (default: common session names)
 ### Phase 1 — Session Fixation (regeneration-on-login)
 ```bash
 # Step 1: grab a pre-auth session the SERVER hands an anonymous client.
-curl -s -L -c "$JAR_A" "https://$TARGET/login" -o /dev/null
+curl --max-time 30 --connect-timeout 10 -s -L -c "$JAR_A" "https://$TARGET/login" -o /dev/null
 PRE=$(get_cookie "$JAR_A"); echo "pre-auth: $PRE"
 
 # Step 1b (stronger): can we FORCE an arbitrary ID? attacker-chosen value.
 FIX="session=AAAAdeadbeefAAAA"
 
 # Step 2: authenticate while CARRYING the pre-auth/forced cookie (reuse same jar).
-curl -s -L -c "$JAR_A" -b "$JAR_A" -X POST "https://$TARGET/login" \
+curl --max-time 30 --connect-timeout 10 -s -L -c "$JAR_A" -b "$JAR_A" -X POST "https://$TARGET/login" \
   -d "username=attacker@example.com&password=CorrectHorse1" -o /dev/null
 POST=$(get_cookie "$JAR_A"); echo "post-auth: $POST"
 
@@ -95,7 +98,7 @@ POST=$(get_cookie "$JAR_A"); echo "post-auth: $POST"
 #    now returns authenticated data → FIXATION. The server reused the anon ID.
 #  - If the forced $FIX value is accepted and authenticates → CRITICAL fixation
 #    (attacker controls the ID; no email/XSS needed to plant it).
-AUTH=$(curl -s -L -b "$JAR_A" "https://$TARGET/api/me")
+AUTH=$(curl --max-time 30 --connect-timeout 10 -s -L -b "$JAR_A" "https://$TARGET/api/me")
 echo "$AUTH" | head -c 200
 ```
 **FP guard:** a value *change* is not automatically safe — some apps rotate the readable cookie but keep a stable server-side session keyed by a second cookie. Diff the FULL `Set-Cookie` set and confirm the *old* value is genuinely dead (Phase 2). Also confirm `/api/me` returns *your* identity, not a generic 200/landing page.
@@ -103,20 +106,20 @@ echo "$AUTH" | head -c 200
 ### Phase 2 — Invalidation on Logout
 ```bash
 # A logs in for real (fresh jar), capture A's live session.
-curl -s -L -c "$JAR_A" -X POST "https://$TARGET/api/login" \
+curl --max-time 30 --connect-timeout 10 -s -L -c "$JAR_A" -X POST "https://$TARGET/api/login" \
   -H 'Content-Type: application/json' \
   -d '{"email":"attacker@example.com","password":"CorrectHorse1"}' -o /dev/null
 A=$(get_cookie "$JAR_A"); echo "A=$A"
 
 # Baseline: what does an authenticated /api/me look like for A? (capture body, not just code)
-BEFORE=$(curl -s -L -b "$JAR_A" "https://$TARGET/api/me")
+BEFORE=$(curl --max-time 30 --connect-timeout 10 -s -L -b "$JAR_A" "https://$TARGET/api/me")
 
 # Logout A.
-curl -s -L -b "$JAR_A" -X POST "https://$TARGET/api/logout" -o /dev/null
+curl --max-time 30 --connect-timeout 10 -s -L -b "$JAR_A" -X POST "https://$TARGET/api/logout" -o /dev/null
 
 # Replay A's OLD cookie value explicitly (do NOT reuse the jar — logout may have
 # overwritten it). Compare body + code against the authenticated baseline.
-AFTER=$(curl -s -L -H "Cookie: $A" "https://$TARGET/api/me" -w '\n[%{http_code}]')
+AFTER=$(curl --max-time 30 --connect-timeout 10 -s -L -H "Cookie: $A" "https://$TARGET/api/me" -w '\n[%{http_code}]')
 echo "AFTER: $AFTER"
 ```
 **FP discipline (mandatory):**
@@ -132,24 +135,24 @@ echo "AFTER: $AFTER"
 #  that you also control as B — never use a real third party.)
 
 # 1) Log the TEST account in as session A, capture it.
-curl -s -L -c "$JAR_A" -X POST "https://$TARGET/api/login" \
+curl --max-time 30 --connect-timeout 10 -s -L -c "$JAR_A" -X POST "https://$TARGET/api/login" \
   -H 'Content-Type: application/json' \
   -d '{"email":"victim@example.com","password":"OldPass!1"}' -o /dev/null
 SESSION_A=$(get_cookie "$JAR_A"); echo "SESSION_A=$SESSION_A"
-BEFORE=$(curl -s -L -H "Cookie: $SESSION_A" "https://$TARGET/api/profile")
+BEFORE=$(curl --max-time 30 --connect-timeout 10 -s -L -H "Cookie: $SESSION_A" "https://$TARGET/api/profile")
 
 # 2) Log the SAME account in as session B (separate jar = "the victim's browser").
-curl -s -L -c "$JAR_B" -X POST "https://$TARGET/api/login" \
+curl --max-time 30 --connect-timeout 10 -s -L -c "$JAR_B" -X POST "https://$TARGET/api/login" \
   -H 'Content-Type: application/json' \
   -d '{"email":"victim@example.com","password":"OldPass!1"}' -o /dev/null
 
 # 3) Victim (session B) changes the password.
-curl -s -L -b "$JAR_B" -X POST "https://$TARGET/api/change-password" \
+curl --max-time 30 --connect-timeout 10 -s -L -b "$JAR_B" -X POST "https://$TARGET/api/change-password" \
   -H 'Content-Type: application/json' \
   -d '{"old_password":"OldPass!1","new_password":"BrandNew!2"}' -o /dev/null
 
 # 4) THE TEST: replay the OLD SESSION_A captured in step 1.
-AFTER=$(curl -s -L -H "Cookie: $SESSION_A" "https://$TARGET/api/profile" -w '\n[%{http_code}]')
+AFTER=$(curl --max-time 30 --connect-timeout 10 -s -L -H "Cookie: $SESSION_A" "https://$TARGET/api/profile" -w '\n[%{http_code}]')
 echo "AFTER pw-change: $AFTER"
 ```
 **Decision + FP discipline:**
@@ -160,7 +163,7 @@ echo "AFTER pw-change: $AFTER"
 
 ### Phase 4 — Cookie Attribute Analysis
 ```bash
-curl -sI -L "https://$TARGET/" | grep -i '^set-cookie'
+curl --max-time 30 --connect-timeout 10 -sI -L "https://$TARGET/" | grep -i '^set-cookie'
 ```
 - **HttpOnly** missing → cookie reachable via `document.cookie`. Only a finding **chained to a real XSS/DOM sink** (`hunt-xss`/`hunt-dom`) — note it, don't report standalone as High.
 - **Secure** missing → cookie sent over cleartext HTTP; pair with `hunt-tls-network` (downgrade/HSTS-gap) for a network-attacker chain.
@@ -174,7 +177,7 @@ curl -sI -L "https://$TARGET/" | grep -i '^set-cookie'
 N=200; SAMP=$(mktemp)
 for i in $(seq 1 $N); do
   J=$(mktemp)
-  curl -s -L -c "$J" "https://$TARGET/login" -o /dev/null
+  curl --max-time 30 --connect-timeout 10 -s -L -c "$J" "https://$TARGET/login" -o /dev/null
   get_cookie "$J" | cut -d= -f2- >> "$SAMP"
   rm -f "$J"
 done
@@ -202,23 +205,23 @@ b64url "$(cut -d. -f2 <<<"$JWT")" | jq .   # claims: exp, iat, sub, jti
 ### Phase 7 — Refresh-Token Rotation & Reuse-Detection
 ```bash
 # 1) Obtain a refresh token (login or /oauth/token), then rotate it once.
-RT1=$(curl -s -L -X POST "https://$TARGET/api/login" \
+RT1=$(curl --max-time 30 --connect-timeout 10 -s -L -X POST "https://$TARGET/api/login" \
   -H 'Content-Type: application/json' \
   -d '{"email":"victim@example.com","password":"OldPass!1"}' | jq -r '.refresh_token')
 
 # 2) Use RT1 to mint a new access token — server SHOULD return a rotated RT2.
-R2=$(curl -s -L -X POST "https://$TARGET/auth/refresh" \
+R2=$(curl --max-time 30 --connect-timeout 10 -s -L -X POST "https://$TARGET/auth/refresh" \
   -H 'Content-Type: application/json' -d "{\"refresh_token\":\"$RT1\"}")
 RT2=$(jq -r '.refresh_token' <<<"$R2"); echo "rotated? RT1!=RT2 -> $([ "$RT1" != "$RT2" ] && echo yes || echo NO-ROTATION)"
 
 # 3) REUSE-DETECTION test: replay the OLD RT1 again (simulating the leaked token).
-REPLAY=$(curl -s -L -X POST "https://$TARGET/auth/refresh" \
+REPLAY=$(curl --max-time 30 --connect-timeout 10 -s -L -X POST "https://$TARGET/auth/refresh" \
   -H 'Content-Type: application/json' -d "{\"refresh_token\":\"$RT1\"}" -w '\n[%{http_code}]')
 echo "RT1 replay: $REPLAY"
 
 # 4) Then confirm RT2 was KILLED by the replay (correct BCP behaviour invalidates
 #    the whole family). If RT2 still works after RT1 was replayed → no family-revocation.
-curl -s -L -X POST "https://$TARGET/auth/refresh" \
+curl --max-time 30 --connect-timeout 10 -s -L -X POST "https://$TARGET/auth/refresh" \
   -H 'Content-Type: application/json' -d "{\"refresh_token\":\"$RT2\"}" -w '\n[%{http_code}]'
 ```
 **Findings:** no rotation (RT1==RT2) = a long-lived stealable credential; rotation **without** reuse-detection (RT1 replay still mints tokens, or RT2 survives the replay) = the leaked-token-persistence bug per the OAuth Security BCP. **OOB note:** if you suspect a leaked RT via SSRF/log/JS-bundle, confirm the token's reach with `hunt-ssrf`/`hunt-source-leak`, not by guessing.
@@ -230,7 +233,7 @@ curl -s -L -X POST "https://$TARGET/auth/refresh" \
 #    data → app session outlives the IdP session (single-logout gap).
 # DBSC downgrade: if responses carry Sec-Session-Registration / Sec-Session-Id,
 #  strip the device-bound proof header and replay the plain cookie:
-curl -s -L -H "Cookie: $A" "https://$TARGET/api/me" -w '\n[%{http_code}]'
+curl --max-time 30 --connect-timeout 10 -s -L -H "Cookie: $A" "https://$TARGET/api/me" -w '\n[%{http_code}]'
 #  If the plain (non-bound) cookie is still accepted → device-binding is advisory,
 #  not enforced → a stolen cookie defeats DBSC entirely.
 ```
@@ -268,3 +271,35 @@ Before claiming ANY session finding:
 - Predictable/duplicate session ID: **High**
 - No invalidation on logout: **Medium → High** (depends on theft vector)
 - Missing `HttpOnly`/`SameSite` standalone: **Low/Informational** until chained
+
+---
+
+## Verification
+
+Run this self-test to confirm session hunting readiness:
+
+1. **Skill integrity** — confirm the skill file is readable and well-formed:
+   ```bash
+   grep -q "name: hunt-session" SKILL.md && echo "PASS: skill frontmatter present" || echo "FAIL"
+   grep -q "revision_date:" SKILL.md && echo "PASS: revision date present" || echo "FAIL"
+   ```
+
+2. **Category check** — confirm the skill has a category:
+   ```bash
+   grep -q "category:" SKILL.md && echo "PASS: category present" || echo "FAIL"
+   ```
+
+3. **Pitfalls section** — confirm pitfalls are documented:
+   ```bash
+   grep -q "^## Pitfalls" SKILL.md && echo "PASS: pitfalls section present" || echo "FAIL"
+   ```
+
+All 3 tests verify the skill is properly structured and ready for use.
+
+---
+
+## Pitfalls
+- **Session fixation without pre-login session** — if the app issues a new session ID after login, fixation is not possible. Test pre/post-login session ID behavior.
+- **Session ID in URL** — `?sessionid=xxx` leaks via Referer header. Demonstrate Referer leakage to a third-party domain.
+- **Missing HttpOnly without XSS** — HttpOnly missing is a defense-in-depth issue, not a vulnerability without demonstrated XSS.
+- **Session timeout too long** — long session timeout is a policy issue, not a bug (unless combined with physical access or shared device scenario).

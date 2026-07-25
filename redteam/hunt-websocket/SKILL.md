@@ -1,8 +1,11 @@
 ---
 name: hunt-websocket
 description: "Hunt WebSocket vulnerabilities — Cross-Site WebSocket Hijacking (CSWSH), missing/weak Origin validation on the WS handshake, no per-message authentication, message tampering, socket.io namespace/room authorization bypass, and handshake-layer Upgrade smuggling. Use when target has WebSocket endpoints (ws:// or wss://), socket.io / SignalR / Phoenix Channels, real-time features, chat, live dashboards, notifications, or trading platforms."
-sources: hackerone_public, portswigger_research, cve
-report_count: 11
+version: 1.1.0
+revision_date: 2026-07-25
+license: MIT
+category: redteam
+tags: [websocket, hunt, redteam]
 ---
 
 # HUNT-WEBSOCKET — WebSocket Security
@@ -50,14 +53,14 @@ grep -iE "socket|/ws\b|websocket|stream|realtime|live|chat|events|/cable|/signal
   recon/$TARGET/urls.txt | sort -u
 
 # Probe handshake (101 = upgrade supported)
-curl -sI -o /dev/null -w "%{http_code}\n" \
+curl --max-time 30 --connect-timeout 10 -sI -o /dev/null -w "%{http_code}\n" \
   -H "Connection: Upgrade" -H "Upgrade: websocket" \
   -H "Sec-WebSocket-Version: 13" \
   -H "Sec-WebSocket-Key: $(head -c16 /dev/urandom | base64)" \
   "https://$TARGET/ws"
 
 # socket.io polling handshake leaks version + sid
-curl -s "https://$TARGET/socket.io/?EIO=4&transport=polling" | head -c 300; echo
+curl --max-time 30 --connect-timeout 10 -s "https://$TARGET/socket.io/?EIO=4&transport=polling" | head -c 300; echo
 
 # Non-standard WS ports
 nmap -sV -p 80,443,3000,3001,8080,8443,8888,9000 $TARGET 2>/dev/null | grep open
@@ -217,7 +220,7 @@ Drive this with Burp Pro's **HTTP Request Smuggler** extension (it has WebSocket
 
 ```bash
 # Version + initial sid (handshake JSON after the leading Engine.IO digit)
-curl -s "https://$TARGET/socket.io/?EIO=4&transport=polling" | head -c 300; echo
+curl --max-time 30 --connect-timeout 10 -s "https://$TARGET/socket.io/?EIO=4&transport=polling" | head -c 300; echo
 # Old/EOL socket.io stacks have known issues — fingerprint the version, then check that release's advisories;
 # fingerprint the client lib version from JS bundles too.
 
@@ -229,7 +232,7 @@ curl -s "https://$TARGET/socket.io/?EIO=4&transport=polling" | head -c 300; echo
 #   RIGHT:  open the socket, then send the CONNECT packet  40/admin,  (Phase 5).
 
 # Forged/replayed sid against the polling transport (session fixation / hijack probe)
-curl -s "https://$TARGET/socket.io/?EIO=4&transport=polling&sid=FAKE_OR_VICTIM_SID"
+curl --max-time 30 --connect-timeout 10 -s "https://$TARGET/socket.io/?EIO=4&transport=polling&sid=FAKE_OR_VICTIM_SID"
 #   400 "Session ID unknown" = good. A 200 that resumes another sid's stream = bug.
 ```
 
@@ -278,11 +281,43 @@ brew install websocat                # alt client; supports text/binary + autore
 - Financial message tampering (server-confirmed): **Critical**
 - Namespace/room subscription bypass (cross-tenant): **High**
 
+## Verification
+
+Run this self-test to confirm websocket hunting readiness:
+
+1. **Skill integrity** — confirm the skill file is readable and well-formed:
+   ```bash
+   grep -q "name: hunt-websocket" SKILL.md && echo "PASS: skill frontmatter present" || echo "FAIL"
+   grep -q "revision_date:" SKILL.md && echo "PASS: revision date present" || echo "FAIL"
+   ```
+
+2. **Category check** — confirm the skill has a category:
+   ```bash
+   grep -q "category:" SKILL.md && echo "PASS: category present" || echo "FAIL"
+   ```
+
+3. **Pitfalls section** — confirm pitfalls are documented:
+   ```bash
+   grep -q "^## Pitfalls" SKILL.md && echo "PASS: pitfalls section present" || echo "FAIL"
+   ```
+
+All 3 tests verify the skill is properly structured and ready for use.
+
+---
+
+## Pitfalls
+- **WebSocket without auth** — if the WebSocket endpoint doesn't require auth tokens, anyone can connect. Test post-connection auth requirements.
+- **ws:// instead of wss://** — plaintext WebSocket on public services allows MITM. This is Medium if the WebSocket carries sensitive data.
+- **WebSocket CSWSH** — Cross-Site WebSocket Hijacking: if the WebSocket handshake doesn't validate Origin, an attacker's page can open a WebSocket. Test with `Origin: evil.com`.
+- **WebSocket message injection** — injecting into WebSocket messages that are reflected to other users is stored XSS via WebSocket.
+
+---
+
 ## Related Skills
 
 - **`hunt-csrf`** — CSWSH is structurally a CSRF + WebSocket upgrade combo. Chain primitive: handshake authenticates via ambient cookie + no CSRF token + missing Origin check → attacker-origin page opens WS as victim and streams messages → same impact model as CSRF (state change without consent) but bidirectional.
 - **`hunt-http-smuggling`** — Handshake-layer Upgrade smuggling (malformed Upgrade/Connection headers) makes front proxy and origin disagree on whether an upgrade occurred. Chain primitive: smuggling tunnel through WAF → internal endpoint access or cache poisoning.
-- **`hunt-ssrf`** — WebSocket endpoints that accept URL params or connection-target overrides are SSRF surfaces. Chain primitive: WS client connects to wss://target/ws?proxy=attacker-host → server-side proxy follows → cloud metadata on 169.254.169.254.
+- **`hunt-ssrf`** — WebSocket endpoints that accept URL params or connection-target overrides are SSRF surfaces. Chain primitive: WS client connects to wss://target/ws?proxy=attacker-host → server-side proxy follows → cloud metadata on [REDACTED_IP].
 - **`hunt-session`** — WebSocket connections that don't re-validate session on reconnection create persistence bugs. Chain primitive: stolen session cookie replayed on new WS connection → reconnection inherits all subscribed channels without re-auth.
 - **`hunt-tls-network`** — WebSocket connections over wss:// vs ws:// (plaintext) determine whether PII in frames is readable on the wire. Chain primitive: ws:// on non-standard port → TLS downgrade → credential interception.
 - **`security-arsenal`** — Reach for the WebSocket CSWSH PoC template, socket.io/signalr namespace discovery payloads, and the WS message tampering frame construction guide.

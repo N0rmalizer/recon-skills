@@ -1,8 +1,11 @@
 ---
 name: web3-audit
 description: Smart contract security audit — 10 DeFi bug classes (accounting desync, access control, incomplete path, off-by-one, oracle, ERC4626, reentrancy, flash loan, signature replay, proxy), pre-dive kill signals (TVL < $500K etc), Foundry PoC template, grep patterns for each class, and real Immunefi paid examples. Use for any Solidity/Rust contract audit or when deciding whether a DeFi target is worth hunting.
-sources: web3_research, immunefi_reports
-report_count: 6
+version: 1.1.0
+revision_date: 2026-07-25
+license: MIT
+category: redteam
+tags: [web3, audit, redteam, blockchain]
 ---
 
 # WEB3 SMART CONTRACT AUDIT
@@ -550,6 +553,31 @@ forge test --gas-report
 # Coverage
 forge coverage --report summary
 ```
+
+---
+
+## Verification
+
+1. **Solana tooling** — confirm Anchor/SPL tool availability:
+   ```bash
+   which anchor 2>/dev/null && echo "PASS: anchor CLI found" || echo "NOTE: anchor not installed"
+   which solana 2>/dev/null && echo "PASS: solana CLI found" || echo "NOTE: solana CLI not installed"
+   ```
+2. **Common Solana vulnerability classes** — confirm key classes are documented:
+   ```bash
+   grep -q "account confusion\|signer check\|CPI\|PDA\|bump seed" SKILL.md && echo "PASS: Solana-specific vuln classes present" || echo "FAIL"
+   ```
+All tests verify Web3 audit readiness.
+
+---
+
+## Pitfalls
+- **Solana vs EVM confusion** — Solana's programming model (Rust, BPF) is entirely different from EVM (Solidity, EVM bytecode). Don't cross-apply techniques.
+- **Reentrancy on non-EVM chains** — Solana's runtime processes transactions sequentially within a block. Cross-program invocation (CPI) reentrancy is different from EVM reentrancy.
+- **Account confusion on Solana** — Solana's account model requires explicit account passing. Missing signer checks and account validation are the main Solana vulnerability classes.
+- **Arbitrary CPI vulnerability** — passing a user-controlled program ID to `invoke()` or `invoke_signed()` allows calling arbitrary programs.
+- **PDA (Program Derived Address) misuse** — PDAs without proper seed validation can be forged. Seeds from user input without type checking are dangerous.
+
 
 ---
 

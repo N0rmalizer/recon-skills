@@ -1,24 +1,22 @@
 ---
 name: docker-privesc
 description: Escape Docker containers to host root via 5 techniques.
-version: 1.0.0
-author: agentiko
+version: 1.1.0
+revision_date: 2026-07-25
 license: MIT
 platforms: [linux]
-compatibility: Requires agentiko worker (curl, nmap, python3)
+compatibility: Requires curl
 disable-model-invocation: true
-metadata:
-  hermes:
-    tags: [infra, docker, privilege-escalation, container-escape]
-    category: infra
-    related_skills:
-      - port-service-discovery
-      - api-noauth-hunt
+tags: [infra, docker, privilege-escalation, container-escape]
+category: infra
+related_skills:
+  - port-service-discovery
+  - api-noauth-hunt
 ---
 
 # Docker Privilege Escalation Skill
 
-Docker container escape and privilege escalation — Docker socket abuse, volume mount host takeover, docker group root-equivalence, and prior-privilege-escalation detection. Docker group membership = instant root on the host via 5 distinct techniques. Confirmed on Smart Fit (Docker containers extracted, 12 image layers, privileged mode) and CGE-RJ (Dockerfile + docker-compose.prod.yml exposed in GitLab).
+Docker container escape and privilege escalation — Docker socket abuse, volume mount host takeover, docker group root-equivalence, and prior-privilege-escalation detection. Docker group membership = instant root on the host via 5 distinct techniques. Confirmed on fitness-chain (Docker containers extracted, 12 image layers, privileged mode) and gov-finance-portal (Dockerfile + docker-compose.prod.yml exposed in GitLab).
 
 ## When to Use
 
@@ -157,7 +155,7 @@ fi
 # If docker client is NOT available, install it or use the socket directly
 if [[ ! -f /usr/bin/docker ]] && [[ -S /var/run/docker.sock ]]; then
   echo "[*] No docker client — using REST API via socket"
-  curl -sk --unix-socket /var/run/docker.sock http://localhost/containers/json | head -20
+  curl --max-time 30 --connect-timeout 10 -sk --unix-socket /var/run/docker.sock http://localhost/containers/json | head -20
 fi
 ```
 
@@ -176,8 +174,8 @@ awk -F: '$3 == 0 {print $1}' /etc/passwd 2>/dev/null
 
 # Check for newly created authorized_keys files
 echo "  Root SSH keys:"
-ls -la /root/.ssh/authorized_keys 2>/dev/null
-stat /root/.ssh/authorized_keys 2>/dev/null | grep Modify
+ls -la ~/.ssh/authorized_keys 2>/dev/null
+stat ~/.ssh/authorized_keys 2>/dev/null | grep Modify
 
 # Check for SUID binaries
 echo "  New SUID binaries:"
@@ -190,16 +188,16 @@ done
 
 ## Real Production Results
 
-### Smart Fit — Docker Container Extraction
+### fitness-chain — Docker Container Extraction
 - 12 Docker image layers extracted from `.git` exposed repository
-- Docker containers running on OVH infrastructure (51.222.42.163)
+- Docker containers running on OVH infrastructure ([REDACTED_IP])
 - `.env` exposed with MySQL, Redis, SendGrid, OVH S3 credentials
 - 21 credentials for rotation across 5 Firebase projects + OVH + AWS
 
-### CGE-RJ — Docker Compose in GitLab
+### gov-finance-portal — Docker Compose in GitLab
 - `docker-compose.prod.yml` exposed in public GitLab repository
 - Blue/green deployment architecture mapped
-- Internal IP 10.11.82.75 discovered in deploy scripts
+- Internal IP 10.x.x.x (redacted) discovered in deploy scripts
 
 ### AI Agent Automated Docker Privesc (from TECNICAS_DOCKER_PRIVESC.md)
 - Claude Code autonomously discovered docker group membership

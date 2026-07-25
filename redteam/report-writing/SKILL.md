@@ -1,8 +1,11 @@
 ---
 name: report-writing
 description: Bug bounty report writing for H1/Bugcrowd/Intigriti/Immunefi — report templates, human tone guidelines, impact-first writing, CVSS 3.1 scoring, title formula, impact statement formula, severity decision guide, downgrade counters, pre-submit checklist. Use after validating a finding and before submitting. Never use "could potentially" — prove it or don't report.
-sources: field_recon, hackerone_public, bugcrowd_public, immunefi_public
-report_count: 50
+version: 1.1.0
+revision_date: 2026-07-25
+license: MIT
+category: redteam
+tags: [report, writing, redteam]
 ---
 
 # REPORT WRITING
@@ -485,6 +488,31 @@ Authorization: Bearer ACCOUNT_A_TOKEN
 
 ---
 
+## Verification
+
+1. **Human tone check** — confirm AI-signal words are flagged:
+   ```bash
+   grep -q "comprehensive\|leverage\|seamless\|ensure\|delve" SKILL.md && echo "FAIL: AI-signal words present" || echo "PASS: no AI-signal words"
+   ```
+2. **Title formula** — confirm the title formula is documented:
+   ```bash
+   grep -q "Bug Class.*in.*Endpoint.*allows.*attacker" SKILL.md && echo "PASS: title formula present" || echo "FAIL"
+   ```
+All tests verify report writing readiness.
+
+---
+
+## Pitfalls
+- **Executive summary as afterthought** — it's the ONLY section executives read. Lead with business impact, not technical details.
+- **"Could" and "may" language** — these words signal theoretical findings. Use "allows an attacker to" and "demonstrated by."
+- **No reproduction steps** — "I found XSS on /search" is worthless without the exact HTTP request that triggers it.
+- **CVSS mismatch with impact** — claiming Critical but describing Low impact destroys credibility. CVSS score must match the demonstrated impact.
+- **Over-long reports** — triagers skim reports. Keep the body under 600 words. Use attachments for detailed evidence.
+- **AI-sounding language** — words like "comprehensive," "leverage," "seamless," "ensure" signal AI-generated content. Be direct and human.
+
+
+---
+
 ## Related Skills & Chains
 
 - **`triage-validation`** — When deciding whether to write a report at all. Workflow primitive: NEVER open this skill before `triage-validation`'s 7-Question Gate passes; a finding that fails the gate should be killed, not written up.
@@ -508,7 +536,7 @@ Authorization: Bearer ACCOUNT_A_TOKEN
 - BAD: "Interesting finding on /api/users"
 - BAD: "IDOR vulnerability in API"
 - GOOD: "Authenticated IDOR on /api/users/{uid} -> admin email + role disclosure"
-- GOOD: "Unauthenticated SSRF on /preview?url= -> AWS metadata 169.254.169.254 reachable"
+- GOOD: "Unauthenticated SSRF on /preview?url= -> AWS metadata [REDACTED_IP] reachable"
 
 The bad titles get opened last. The good titles get opened first. Same finding, different queue position, different triage day, different payout speed.
 
@@ -557,17 +585,17 @@ Skills, README files, and any public-facing documentation must be **fully agnost
 Use agnostic patterns instead:
 
 ```
-BAD:  "wines.com had PHPInfo + XMLRPC -> RCE"
+BAD:  "ecommerce.example.com had PHPInfo + XMLRPC -> RCE"
 GOOD: "e-commerce target had PHPInfo + XMLRPC -> RCE"
 
-BAD:  "info@toolking.com exposed via REST API"
+BAD:  "info@tools-retailer.com exposed via REST API"
 GOOD: "corporate email pattern exposed via REST API"
 
-BAD:  "patientportal.com MySQL 3306 OPEN"
+BAD:  "health-saas.example.com MySQL 3306 OPEN"
 GOOD: "healthcare SaaS target had MySQL 3306 exposed"
 ```
 
-Per-target findings with full detail live in private output directories (e.g., `/root/output/recon_us/`). Skills store **patterns, techniques, and methodology** — never company-specific data. This applies to all SKILL.md files, README, SOUL.md, AGENTS.md, and any public-facing documentation.
+Per-target findings with full detail live in private output directories (e.g., `$OUTDIR/recon_output/`). Skills store **patterns, techniques, and methodology** — never company-specific data. This applies to all SKILL.md files, README, SOUL.md, AGENTS.md, and any public-facing documentation.
 
 **When writing a skill or README:**
 - Use `TARGET`, `example.com`, `evil.com` as placeholders

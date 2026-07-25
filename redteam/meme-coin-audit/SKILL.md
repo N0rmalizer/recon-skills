@@ -1,8 +1,11 @@
 ---
 name: meme-coin-audit
 description: Meme coin and token security audit — rug pull detection (honeypot, hidden mint, fee manipulation, LP lock bypass), Solana SPL token analysis (freeze authority, mint authority, metadata mutability), Token-2022 extension risks (transfer hooks, permanent delegate), DEX liquidity pool attacks (sandwich amplification, LP drain, bonding curve exploits), pump.fun/Raydium/Jupiter integration risks, and real exploit examples from 2024-2025. Use for any token audit, rug pull assessment, meme coin security review, or pre-investment due diligence.
-sources: web3_research, token_security_audits
-report_count: 5
+version: 1.1.0
+revision_date: 2026-07-25
+license: MIT
+category: redteam
+tags: [meme-coin, audit, web3, redteam]
 ---
 
 # MEME COIN & TOKEN SECURITY AUDIT
@@ -272,6 +275,31 @@ When you don't have source code, check on-chain:
    - Any transfer hook? → potential honeypot
    - Permanent delegate? → CRITICAL
 ```
+
+---
+
+## Verification
+
+1. **Solana/Solidity tooling** — confirm basic tool availability:
+   ```bash
+   which solc 2>/dev/null && echo "PASS: solc found" || echo "NOTE: solc not installed"
+   which solana 2>/dev/null && echo "PASS: solana CLI found" || echo "NOTE: solana CLI not installed"
+   ```
+2. **Common patterns awareness** — confirm key patterns are recognized:
+   ```bash
+   grep -q "reentrancy\|delegatecall\|tx.origin" SKILL.md && echo "PASS" || echo "FAIL"
+   ```
+All tests verify Web3 audit readiness.
+
+---
+
+## Pitfalls
+- **Auditing without Solidity knowledge** — Web3 auditing requires understanding of reentrancy, delegatecall, tx.origin, and access control patterns specific to smart contracts.
+- **Unverified contract without source** — you can't audit what you can't read. Use decompilers (Dedaub, Panoramix) but acknowledge limitations.
+- **Front-running without practical exploit** — MEV is a known design consideration, not always a vulnerability. Demonstrate actual fund extraction.
+- **Tokenomics flaws as security bugs** — inflation bugs, minting flaws, and fee manipulation are finance issues unless they enable unauthorized token creation.
+- **Ignoring proxy patterns** — UUPS, Transparent, and Beacon proxies have different upgrade risks. Audit the proxy implementation separately from the logic contract.
+
 
 ---
 

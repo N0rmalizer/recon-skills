@@ -1,8 +1,11 @@
 ---
 name: evidence-hygiene
 description: "Evidence-capture and PoC-redaction discipline for bug-bounty submissions: cookie redaction protocol (which fields to mask, Preview annotation / Burp panel hiding / DevTools workflow), PII black-bar discipline (what to mask in other-user data — names, emails, phones, faces — vs what is safe to leave — usernames, trace IDs, request bodies), HAR file sanitization (jq filters for Cookie/Set-Cookie/Authorization headers), Burp Repeater/Intruder screenshot hygiene (hide request body, show only Results table for rate-limit attacks), Chrome DevTools Console PoC patterns (credentials include so cookies are not echoed, labeled console.log), screenshot capture order, filename conventions, post-submission rotation hygiene. Use BEFORE any PoC screenshot, BEFORE attaching a HAR, or whenever preparing evidence with session cookies or other-user PII. Pairs with bugcrowd-reporting and report-writing."
-sources: field_recon, bug_bounty_reports
-report_count: 8
+version: 1.1.0
+revision_date: 2026-07-25
+license: MIT
+category: redteam
+tags: [evidence, hygiene, reporting, redteam]
 ---
 
 # EVIDENCE HYGIENE — PoC Capture & Redaction Discipline
@@ -54,7 +57,7 @@ The session cookie value is the highest-value secret in any PoC. Mask:
 
 **Method B — Black-bar in image editor** (when capture inevitably includes cookies)
 - macOS: Open screenshot in Preview → Tools → Annotate → Rectangle → set fill color to black → drag rectangle over the cookie value → save
-- Windows: Use Snip & Sketch's annotation tools or any image editor (Paint.NET, etc.)
+- Windows: Use Snip & Sketch's annotationtools or any image editor (Paint.NET, etc.)
 - Burp itself: in Burp's Proxy → Match and Replace, you can pre-emptively redact cookie values to placeholder strings before screenshotting
 
 **Method C — Find/replace in raw text** (for HAR files, terminal transcripts)
@@ -322,16 +325,16 @@ In the report body, reference each by filename:
 When publishing ANY output to public channels (GitHub README, blog posts, reports, shared dashboards):
 
 ### Rules — NEVER include:
-- **Company/domain names** with specific vulnerability details (e.g. "wines.com has PHPInfo exposed")
+- **Company/domain names** with specific vulnerability details (e.g. "ecommerce.example.com has PHPInfo exposed")
 - **Person names** (employees, users, researchers)
 - **Email addresses** of real people
 - **Internal IPs, hostnames, or AD domains**
 - **Raw credentials** (even if expired)
 
 ### Safe alternatives:
-- Replace company names with sector labels: `e-commerce site` instead of `wines.com`
+- Replace company names with sector labels: `e-commerce site` instead of `ecommerce.example.com`
 - Replace counts with ranges: `several users` instead of `11 users`
-- Describe patterns without PII: `CORS credential reflection on WP REST API` not `CORS on realpro.com`
+- Describe patterns without PII: `CORS credential reflection on WP REST API` not `CORS on realestate.example.com`
 - Use agnostic tables: `| Critical | 8 | MySQL exposed, PHPInfo + exec |` not naming specific targets
 
 ### Checklist before public push:
@@ -344,7 +347,7 @@ When publishing ANY output to public channels (GitHub README, blog posts, report
 ```
 
 ### Real-world consequence:
-A README with `wines.com — PHPInfo + open reg → RCE` reveals to EVERYONE that this specific company is vulnerable. The data belongs to the client/engagement, not to public showcases. Pattern-based descriptions teach without exposing.
+A README with `ecommerce.example.com — PHPInfo + open reg → RCE` reveals to EVERYONE that this specific company is vulnerable. The data belongs to the client/engagement, not to public showcases. Pattern-based descriptions teach without exposing.
 
 ---
 
@@ -374,6 +377,23 @@ Quarterly, sweep your `~/security-research/` and `~/Downloads/` for stale HARs /
 
 ---
 
+## Pitfalls
+
+- **Capturing cookies in screenshots** — the #1 evidence-hygiene mistake. Always collapse the Network tab Headers panel, hide the Burp Request panel, and never screenshot "Copy as cURL" output.
+- **Leaving victim PII unredacted** — IDOR PoCs that show real names, emails, and phone numbers violate responsible disclosure. Black-bar all other-user PII even in private platform attachments.
+- **HAR files with live cookies** — exported HARs contain full cookie values unless sanitized with jq. Always run the sanitize_har function before attaching.
+- **Console.log echoing cookies** — DevTools Console PoCs must use `credentials: 'include'`, never hardcode cookie values in fetch calls.
+- **Forgetting "allow pasting"** — Chrome blocks paste into Console by default. Type `allow pasting` before any PoC to prevent the warning text from appearing in screenshots.
+- **Not clearing Console between steps** — multi-step PoCs with overlapping console output confuse triagers. Clear Console (Cmd+K / Ctrl+L) between each call.
+- **Screenshotting Proxy HTTP history** — shows entire request/response with cookies. Use Repeater instead and hide the request panel.
+- **Post-submission cookie not rotated** — cookies visible in submitted screenshots are dead only after logout/login rotation. Rotate immediately after submission.
+- **Inconsistent screenshot dimensions** — different browser sizes across PoC steps look sloppy. Take all screenshots in one sitting with consistent window size.
+- **Not saving unredacted originals** — triagers may request the unredacted version. Keep originals in a local encrypted folder; never share via email.
+- **Public output with real domains** — any README/blog/report with "target.example.com — vuln detail" exposes the client. Use sector labels and pattern-based descriptions.
+- **Stale artifacts accumulating** — HARs and screenshots from old engagements pile up. Quarterly audit: archive or delete stale evidence files.
+
+---
+
 ## 9. Pairing with Other Skills
 
 | For this question / task | Use this skill |
@@ -384,6 +404,42 @@ Quarterly, sweep your `~/security-research/` and `~/Downloads/` for stale HARs /
 | "How do I redact / sanitize this evidence?" | This skill (`evidence-hygiene`) |
 | "How do I demonstrate the bug actually fires?" | `security-arsenal` |
 | "Where are the recon probes for this asset class?" | `offensive-osint` |
+
+---
+
+## Verification
+
+Run this self-test to confirm evidence-hygiene readiness:
+
+1. **HAR sanitizer syntax** — verify the jq filter is syntactically valid:
+   ```bash
+   echo '{"log":{"entries":[{"request":{"headers":[{"name":"Cookie","value":"secret=abc123"}],"cookies":[{"value":"abc123"}]}}]}}' | jq '.log.entries |= map((.request.headers |= map(if .name | ascii_downcase | IN("cookie","authorization") then .value = "<REDACTED>" else . end)) | (.request.cookies |= map(.value = "<REDACTED>")))' >/dev/null 2>&1 && echo "PASS: jq filter valid" || echo "FAIL"
+   ```
+
+2. **Cookie redaction checklist** — confirm the pre-screenshot checklist exists:
+   ```bash
+   grep -q "Pre-screenshot checklist" SKILL.md && echo "PASS" || echo "FAIL"
+   grep -q "Network tab Headers panel is collapsed" SKILL.md && echo "PASS" || echo "FAIL"
+   ```
+
+3. **PII black-bar protocol** — confirm PII masking is documented:
+   ```bash
+   grep -q "PII Black-Bar" SKILL.md && echo "PASS" || echo "FAIL"
+   grep -q "real names, emails, phone numbers" SKILL.md && echo "PASS" || echo "FAIL"
+   ```
+
+4. **Console PoC pattern** — confirm clean fetch pattern exists:
+   ```bash
+   grep -q "credentials: .include." SKILL.md && echo "PASS: credentials:include pattern" || echo "FAIL"
+   grep -q "allow pasting" SKILL.md && echo "PASS: allow-pasting reminder" || echo "FAIL"
+   ```
+
+5. **Post-submission hygiene** — confirm rotation protocol:
+   ```bash
+   grep -q "Rotate the test account credentials" SKILL.md && echo "PASS" || echo "FAIL"
+   ```
+
+All 5 tests verify the critical evidence-hygiene safeguards are present.
 
 ---
 

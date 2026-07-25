@@ -1,8 +1,11 @@
 ---
 name: redteam-report-template
 description: Client-facing red-team deliverable format — codifies the Subject / Observations / Description / Impact / Recommendation / PoC structure used for external red-team engagements (not bug-bounty platform reports). Different audience, different tone, different cadence. Built from an authorized engagement deliverable where 14 findings were packaged into a 52KB MD + 2.2MB DOCX with 16 embedded screenshots. Use when the engagement is "external red team for an enterprise client" (not H1/Bugcrowd/Intigriti), when generating the final report, when the client has specified a custom report format, or when packaging findings into DOCX/PDF.
-sources: authorized-engagement-deliverable, enterprise-redteam-report-conventions
-report_count: 1
+version: 1.1.0
+revision_date: 2026-07-25
+license: MIT
+category: redteam
+tags: [report, template, redteam]
 ---
 
 ## When to use
@@ -51,7 +54,7 @@ This is the canonical structure each finding follows:
 <Specific, actionable remediation. Vendor patch, configuration change, code-level fix. Avoid "implement security best practices" — say what specifically.>
 
 ### 6. Proof of Concept (PoC)
-<Steps to reproduce, numbered. Include the exact HTTP requests, payloads, tools used.>
+<Steps to reproduce, numbered. Include the exact HTTP requests, payloads,tools used.>
 
 **Step 1:** <action>
 ```http
@@ -298,7 +301,7 @@ Pre-delivery checklist:
 - [ ] Cleanup statement explicitly says what was created and what was removed
 - [ ] IoC section enables the SOC to reconstruct what they saw
 - [ ] Spell-check (especially client company name, product names)
-- [ ] All tool versions noted in methodology
+- [ ] Allcommand line versions noted in methodology
 - [ ] Status field set correctly on every finding (especially patched-mid-engagement)
 
 ---
@@ -335,6 +338,31 @@ For calibration:
 - Time-to-deliverable: ~6 hours after engagement close for first draft
 
 These numbers are typical for a 1-week external red-team engagement on a mid-size enterprise. Scale down for short tests, up for full purple-team exercises.
+
+---
+
+## Verification
+
+1. **CVSS calculator** — confirm CVSS 3.1 awareness:
+   ```bash
+   grep -q "CVSS\|cvss\|3.1" SKILL.md && echo "PASS: CVSS scoring documented" || echo "FAIL"
+   ```
+2. **Template structure** — confirm report sections are documented:
+   ```bash
+   grep -q "Executive Summary\|Findings\|Remediation" SKILL.md && echo "PASS: report structure present" || echo "FAIL"
+   ```
+All tests verify report template readiness.
+
+---
+
+## Pitfalls
+- **Over-technical language** — executives read the executive summary. Make the first paragraph impact-focused: "An attacker can steal all customer PII by..."
+- **Missing CVSS score** — red-team reports without CVSS scores are dismissed by compliance teams. Always include CVSS 3.1 with vector string.
+- **No remediation timeline** — findings without "fix within X days" are ignored. Map severity to SLA: Critical=48h, High=7d, Medium=30d, Low=90d.
+- **One finding per vulnerability instance** — multiple instances of the same vuln class across different hosts should be one finding with scope noted.
+- **Redacted screenshots without unredacted availability** — offer the unredacted version privately. Triagers need it for verification.
+- **No CVE cross-references** — if the finding matches a CVE, cite it. It adds credibility and helps the client understand the risk.
+
 
 ---
 

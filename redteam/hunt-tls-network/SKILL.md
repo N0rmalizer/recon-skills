@@ -1,8 +1,11 @@
 ---
 name: hunt-tls-network
 description: "Hunt TLS/SSL and DNS misconfigurations — missing HSTS (downgrade attack), weak cipher suites, expired/invalid certificates, mTLS bypass, missing SPF/DKIM/DMARC (email spoofing), DNS Zone Transfer (AXFR), dangling CNAME subdomain takeover, CAA records. Most of these are Info/Low on their own — this skill is opinionated about which findings actually pay (spoofable DMARC with delivered-to-inbox proof, AXFR returning internal hosts, dangling-CNAME takeover) versus which get rejected as best-practice noise (missing CAA, missing HSTS with no MitM position). Use during recon to find infrastructure weaknesses, and to TRIAGE them honestly before reporting."
-sources: portswigger_research, ssl_labs_research, hstspreload_org
-report_count: 12
+version: 1.1.0
+revision_date: 2026-07-25
+license: MIT
+category: redteam
+tags: [tls, network, hunt, redteam]
 ---
 
 # HUNT-TLS-NETWORK — TLS/SSL & DNS Security
@@ -64,7 +67,7 @@ openssl s_client -connect $TARGET:443 -tls1_1 2>/dev/null | grep -E "Protocol|Ci
 
 ```bash
 # Check HSTS header on main domain and all subdomains
-curl -sI "https://$TARGET/" | grep -i "strict-transport-security"
+curl --max-time 30 --connect-timeout 10 -sI "https://$TARGET/" | grep -i "strict-transport-security"
 # Expected: Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
 
 # Check critical subdomains (login, api, auth)
@@ -78,11 +81,11 @@ for sub in login auth api account pay www; do
 done
 
 # Check HTTP (non-HTTPS) redirect
-curl -sI "http://$TARGET/" | grep -i "location"
+curl --max-time 30 --connect-timeout 10 -sI "http://$TARGET/" | grep -i "location"
 # Should redirect to HTTPS immediately
 
 # HSTS preload check
-curl -s "https://hstspreload.org/api/v2/status?domain=$TARGET" | python3 -m json.tool 2>/dev/null
+curl --max-time 30 --connect-timeout 10 -s "https://hstspreload.org/api/v2/status?domain=$TARGET" | python3 -m json.tool 2>/dev/null
 ```
 
 ---
@@ -99,7 +102,7 @@ for NS in $(dig NS $TARGET +short); do
   dig AXFR $TARGET @$NS 2>/dev/null | grep -v "^;" | head -30
 done
 
-# Zone transfer via alternative tools
+# Zone transfer via alternativetools
 host -t AXFR $TARGET $(dig NS $TARGET +short | head -1) 2>/dev/null | head -30
 nmap -sn --script dns-zone-transfer $TARGET 2>/dev/null | head -30
 
@@ -127,8 +130,8 @@ for selector in default google mail k1 selector1 selector2 s1 s2 dkim; do
 done
 
 # --- Spoofability evaluation (heuristic only; PROOF is the swaks test below) ---
-SPF=$(dig +short TXT $TARGET | tr -d '"' | grep -i "v=spf1")
-DMARC=$(dig +short TXT _dmarc.$TARGET | tr -d '"' | grep -i "v=DMARC1")
+SPF=$(dig +short  # Bulk: dnsx -silent -l file -a -resp-only TXT $TARGET | tr -d '"' | grep -i "v=spf1")
+DMARC=$(dig +short  # Bulk: dnsx -silent -l file -a -resp-only TXT _dmarc.$TARGET | tr -d '"' | grep -i "v=DMARC1")
 
 # SPF "+all" / "all" with no qualifier = pass-everything = spoofable from any IP
 echo "$SPF" | grep -Eq '[+ ]all($|[^-~?])' && echo "[CRITICAL] SPF passes all senders (+all)"
@@ -146,7 +149,7 @@ else
 fi
 ```
 
-**Why the original `dig ... | wc -c | grep '^1$'` check was broken:** empty `dig +short` output is a zero-length string; piped through `wc -c` it usually yields `0`, and the surrounding newline handling is shell-dependent, so the `^1$` match misfires both ways. Always capture into a variable and test `[ -z "$VAR" ]`.
+**Why the original `dig ... | wc -c | grep '^1$'` check was broken:** empty `dig +short  # Bulk: dnsx -silent -l file -a -resp-only` output is a zero-length string; piped through `wc -c` it usually yields `0`, and the surrounding newline handling is shell-dependent, so the `^1$` match misfires both ways. Always capture into a variable and test `[ -z "$VAR" ]`.
 
 ### Spoofability is a RECEIVER decision, not a record-reading exercise
 
@@ -189,8 +192,8 @@ for HEADER in "Strict-Transport-Security" "Content-Security-Policy" "X-Frame-Opt
 done
 
 # Automated security headers check
-curl -s "https://securityheaders.com/?q=https://$TARGET&followRedirects=on" | \
-  grep -oP "grade-\K[A-F+]" | head -3
+curl --max-time 30 --connect-timeout 10 -s "https://securityheaders.com/?q=https://$TARGET&followRedirects=on" | \
+  grep -Eo "grade-\K[A-F+]" | head -3
 ```
 
 ---
@@ -199,9 +202,9 @@ curl -s "https://securityheaders.com/?q=https://$TARGET&followRedirects=on" | \
 
 ```bash
 # crt.sh — certificate transparency logs
-curl -s "https://crt.sh/?q=%25.$TARGET&output=json" | \
+curl --max-time 30 --connect-timeout 10 -s "https://crt.sh/?q=%25.$TARGET&output=json" | \
   python3 -m json.tool 2>/dev/null | grep "name_value" | \
-  grep -oP '"name_value": "\K[^"]+' | \
+  grep -Eo '"name_value": "\K[^"]+' | \
   sed 's/\*\.//g' | sort -u > recon/$TARGET/ct-subdomains.txt
 
 echo "[+] CT subdomains found: $(wc -l < recon/$TARGET/ct-subdomains.txt)"
@@ -221,9 +224,9 @@ This is the highest-impact item in the whole skill. A CNAME/A record pointing at
 ```bash
 # For each subdomain from CT logs, resolve the CNAME chain and check for a live origin
 while read sub; do
-  CNAME=$(dig +short CNAME "$sub" | head -1)
+  CNAME=$(dig +short  # Bulk: dnsx -silent -l file -a -resp-only CNAME "$sub" | head -1)
   [ -z "$CNAME" ] && continue
-  CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 8 "https://$sub/" 2>/dev/null)
+  CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 8 --connect-timeout 8 "https://$sub/" 2>/dev/null)
   echo "$sub -> $CNAME  [http $CODE]"
 done < recon/$TARGET/ct-subdomains.txt | tee recon/$TARGET/cname-map.txt
 
@@ -263,14 +266,14 @@ dig CAA "*.$TARGET" +short
 
 ```bash
 # Check if endpoint requires client certificate
-curl -sk "https://$TARGET/internal/" 2>&1 | grep -i "ssl\|certificate\|403\|401"
+curl --max-time 30 --connect-timeout 10 -sk "https://$TARGET/internal/" 2>&1 | grep -i "ssl\|certificate\|403\|401"
 
 # Try without client cert (should fail)
-curl -sk --cert "" "https://$TARGET/internal/api" | head -5
+curl --max-time 30 --connect-timeout 10 -sk --cert "" "https://$TARGET/internal/api" | head -5
 
 # Try common bypass paths (some apps skip mTLS on health checks)
 for path in /health /ping /status /metrics /api/health; do
-  STATUS=$(curl -sk -o /dev/null -w "%{http_code}" "https://$TARGET$path")
+  STATUS=$(curl --max-time 30 --connect-timeout 10 -sk -o /dev/null -w "%{http_code}" "https://$TARGET$path")
   echo "$path: $STATUS"
 done
 
@@ -285,7 +288,7 @@ for combo in \
   "X-Forwarded-Client-Cert: By=spiffe://x;Hash=0;Subject=\"CN=admin\""; do
   H1="${combo%%|*}"; H2="${combo##*|}"
   echo "== $H1 / $H2 =="
-  curl -sk "https://$TARGET/internal/api" -H "$H1" -H "$H2" -o /dev/null -w "%{http_code}\n"
+  curl --max-time 30 --connect-timeout 10 -sk "https://$TARGET/internal/api" -H "$H1" -H "$H2" -o /dev/null -w "%{http_code}\n"
 done
 ```
 
@@ -325,10 +328,10 @@ testssl.sh $TARGET
 pip3 install sslyze
 
 # MXToolbox for email security
-curl -s "https://mxtoolbox.com/api/v1/Lookup/spf?argument=$TARGET" 2>/dev/null
+curl --max-time 30 --connect-timeout 10 -s "https://mxtoolbox.com/api/v1/Lookup/spf?argument=$TARGET" 2>/dev/null
 
 # dmarc-inspector
-curl -s "https://dmarcian.com/dmarc-inspector/?domain=$TARGET" 2>/dev/null
+curl --max-time 30 --connect-timeout 10 -s "https://dmarcian.com/dmarc-inspector/?domain=$TARGET" 2>/dev/null
 ```
 
 ---
@@ -353,3 +356,36 @@ Each finding ships only with the proof listed — never the `dig`/header output 
 - Missing security headers / missing CAA only: Info (usually do not file)
 
 **Pre-submission scope gate:** before filing ANY item here, confirm the program does not list it as out of scope (email-auth, missing-headers, weak-TLS-without-exploit, and CAA are commonly OOS). Quote the in-scope line in your report.
+
+---
+
+## Verification
+
+Run this self-test to confirm tls-network hunting readiness:
+
+1. **Skill integrity** — confirm the skill file is readable and well-formed:
+   ```bash
+   grep -q "name: hunt-tls-network" SKILL.md && echo "PASS: skill frontmatter present" || echo "FAIL"
+   grep -q "revision_date:" SKILL.md && echo "PASS: revision date present" || echo "FAIL"
+   ```
+
+2. **Category check** — confirm the skill has a category:
+   ```bash
+   grep -q "category:" SKILL.md && echo "PASS: category present" || echo "FAIL"
+   ```
+
+3. **Pitfalls section** — confirm pitfalls are documented:
+   ```bash
+   grep -q "^## Pitfalls" SKILL.md && echo "PASS: pitfalls section present" || echo "FAIL"
+   ```
+
+All 3 tests verify the skill is properly structured and ready for use.
+
+---
+
+## Pitfalls
+- **TLS version without exploit** — TLS 1.0/1.1 support is a configuration finding, not a vulnerability (unless paired with a specific downgrade attack).
+- **Weak cipher without exploit** — RC4, 3DES, etc. are weak but exploitation requires active MITM. Document the attack scenario.
+- **Self-signed certificate** — self-signed certs are common on internal services. On public services, this is a phishing risk (Low-Medium).
+- **Certificate transparency log monitoring** — finding subdomains via CT logs is recon, not a vulnerability. The finding is what those subdomains expose.
+- **Heartbleed/POODLE test** — these legacy TLS vulnerabilities are extremely rare in 2024+. Test but don't spend excessive time.

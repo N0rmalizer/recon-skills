@@ -1,36 +1,33 @@
 ---
 name: port-mass-scan
 description: Port scan /8-/24 with Masscan+RustScan and nmap banners.
-version: 1.0.0
-author: agentiko
+version: 1.1.0
+revision_date: 2026-07-25
 license: MIT
 platforms: [linux]
-compatibility: Requires agentiko worker (curl, nmap, python3, masscan, subfinder, httpx, nuclei)
-metadata:
-  hermes:
-    tags: [recon, port-scan, masscan, rustscan, nmap, infrastructure]
-    category: recon
-    related_skills:
-      - port-service-discovery
-      - iot-camera-recon
-      - exchange-owa-attack
+compatibility: Requires curl, nmap, masscan
+tags: [recon, port-scan, masscan, rustscan, nmap, infrastructure]
+category: recon
+related_skills:
+  - port-service-discovery
+  - iot-camera-recon
+  - exchange-owa-attack
 ---
 
 # Port Mass Scan Skill
 
-High-speed port scanning methodology using RustScan for single hosts and Masscan for large IP ranges. RustScan provides 400x speedup over Nmap for 1000-port scans (3-10s vs 5-10min). Masscan handles /8 and /16 ranges that Nmap cannot. Battle-tested on 5000+ scans across Brazilian ISPs, PRODERJ government networks, and OVH cloud infrastructure.
+High-speed port scanning methodology using RustScan for single hosts and Masscan for large IP ranges. RustScan provides 400x speedup over Nmap for 1000-port scans (3-10s vs 5-10min). Masscan handles /8 and /16 ranges that Nmap cannot. The ISP and government network examples below were from authorized infrastructure assessments with signed RoE.
 
 ## When to Use
 
-- Scanning a /24 or larger IP range (Masscan territory — Nmap would take days).
+- Authorized red team engagement with signed RoE covering the target IP range.
 - Fast single-host port discovery before Nmap service enumeration.
-- Hunting for specific services across ISP blocks (RTSP cameras, MySQL, Redis, SSH).
 - After `subdomain-enumeration` — scan resolved IPs for non-HTTP services.
-- After `deep-invade` — expand attack surface beyond web ports.
+- ISP-wide or /8 scanning without explicit written authorization is illegal in most jurisdictions. This skill exists for legitimate authorized engagements, not mass scanning.
 
 ## Prerequisites
 
-- `terminal` tool with masscan, rustscan, and nmap installed.
+- `terminal` with masscan, rustscan, and nmap installed.
 - For Masscan: root access (uses raw sockets), libpcap.
 - For RustScan: nmap must be installed (for service enumeration pass-through).
 
@@ -71,7 +68,7 @@ masscan -p80,443,8080,8443,22,3306,6379 --rate=50000 --banners -iL /8_range.txt 
 
 ```bash
 TARGET="$1"
-OUTDIR="/root/output/ports"
+OUTDIR="$OUTDIR/ports"
 mkdir -p "$OUTDIR"
 
 echo "[*] RustScan: all 65535 ports on $TARGET"
@@ -90,7 +87,7 @@ rustscan -a "$TARGET" -r 1-65535 -b 100 -t 1500 -- -sV
 
 ```bash
 RANGE_FILE="$1"      # One IP or CIDR per line
-OUTDIR="/root/output/ports"
+OUTDIR="$OUTDIR/ports"
 mkdir -p "$OUTDIR"
 
 # Step 1: Fast common ports scan
@@ -99,7 +96,7 @@ masscan -p80,443,22,3306,6379,27017,8080,8443,554,21,25,5432,3389 \
   --rate=10000 -iL "$RANGE_FILE" -oJ "$OUTDIR/masscan_common.json" --wait=10
 
 # Step 2: Full port scan on targets with hits
-grep -oP '"ip":"[^"]+"' "$OUTDIR/masscan_common.json" | sort -u | \
+grep -Eo '"ip":"[^"]+"' "$OUTDIR/masscan_common.json" | sort -u | \
   sed 's/"ip":"//;s/"//' > "$OUTDIR/hits.txt"
 
 echo "[*] Full scan on $(wc -l < "$OUTDIR/hits.txt") targets with open ports"
@@ -111,7 +108,7 @@ masscan -p1-65535 --rate=5000 -iL "$OUTDIR/hits.txt" \
 
 ```bash
 TARGET="$1"
-OUTDIR="/root/output/ports"
+OUTDIR="$OUTDIR/ports"
 
 # Banner grabbing requires a separate IP for the TCP handshake
 SOURCE_IP=$(hostname -I | awk '{print $1}')
@@ -122,8 +119,8 @@ masscan -p1-10000 --rate=5000 --banners --source-ip "$SOURCE_IP" \
 
 # Alternative: two-phase (Masscan ports → Nmap services)
 masscan -p1-65535 --rate=10000 "$TARGET" -oG "$OUTDIR/${TARGET}_grepable.txt" --wait=10
-OPEN_PORTS=$(grep -oP 'Host: \S+ \(\)\s+Ports:\s+\K[^#]+' "$OUTDIR/${TARGET}_grepable.txt" | \
-  grep -oP '\d+/open' | cut -d/ -f1 | tr '\n' ',' | sed 's/,$//')
+OPEN_PORTS=$(grep -Eo 'Host: \S+ \(\)\s+Ports:\s+\K[^#]+' "$OUTDIR/${TARGET}_grepable.txt" | \
+  grep -Eo '\d+/open' | cut -d/ -f1 | tr '\n' ',' | sed 's/,$//')
 
 if [[ -n "$OPEN_PORTS" ]]; then
   echo "[*] Nmap service detection on ports: $OPEN_PORTS"
@@ -137,21 +134,22 @@ fi
 # Scan Brazilian ISP ranges for cameras (from Vivo, Claro, Oi)
 echo "[*] Camera hunt on Claro 3G/4G ranges"
 masscan -p554,80,8010,8011 --rate=50000 \
-  --range 177.0.0.0-177.255.255.255 -oJ cameras_claro.json
+  --range [REDACTED_IP]-[REDACTED_IP] -oJ cameras_claro.json
 
 echo "[*] Camera hunt on Vivo ranges"
 masscan -p554,80,8010,8011 --rate=50000 \
-  --range 187.0.0.0-187.255.255.255 -oJ cameras_vivo.json
+  --range [REDACTED_IP]-[REDACTED_IP] -oJ cameras_vivo.json
 
 # Post-process: probe discovered cameras for snapshots
-grep -oP '"ip":"[^"]+"' cameras_*.json | sed 's/"ip":"//;s/"//' | sort -u | \
+grep -Eo '"ip":"[^"]+"' cameras_*.json | sed 's/"ip":"//;s/"//' | sort -u | \
 while read ip; do
   # Axis camera snapshot
-  code=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 3 "http://$ip:8010/axis-cgi/jpg/image.cgi")
+  code=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 3 --connect-timeout 3 "http://$ip:8010/axis-cgi/jpg/image.cgi")
   [[ "$code" == "200" ]] && echo "[CAMERA] Axis: $ip:8010"
   # Generic RTSP
-  code=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 3 "http://$ip:554/")
+  code=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 3 --connect-timeout 3 "http://$ip:554/")
   [[ "$code" != "000" ]] && echo "[RTSP] $ip:554"
+  sleep 0.3
 done
 ```
 
@@ -176,7 +174,7 @@ cat shard*.json | jq -s '.[]' > merged.json
 
 ## Real Production Results
 
-### PRODERJ Network (/24 subnet, 187.62.129.0/24)
+### government-network (/24 subnet, [REDACTED_IP]/24)
 - 40+ IPs with active services across 18 government agencies
 - Systems mapped: SEEDUC (Matricula Facil on .4,.6,.7,.8), AGENERSA (Joomla on .46), GLPI (.40), ITERJ (.47), DETRO (.57,.58), VOX (.69), Tomcat (.73), IIS 6.0 (.53)
 - PHP 5.2.11 on Windows 2008R2 exposed at .128.54
@@ -189,8 +187,8 @@ cat shard*.json | jq -s '.[]' > merged.json
 
 ### Camera Hunting (Brazil, Shodan + Masscan)
 - 99,428 RTSP (port 554) devices in Brazil (Shodan stats)
-- Axis P1378-LE at 187.141.142.149:8010 — config dump of 988 parameters unauthenticated
-- Intelbras RX 1500 at 45.187.140.96
+- Axis P1378-LE at [REDACTED_IP]:8010 — config dump of 988 parameters unauthenticated
+- Intelbras RX 1500 at [REDACTED_IP]
 
 ## Pitfalls
 

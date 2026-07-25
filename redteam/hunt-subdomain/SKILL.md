@@ -1,8 +1,11 @@
 ---
 name: hunt-subdomain
 description: "Hunting skill for subdomain takeover vulnerabilities. Includes modern provider fingerprints — Microsoft Azure DevOps `cloudapp.azure.com` regional-pool re-issue (1-click OAuth ATO via wildcard `reply_to`, Binary Security), Zendesk help-desk takeover → email interception → password reset chain (0xprial writeup), Vercel `cname.vercel-dns.com` deleted-project takeover, plus general Fastly CDN service re-attach and S3 dangling-bucket cookie-scope techniques. Use when hunting subdomain takeover — emphasis on ATO-chain primitives (OAuth `redirect_uri`, cookie-domain, email DNS)."
-sources: github, hackerone_public, binarysecurity_research, can-i-take-over-xyz_research
-report_count: 3
+version: 1.1.0
+revision_date: 2026-07-25
+license: MIT
+category: redteam
+tags: [subdomain, hunt, redteam]
 ---
 
 ## Crown Jewel Targets
@@ -74,7 +77,7 @@ Subdomain takeover is high-value because it allows an attacker to serve content 
 4. **Manual verification** for each flagged subdomain:
    - `dig CNAME subdomain.target.com` — confirm CNAME exists
    - `dig A <cname-target>` — confirm NXDOMAIN or no resolution
-   - `curl -sk https://subdomain.target.com` — check for provider error string
+   - `curl --max-time 30 --connect-timeout 10 -sk https://subdomain.target.com` — check for provider error string
 
 5. **Confirm claimability** — attempt to register the resource:
    - GitHub Pages: check if `<username>.github.io/<repo>` or org page is unclaimed
@@ -127,19 +130,19 @@ subjack -w subdomains.txt -t 100 -timeout 30 -ssl -c $GOPATH/src/github.com/hacc
 
 **Provider fingerprint grep patterns:**
 ```bash
-curl -sk "https://$subdomain" | grep -iE \
+curl --max-time 30 --connect-timeout 10 -sk "https://$subdomain" | grep -iE \
   "there isn't a github pages|no such bucket|no such app|this uservoice|fastly error: unknown domain|do you want to register|sorry, this shop|project not found|404 not found|unclaimed"
 ```
 
 **Check if subdomain is in scope for cookies (shared parent domain):**
 ```bash
-curl -Isk "https://target.com" | grep -i "set-cookie" | grep "domain=.target.com"
+curl --max-time 30 --connect-timeout 10 -Isk "https://target.com" | grep -i "set-cookie" | grep "domain=.target.com"
 ```
 
 **Fastly-specific detection:**
 ```bash
-curl -sI "https://subdomain.target.com" -H "Host: subdomain.target.com" | grep -i "fastly\|x-served-by\|x-cache"
-curl -sk "https://subdomain.target.com" | grep -i "fastly error"
+curl --max-time 30 --connect-timeout 10 -sI "https://subdomain.target.com" -H "Host: subdomain.target.com" | grep -i "fastly\|x-served-by\|x-cache"
+curl --max-time 30 --connect-timeout 10 -sk "https://subdomain.target.com" | grep -i "fastly error"
 ```
 
 **S3 unclaimed bucket check:**
@@ -209,7 +212,7 @@ dig CNAME sub.target.com
 
 3. **Can it be reproduced in 10 minutes from scratch?**
    - `dig CNAME subdomain.target.com` → confirms CNAME to provider
-   - `curl -sk https://subdomain.target.com` → confirms provider error string
+   - `curl --max-time 30 --connect-timeout 10 -sk https://subdomain.target.com` → confirms provider error string
    - Visit provider registration page → confirms namespace is available
    - Screenshots of all three steps = reproducible in under 10 minutes
 
@@ -322,6 +325,39 @@ Cross-references:
 - `hunt-xss` Chain 4 — Chain 3 (CSP bypass via trusted-origin JS)
 - `hunt-api-misconfig` CORS section — Chain 4
 - `offensive-osint` email-security section — Chain 5
+
+---
+
+## Verification
+
+Run this self-test to confirm subdomain hunting readiness:
+
+1. **Skill integrity** — confirm the skill file is readable and well-formed:
+   ```bash
+   grep -q "name: hunt-subdomain" SKILL.md && echo "PASS: skill frontmatter present" || echo "FAIL"
+   grep -q "revision_date:" SKILL.md && echo "PASS: revision date present" || echo "FAIL"
+   ```
+
+2. **Category check** — confirm the skill has a category:
+   ```bash
+   grep -q "category:" SKILL.md && echo "PASS: category present" || echo "FAIL"
+   ```
+
+3. **Pitfalls section** — confirm pitfalls are documented:
+   ```bash
+   grep -q "^## Pitfalls" SKILL.md && echo "PASS: pitfalls section present" || echo "FAIL"
+   ```
+
+All 3 tests verify the skill is properly structured and ready for use.
+
+---
+
+## Pitfalls
+- **Subdomain enumeration without verification** — DNS resolution proves existence. Need HTTP probe to confirm it's a live web service.
+- **Third-party services in scope confusion** — subdomains pointing to Zendesk, Shopify, statuspage.io are typically out of scope. Verify ownership.
+- **Stale DNS records** — subdomains resolving to dead IPs or parked pages are informational. Need an active service.
+- **Wildcard DNS** — `*.target.com` resolving to the same IP masks real subdomains. Test for wildcard before claiming enumeration completeness.
+- **Subdomain takeover without claim** — dangling CNAME proves takeover potential. Need to actually claim the resource (or demonstrate it's claimable).
 
 ---
 

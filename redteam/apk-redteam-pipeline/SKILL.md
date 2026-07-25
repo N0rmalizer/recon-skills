@@ -1,8 +1,11 @@
 ---
 name: apk-redteam-pipeline
 description: End-to-end Android APK red-team pipeline — automated APK acquisition (Play Store + apkpure + apkmirror fallback), jadx decompilation, secret/URL/JWT/Firebase grep, pinned-cert extraction, exported-component enumeration, Frida runtime instrumentation templates, intent-injection probes. Built from an authorized external red-team engagement where 7 APKs were pulled manually, 4 download attempts truncated, and a hardcoded JWT + 30 internal API endpoints were recovered from one of the apps. Use when target has a mobile app catalogue (Play Store developer page), when you find an APK URL hosted on a web server, or when post-recon mentions "mobile app" in scope.
-sources: authorized-engagement
-report_count: 1
+version: 1.1.0
+revision_date: 2026-07-25
+license: MIT
+category: redteam
+tags: [apk, android, mobile, reverse-engineering, redteam]
 ---
 
 ## When to use this skill
@@ -26,7 +29,7 @@ DO NOT use for:
 ### Play Store developer-page scrape
 ```bash
 # Find developer page from the target's brand name
-curl -sk -A "Mozilla/5.0" "https://play.google.com/store/apps/developer?id=<Brand+Name>" -o /tmp/dev.html
+curl --max-time 30 --connect-timeout 10 -sk -A "Mozilla/5.0" "https://play.google.com/store/apps/developer?id=<Brand+Name>" -o /tmp/dev.html
 
 # Extract package IDs
 grep -oE 'id=[a-zA-Z0-9._]+' /tmp/dev.html | sort -u
@@ -63,22 +66,22 @@ in.co.<brand>.app
 ### Primary: APKPure direct (no auth required)
 ```bash
 # Follow 302 redirects to actual download
-curl -sk -L --max-time 60 \
+curl -sk -L --max-time 60 --connect-timeout 10 \
   "https://d.apkpure.net/b/APK/<package_id>?version=latest" \
   -o "<package_id>.apk"
 
-# Or via the legacy d-XX.winudf.com mirror chain (we saw this work)
+# Or via the legacy d-XX.app-mirror.example.com mirror chain (we saw this work)
 ```
 
 ### Secondary: APKMirror search
 ```bash
-curl -sk -A "Mozilla/5.0" "https://www.apkmirror.com/?post_type=app_release&searchtype=apk&s=<brand>" \
+curl --max-time 30 --connect-timeout 10 -sk -A "Mozilla/5.0" "https://www.apkmirror.com/?post_type=app_release&searchtype=apk&s=<brand>" \
   | grep -oE 'href="[^"]+\.apk[^"]*"' | sort -u
 ```
 
 ### Tertiary: APKPure web search
 ```bash
-curl -sk "https://apkpure.com/search?q=<brand>" | grep -oE 'data-dt-app="[^"]+"'
+curl --max-time 30 --connect-timeout 10 -sk "https://apkpure.com/search?q=<brand>" | grep -oE 'data-dt-app="[^"]+"'
 ```
 
 ### XAPK vs APK
@@ -234,13 +237,13 @@ find extracted_<package> -name "google-services.json" -exec cat {} \; | python3 
 #   web_api_key  → can use to enumerate Firebase tenant config
 
 # Test if Firestore is publicly readable
-curl -s "https://firestore.googleapis.com/v1/projects/<project_id>/databases/(default)/documents/users"
+curl --max-time 30 --connect-timeout 10 -s "https://firestore.googleapis.com/v1/projects/<project_id>/databases/(default)/documents/users"
 
 # Test if Realtime DB is publicly readable
-curl -s "https://<project_id>.firebaseio.com/.json"
+curl --max-time 30 --connect-timeout 10 -s "https://<project_id>.firebaseio.com/.json"
 
 # Test if Storage Bucket is publicly listable
-curl -s "https://firebasestorage.googleapis.com/v0/b/<bucket>/o"
+curl --max-time 30 --connect-timeout 10 -s "https://firebasestorage.googleapis.com/v0/b/<bucket>/o"
 ```
 
 ---
@@ -344,7 +347,7 @@ mitmproxy --listen-port 8080
 
 ---
 
-## Anti-patterns
+## Pitfalls
 
 - **Don't grep only for "password"** — most secrets have specific high-signal patterns (AKIA, AIza, eyJ, etc.). Generic word grep produces too much noise.
 - **Don't skip XAPK split APKs** — config.armeabi splits and config.<lang> splits sometimes contain different code paths.
@@ -352,6 +355,55 @@ mitmproxy --listen-port 8080
 - **Don't reverse only the latest version** — older APK versions (via APKMirror version history) sometimes have secrets removed in newer versions but still active server-side.
 - **Don't ignore Firebase even if app looks "simple"** — Firebase rules misconfigurations (public read on Firestore) are extremely common.
 - **Don't run Frida on a production device** — use rooted emulator or test device only.
+- **APKPure CDN rate-limiting** — truncated downloads with missing EOCD are common. Rotate IP (VPN hop) and retry; `7z x` is more lenient than `unzip` for partially-downloaded archives.
+- **Large APKs can OOM jadx** — for APKs >100 MB, increase jadx heap with `-Xmx4g` or fall back to `strings`-only pass first.
+- **Keystore/SQLite files in assets/** — overlooked because they don't match regex secret patterns. Manually review `assets/` directory tree for `.db`, `.sqlite`, `.jks`, `.bks`, `.p12` files.
+- **ProGuard/R8 obfuscation** — most APKs are obfuscated; secret patterns survive renaming, but class names don't. Don't dismiss an APK because method names are `a.b.c.d`.
+- **Multi-dex APKs** — some secrets live in `classes2.dex` onward; don't stop after `classes.dex`.
+- **Play Store developer pages may list inactive/beta apps** — cross-reference with download counts and last-updated dates; stale apps may have been archived but still expose secrets.
+
+---
+
+## Verification
+
+Run this self-test to confirm the pipeline works end-to-end:
+
+1. **Acquisition test** — download any publicly-available APK and verify the file is a valid ZIP:
+   ```bash
+   download-apk() {
+     local pkg="$1"
+     curl -sk -L --max-time 60 --connect-timeout 10 "https://d.apkpure.net/b/APK/$pkg?version=latest" -o "/tmp/$pkg.apk"
+     file "/tmp/$pkg.apk"  # should report: Zip archive data / Java archive data
+   }
+   download-apk org.example.testapp
+   ```
+
+2. **Decompilation test** — apktool decodes the binary manifest:
+   ```bash
+   apktool d /tmp/org.example.testapp.apk -o /tmp/testapp_decoded/
+   ls /tmp/testapp_decoded/AndroidManifest.xml 2>/dev/null && echo "PASS: manifest decoded" || echo "FAIL: apktool not installed or APK corrupted"
+   ```
+
+3. **Secret grep test** — confirm patterns match known test values:
+   ```bash
+   echo "AKIA1234567890ABCDEF" | grep -oE 'AKIA[A-Z0-9]{16}' && echo "PASS: AWS key pattern" || echo "FAIL"
+   echo "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U" | grep -oE 'eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*' && echo "PASS: JWT pattern" || echo "FAIL"
+   echo "AIzaSyD4iE2xVh2G7kLpQmN3jR8tUwXyZ1aBcDeF" | grep -oE 'AIza[A-Za-z0-9_-]{35}' && echo "PASS: Google API key pattern" || echo "FAIL"
+   ```
+
+4. **XAPK handling test** — verify 7z is available for split APKs:
+   ```bash
+   7z --help >/dev/null 2>&1 && echo "PASS: 7z available" || echo "FAIL: install p7zip-full"
+   ```
+
+5. **Firebase test** — confirm google-services.json parsing works:
+   ```bash
+   echo '{"project_info":{"project_id":"test-project"}}' > /tmp/test-gs.json
+   python3 -c "import json; d=json.load(open('/tmp/test-gs.json')); print(d['project_info']['project_id'])" && echo "PASS" || echo "FAIL"
+   rm -f /tmp/test-gs.json
+   ```
+
+If all 5 tests pass, the pipeline is operational. Test 1 (acquisition) may fail due to APKPure CDN blocking — this does not block the rest of the workflow; fall back to APKMirror or direct APK URL.
 
 ---
 
@@ -367,7 +419,7 @@ For APK download convenience, can add a `download-apk` shell function:
 ```bash
 download-apk() {
   local pkg="$1"
-  curl -sk -L --max-time 60 "https://d.apkpure.net/b/APK/$pkg?version=latest" -o "$pkg.apk"
+  curl -sk -L --max-time 60 --connect-timeout 10 "https://d.apkpure.net/b/APK/$pkg?version=latest" -o "$pkg.apk"
   echo "Downloaded $(wc -c < "$pkg.apk") bytes"
   file "$pkg.apk"
 }

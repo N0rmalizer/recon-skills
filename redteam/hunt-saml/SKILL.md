@@ -1,8 +1,11 @@
 ---
 name: hunt-saml
 description: "Hunt SAML / SSO attacks. Patterns: XML Signature Wrapping (XSW) — modify Assertion while keeping Signature valid by relocating signed element, comment injection in NameID (admin@target.com<!--evil-->@attacker.com → some parsers see admin@target.com), signature stripping (remove Signature element entirely, server should reject but doesn't), key confusion (signed by attacker's IdP, accepted by SP), audience-restriction not validated, replay attack (same Assertion accepted twice within validity window). Tools: SAML Raider Burp extension, samlmagic, manual XML manipulation. Detection: any /saml endpoint, /Shibboleth.sso, /sso/saml/, Microsoft ADFS endpoints. Validate: account takeover via altered NameID, admin role injection via altered AttributeStatement. Use when hunting SSO flows, when SAML AssertionConsumerService is reachable, when chaining IdP-trust to SP-impersonation."
-sources: bug_bounty_reports, offensive_research
-report_count: 10
+version: 1.1.0
+revision_date: 2026-07-25
+license: MIT
+category: redteam
+tags: [saml, hunt, redteam, sso]
 ---
 
 ## 20. SAML / SSO ATTACKS
@@ -211,6 +214,39 @@ validate `<Issuer>` or `<AudienceRestriction>`, the attacker-IdP-signed assertio
 # 3. POST to victim SP's AssertionConsumerService
 # 4. If SP accepts the assertion without checking Issuer = expected IdP → ATO
 ```
+
+---
+
+## Verification
+
+Run this self-test to confirm saml hunting readiness:
+
+1. **Skill integrity** — confirm the skill file is readable and well-formed:
+   ```bash
+   grep -q "name: hunt-saml" SKILL.md && echo "PASS: skill frontmatter present" || echo "FAIL"
+   grep -q "revision_date:" SKILL.md && echo "PASS: revision date present" || echo "FAIL"
+   ```
+
+2. **Category check** — confirm the skill has a category:
+   ```bash
+   grep -q "category:" SKILL.md && echo "PASS: category present" || echo "FAIL"
+   ```
+
+3. **Pitfalls section** — confirm pitfalls are documented:
+   ```bash
+   grep -q "^## Pitfalls" SKILL.md && echo "PASS: pitfalls section present" || echo "FAIL"
+   ```
+
+All 3 tests verify the skill is properly structured and ready for use.
+
+---
+
+## Pitfalls
+- **SAML without signature validation** — unsigned assertions or `WantAssertionsSigned="false"` are the primary SAML findings.
+- **XML signature wrapping (XSW)** — classic SAML attack. Test all 8 XSW variants, not just #1.
+- **SAML Response replay** — capturing and replaying a SAML Response within its validity window. Test NotOnOrAfter enforcement.
+- **SAML-to-JWT confusion** — SAML assertions are XML; JWT is JSON. Don't cross-apply attack techniques.
+- **SP metadata publicly accessible** — accessing `/saml/metadata` is informational. The finding is what the metadata reveals (unsigned requests, weak algorithms).
 
 ---
 

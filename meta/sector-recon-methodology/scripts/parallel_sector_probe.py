@@ -109,9 +109,11 @@ def main():
     print(f"[*] Probing {len(domains)} domains...")
 
     critical = []
+    all_findings = []
     for i, domain in enumerate(domains, 1):
         print(f"  [{i}/{len(domains)}] {domain}", end="", flush=True)
         findings = probe_domain(domain)
+        all_findings.append(findings)
         print(f" {'WP' if findings['wp'] else '--'} "
               f"users={len(findings['users'])} "
               f"{'CORS' if findings['cors_reflect'] else '----'} "
@@ -141,8 +143,15 @@ def main():
             critical.append(findings)
 
     # Summary
+    wp_count = sum(1 for f in all_findings if f['wp'])
+    cors_count = sum(1 for f in all_findings if f['cors_reflect'])
+    xmlrpc_count = sum(1 for f in all_findings if f['xmlrpc'])
+    git_count = sum(1 for f in all_findings if f['git_exposed'])
+    env_count = sum(1 for f in all_findings if f['env_exposed'])
+    user_count = sum(1 for f in all_findings if len(f['users']) > 0)
+
     print(f"\n=== SUMMARY ===")
-    print(f"Total: {len(domains)} | WP: {sum(1 for d in domains for f in [probe_domain(d, (1,1))] if 0)}")  # rough hack
+    print(f"Total: {len(domains)} | WP: {wp_count} | CORS: {cors_count} | XMLRPC: {xmlrpc_count} | .git: {git_count} | .env: {env_count} | User enum: {user_count}")
     print(f"Critical findings: {len(critical)}")
     for f in critical:
         flags = []

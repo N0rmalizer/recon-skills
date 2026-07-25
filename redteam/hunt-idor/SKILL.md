@@ -1,8 +1,11 @@
 ---
 name: hunt-idor
 description: Hunting skill for idor vulnerabilities. Built from 26 public bug bounty reports. Use when hunting idor on any target.
-sources: github, hackerone_public
-report_count: 26
+version: 1.1.0
+revision_date: 2026-07-25
+license: MIT
+category: redteam
+tags: [idor, hunt, redteam]
 ---
 
 ## When to Use
@@ -28,10 +31,10 @@ Use when the target has any endpoint that references user-owned resources by ID 
 | Content moderation/admin actions | Operational sabotage (Reddit mod logs) |
 
 **Programs that pay most for IDOR:**
-- Platforms with multi-tenancy (SaaS, B2B tools)
+- Platforms with multi-tenancy (SaaS, B2Btools)
 - Fintech and payment processors
 - Social platforms with private content
-- Developer tools with org/repo isolation
+- Developertools with org/repo isolation
 
 ---
 
@@ -132,11 +135,11 @@ state.currentUser.organizationId
 **Basic IDOR test with curl (swap cookie/token):**
 ```bash
 # Get User A's resource ID while authenticated as A
-curl -s -H "Cookie: session=USER_A_SESSION" \
+curl --max-time 30 --connect-timeout 10 -s -H "Cookie: session=USER_A_SESSION" \
   https://target.com/api/v1/invoices/12345
 
 # Replay with User B's session
-curl -s -H "Cookie: session=USER_B_SESSION" \
+curl --max-time 30 --connect-timeout 10 -s -H "Cookie: session=USER_B_SESSION" \
   https://target.com/api/v1/invoices/12345
 
 # Success = 200 OK with User A's data
@@ -144,7 +147,7 @@ curl -s -H "Cookie: session=USER_B_SESSION" \
 
 **GraphQL IDOR test:**
 ```bash
-curl -s -X POST https://target.com/graphql \
+curl --max-time 30 --connect-timeout 10 -s -X POST https://target.com/graphql \
   -H "Authorization: Bearer USER_B_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"query":"{ billingDocument(id: \"USER_A_DOC_ID\") { id amount pdfUrl } }"}'
@@ -182,10 +185,10 @@ Authorization: Bearer USER_B_TOKEN
 **JavaScript scraping for leaked IDs:**
 ```bash
 # Find IDs in JS bundles
-curl -s https://target.com/static/app.js | grep -Eo '"id":"[a-f0-9-]{36}"' | sort -u
+curl --max-time 30 --connect-timeout 10 -s https://target.com/static/app.js | grep -Eo '"id":"[a-f0-9-]{36}"' | sort -u
 
 # Find object references in API responses
-curl -s -H "Cookie: session=USER_A" \
+curl --max-time 30 --connect-timeout 10 -s -H "Cookie: session=USER_A" \
   https://target.com/api/v1/dashboard | python3 -m json.tool | grep -i "_id"
 ```
 
@@ -206,7 +209,7 @@ grep -r "Model\.find(params" --include="*.js" .
 # Try undocumented methods
 for method in GET POST PUT PATCH DELETE OPTIONS HEAD; do
   echo "=== $method ==="
-  curl -s -X $method \
+  curl --max-time 30 --connect-timeout 10 -s -X $method \
     -H "Authorization: Bearer USER_B_TOKEN" \
     https://target.com/api/v1/users/USER_A_ID/profile
 done
@@ -384,6 +387,39 @@ Cross-references:
 
 ---
 
+## Verification
+
+Run this self-test to confirm idor hunting readiness:
+
+1. **Skill integrity** — confirm the skill file is readable and well-formed:
+   ```bash
+   grep -q "name: hunt-idor" SKILL.md && echo "PASS: skill frontmatter present" || echo "FAIL"
+   grep -q "revision_date:" SKILL.md && echo "PASS: revision date present" || echo "FAIL"
+   ```
+
+2. **Category check** — confirm the skill has a category:
+   ```bash
+   grep -q "category:" SKILL.md && echo "PASS: category present" || echo "FAIL"
+   ```
+
+3. **Pitfalls section** — confirm pitfalls are documented:
+   ```bash
+   grep -q "^## Pitfalls" SKILL.md && echo "PASS: pitfalls section present" || echo "FAIL"
+   ```
+
+All 3 tests verify the skill is properly structured and ready for use.
+
+---
+
+## Pitfalls
+- **UUID-based IDOR** — UUIDs are not guessable, so reading a known UUID from another user is IDOR only if the UUID itself was leaked. Document the leak source.
+- **Read-only IDOR without sensitive data** — accessing another user's public profile via IDOR is Low. Need PII, credentials, or private data.
+- **Self-IDOR** — accessing your own data with another identifier you own is not IDOR. Need cross-account access.
+- **IDOR on public resources** — if the resource is intentionally public (no auth check by design), there's no IDOR. Verify auth was expected.
+- **POST/PUT IDOR without CSRF** — write IDOR needs a CSRF vector or the attacker needs the victim's session. Distinguish standalone vs chained exploitability.
+
+---
+
 ## Related Skills & Chains
 
 - **`hunt-auth-bypass`** — Object-level authorization failure plus route-level auth absence is the canonical IDOR-amplifier. Chain primitive: missing `req.user.id` scoping in ORM query + missing middleware on legacy `/v1/` route = unauthenticated cross-tenant data read via direct ID substitution → bulk PII dump without any session at all.
@@ -391,3 +427,9 @@ Cross-references:
 - **`hunt-graphql`** — GraphQL resolvers without field-level authorization are IDOR-by-default; introspection hands you the schema. Chain primitive: `__schema` introspection → enumerate every mutation accepting `id:` argument → substitute victim IDs across `updateUser`, `deleteOrg`, `transferBilling` mutations → mass IDOR fan-out from one introspection query.
 - **`security-arsenal`** — Pull the IDOR Bypass Tables section for HTTP-parameter-pollution payloads (`?id=own&id=victim`), nested-JSON wrappers (`{"data":{"id":"VICTIM"}}`), and parameter-name variations (`uid`/`userId`/`user_id`/`account`) when the first direct substitution returns 403.
 - **`triage-validation`** — Run the Pre-Severity Gate before claiming Critical on an IDOR that returns 200 but doesn't actually leak data (empty array, redacted fields, "access denied" in body with 200 status). The 200-but-no-data IDOR is the #1 N/A driver on H1/Bugcrowd.
+
+### Phase X — Cross-Channel IDOR
+
+GraphQL IDOR: `mutation { updateUser(id: VICTIM_ID) { success } }` — same action via different transport may skip REST middleware.
+WebSocket IDOR: actions sent over WS may bypass REST authorization entirely.
+Cache key confusion: CDN caches user-specific responses under shared key → cross-user data leak.

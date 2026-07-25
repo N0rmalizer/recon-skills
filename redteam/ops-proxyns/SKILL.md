@@ -1,8 +1,11 @@
 ---
 name: ops-proxyns
 description: "Kernel-level proxy protection via proxy-ns — forces ALL traffic (TCP/UDP/DNS) through Tor using Linux network namespaces. Unlike proxychains, this works with Go/Rust/static binaries, prevents DNS leaks, and is impossible for applications to bypass. Includes Tor circuit rotation, IPv6 leak prevention, stealth headers, and jitter configuration. Use AT THE START of any pentest or recon engagement — before any probes that could leak your source IP. Setup once at the beginning of a session and run the entire toolchain inside the proxy-ns shell."
-sources: field_ops, linux_kernel
-report_count: 3
+version: 1.1.0
+revision_date: 2026-07-25
+license: MIT
+category: redteam
+tags: [ops, proxyns, redteam, infrastructure]
 ---
 
 # OPS-PROXYNS — Kernel-Level Proxy / OPSEC Protection
@@ -53,14 +56,14 @@ sleep 3
 
 ```bash
 # Run a single command through Tor
-sudo proxy-ns curl -s ifconfig.me
+sudo proxy-ns curl --max-time 30 --connect-timeout 10 -s ifconfig.me
 # Output: [Tor exit node IP]
 
 # Run a full shell through Tor (ALL commands go through Tor)
 sudo proxy-ns $SHELL
 
 # Inside the proxy-ns shell:
-curl -s ifconfig.me   # Tor IP
+curl --max-time 30 --connect-timeout 10 -s ifconfig.me   # Tor IP
 nmap -sT target.com   # Works (Go binary)
 masscan 10.0.0.0/24 -p80 --rate 100  # Works
 python3 -c "import requests; print(requests.get('https://ifconfig.me').text)"  # Works
@@ -77,7 +80,7 @@ echo -e "AUTHENTICATE\r\nSIGNAL NEWNYM\r" | nc -w1 127.0.0.1 9051
 sleep 2
 
 # Verify new IP
-sudo proxy-ns curl -s ifconfig.me
+sudo proxy-ns curl --max-time 30 --connect-timeout 10 -s ifconfig.me
 ```
 
 ### Automated Rotation Script
@@ -88,7 +91,7 @@ rotate() {
     echo -e "AUTHENTICATE\r\nSIGNAL NEWNYM\r" | nc -w1 127.0.0.1 9051
     sleep $(awk -v min=3 -v max=8 'BEGIN{srand(); print int(min+rand()*(max-min+1))}')
 }
-NEW_IP=$(sudo proxy-ns curl -s ifconfig.me 2>/dev/null)
+NEW_IP=$(sudo proxy-ns curl --max-time 30 --connect-timeout 10 -s ifconfig.me 2>/dev/null)
 echo "[+] New Tor IP: $NEW_IP"
 
 # Usage: rotate between every N requests
@@ -104,10 +107,10 @@ proxy-ns automatically blocks IPv6. Verify:
 # Inside proxy-ns shell, test for leaks:
 sudo proxy-ns bash -c '
   echo "=== IPv4 check ==="
-  curl -s ifconfig.me
+  curl --max-time 30 --connect-timeout 10 -s ifconfig.me
   echo ""
   echo "=== IPv6 check (should fail) ==="
-  curl -6 -s ifconfig.me 2>&1 || echo "[OK] No IPv6"
+  curl --max-time 30 --connect-timeout 10 -6 -s ifconfig.me 2>&1 || echo "[OK] No IPv6"
   echo "=== DNS leak check ==="
   dig +short myip.opendns.com @resolver1.opendns.com
 '
@@ -124,7 +127,7 @@ Always use rotating User-Agent and jitter between requests:
 import requests, random, time
 
 USER_AGENTS = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/[REDACTED_IP]",
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Safari/605.1.15",
     "Mozilla/5.0 (X11; Linux x86_64; rv:121.0) Gecko/20100101 Firefox/121.0",
     "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15",
@@ -196,14 +199,14 @@ Before making ANY request to a target:
 # Rotate IP between every N requests automatically
 for i in $(seq 1 10); do
   echo "Request $i"
-  sudo proxy-ns curl -s "https://target.com/.env" > /dev/null
+  sudo proxy-ns curl --max-time 30 --connect-timeout 10 -s "https://target.com/.env" > /dev/null
   sleep 3
 done
 
 # After 10 requests, rotate Tor circuit
 echo -e "AUTHENTICATE\r\nSIGNAL NEWNYM\r" | nc -w1 127.0.0.1 9051
 sleep 3
-NEW_IP=$(sudo proxy-ns curl -s ifconfig.me)
+NEW_IP=$(sudo proxy-ns curl --max-time 30 --connect-timeout 10 -s ifconfig.me)
 echo "[+] Rotated to IP: $NEW_IP"
 ```
 
@@ -227,7 +230,7 @@ subfinder -d "$TARGET" -silent > subs.txt
 cat subs.txt | httpx -silent -status-code > live.txt
 
 # curl works
-curl -sk "https://$TARGET/.env" | grep -i "DB_PASSWORD"
+curl --max-time 30 --connect-timeout 10 -sk "https://$TARGET/.env" | grep -i "DB_PASSWORD"
 
 # nuclei works
 nuclei -l live.txt -t ~/nuclei-templates/ -severity critical,high
@@ -269,3 +272,27 @@ proxychains4 curl ifconfig.me
 # Level 3: Tails OS / Whonix (entire OS is Tor-routed)
 # Level 4: Dedicated pentest VPS (separate jurisdiction)
 ```
+
+---
+
+## Verification
+
+1. **Proxy test** — confirm proxy connectivity:
+   ```bash
+   curl --max-time 30 --connect-timeout 10 -s --proxy "http://127.0.0.1:8080" "https://httpbin.org/ip" 2>/dev/null | python3 -m json.tool 2>/dev/null || echo "NOTE: no proxy configured locally"
+   ```
+2. **DNS leak test** — verify DNS resolution path:
+   ```bash
+   dig +short example.com 2>/dev/null | head -1 && echo "PASS: DNS resolution works" || echo "FAIL: dig not available"
+   ```
+All tests verify proxy readiness.
+
+---
+
+## Pitfalls
+- **Proxy not rotating** — if the same IP is used for all requests, rate limiting and IP bans are inevitable. Verify rotation is actually working.
+- **Proxy logs containing credentials** — HTTP proxies log full request URLs. Ensure proxy logs are sanitized before sharing.
+- **DNS leaks through proxy** — some proxy configurations leak DNS. Test with `dnsleaktest.com`-equivalent before running sensitive operations.
+- **Proxy chain latency** — multi-hop proxy chains add latency that breaks timing-based attacks. Test throughput before running time-sensitive probes.
+- **SOCKS vs HTTP proxy confusion** — SOCKS5 proxies tunnel TCP; HTTP proxies only tunnel HTTP. Use the right proxy for the protocol.
+

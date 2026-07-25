@@ -26,7 +26,7 @@ Re-usable probe script for running a "Wave 2" deep followup pass across multiple
 # Usage: ./wp-deep-followup.sh target.com [output-dir]
 
 TARGET="${1:-target.com}"
-OUTDIR="${2:-/root/output/recon_us/deep}"
+OUTDIR="${2:-/root/output/recon_output/deep}"
 REPORT="$OUTDIR/${TARGET}_wave2.md"
 
 # User-Agents

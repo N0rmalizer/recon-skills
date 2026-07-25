@@ -1,8 +1,11 @@
 ---
 name: redteam-mindset
 description: Red-team operator discipline — the mindset corrections that separate offensive testing from defensive WAPT. Built from authorized red-team work where conservative defaults caused multiple findings to be missed and one to be incorrectly retracted. Use at the START of any red-team engagement and again whenever feeling stuck or considering "stopping" on a defended target. The single most important skill to load when scope is "external red team" not "bug bounty / WAPT".
-sources: authorized-engagement
-report_count: 1
+version: 1.1.0
+revision_date: 2026-07-25
+license: MIT
+category: redteam
+tags: [mindset, methodology, redteam]
 ---
 
 ## When to use this skill
@@ -360,7 +363,7 @@ NOT legitimate stop conditions (each of these has produced a real failure):
 - "The discipline rules say be careful" — they say be correct, not be quiet
 - "The skill for this tech stack doesn't exist yet" — apply the vendor's public check matrix manually; log v1.1 gap separately
 - "User chose Option X and I'm not sure if X covers Y" — if X was a full-engagement mode, Y is in scope unless the user said otherwise
-- "Tool isn't installed" — `brew install`, `apt install`, direct-download → most engagement tools install in under 5 minutes
+- "Tool isn't installed" — `brew install`, `apt install`, direct-download → most engagementtools install in under 5 minutes
 - "I'll defer to operator" — the operator authorized you to do the work. Doing the work IS the deferral they want.
 
 ---
@@ -375,6 +378,32 @@ After internalizing this mindset, layer the technique-specific skills:
 - `bug-bounty` — for distinguishing red-team vs bb scope when working dual-track
 
 This skill is the operational discipline; those are the techniques.
+
+---
+
+## Verification
+
+1. **Mindset principles** — confirm key directives are documented:
+   ```bash
+   grep -q "DO NOT STOP\|primary directive\|coverage over efficiency" SKILL.md && echo "PASS" || echo "FAIL"
+   ```
+2. **Bypass mindset** — confirm 403 bypass thinking:
+   ```bash
+   grep -q "403\|bypass\|try harder" SKILL.md && echo "PASS" || echo "FAIL"
+   ```
+All tests verify redteam mindset documentation.
+
+---
+
+## Pitfalls
+- **Scanner-only thinking** — automated scanners find the same bugs as everyone else. Manual analysis and creative thinking find unique bugs.
+- **Confirmation bias** — looking for evidence to confirm your hypothesis, not evidence that disproves it. Actively seek disconfirming evidence.
+- **Shallow recon** — stopping at subdomain enumeration without understanding what each asset does. Deep-dive into the most interesting assets.
+- **Giving up on 403s** — 403 doesn't mean "not vulnerable." It means "try harder." Bypass headers, method switching, path manipulation.
+- **Ignoring mobile/API surface** — the web app may be hardened while the mobile API is behind on patches. Always test the mobile API endpoints.
+- **Not documenting failures** — negative results are intel. "Tested X, Y, Z on /admin — all returned 403" prevents repeating work.
+- **The "DO NOT STOP" directive** — the primary directive in red-team engagements is coverage, not efficiency. Keep digging even when initial probes show nothing.
+
 
 ---
 

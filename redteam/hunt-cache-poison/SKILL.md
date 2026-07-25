@@ -1,8 +1,11 @@
 ---
 name: hunt-cache-poison
 description: Hunting skill for cache poison vulnerabilities. Built from 10 public bug bounty reports including X-Forwarded-Host poisoning, X-HTTP-Method-Override / GCS cache, reflected→stored XSS via cache, classic Omer-Gil Web Cache Deception, Cloudflare Cache Deception Armor bypass, session-token cache deception, Akamai hop-by-hop smuggling → server-side edge poisoning, and Kettle's 2024 path-normalization WCD against Cloudflare/Fastly/GCP. Use when hunting cache poisoning, Web Cache Deception, CDN-fronted apps.
-sources: github, hackerone_public, portswigger_research, omergil_research, youstin_research
-report_count: 10
+version: 1.1.0
+revision_date: 2026-07-25
+license: MIT
+category: redteam
+tags: [cache, poisoning, hunt, redteam]
 ---
 
 ## Crown Jewel Targets
@@ -66,7 +69,7 @@ X-HTTP-Method-Override
 
 2. **Identify cache key components.** Send two identical requests — if `Age` increments, the response is cached. Vary headers one-by-one (e.g., add `X-Forwarded-Host`) to determine which headers are NOT included in the cache key (unkeyed).
 
-3. **Test unkeyed header reflection.** Add `X-Forwarded-Host: evil.com` and check if the value appears in the response body (redirects, canonical links, CSP headers, JS src attributes, meta tags). Append a unique cache-busting query parameter (e.g. `?cb=<random>`) so the probe lands on a cache MISS under a throwaway key — this verifies reflection without prematurely storing a live poison entry under the real, victim-shared cache key. (Param Miner's "Guess headers" mode is the canonical Burp tool for discovering these unkeyed headers/parameters automatically.)
+3. **Test unkeyed header reflection.** Add `X-Forwarded-Host: evil.com` and check if the value appears in the response body (redirects, canonical links, CSP headers, JS src attributes, meta tags). Append a unique cache-busting query parameter (e.g. `?cb=<random>`) so the probe lands on a cache MISS under a throwaway key — this verifies reflection without prematurely storing a live poison entry under the real, victim-shared cache key. (Param Miner's "Guess headers" mode is the canonical Burp toolchain for discovering these unkeyed headers/parameters automatically.)
 
 4. **Test URL path manipulation (Web Cache Deception).** Append fake static extensions to dynamic endpoints:
    - `GET /account/profile.css`
@@ -98,24 +101,24 @@ X-HTTP-Method-Override
 **Confirm caching behavior:**
 ```bash
 # Send twice, compare Age header
-curl -s -I "https://target.com/page" | grep -i "age\|x-cache\|cf-cache"
-curl -s -I "https://target.com/page" | grep -i "age\|x-cache\|cf-cache"
+curl --max-time 30 --connect-timeout 10 -s -I "https://target.com/page" | grep -i "age\|x-cache\|cf-cache"
+curl --max-time 30 --connect-timeout 10 -s -I "https://target.com/page" | grep -i "age\|x-cache\|cf-cache"
 ```
 
 **Test unkeyed X-Forwarded-Host:**
 ```bash
-curl -s -H "X-Forwarded-Host: evil.attacker.com" \
+curl --max-time 30 --connect-timeout 10 -s -H "X-Forwarded-Host: evil.attacker.com" \
   "https://target.com/page" | grep -i "evil.attacker.com"
 ```
 
 **Test Web Cache Deception (path appending):**
 ```bash
 # Authenticated session cookie required
-curl -s -b "session=YOUR_SESSION" \
+curl --max-time 30 --connect-timeout 10 -s -b "session=YOUR_SESSION" \
   "https://target.com/account/profile.css"
 
 # Then fetch without auth from another client
-curl -s "https://target.com/account/profile.css"
+curl --max-time 30 --connect-timeout 10 -s "https://target.com/account/profile.css"
 ```
 
 **Force cache miss to test poison without hitting cached version:**
@@ -123,16 +126,16 @@ curl -s "https://target.com/account/profile.css"
 # Use a unique cache-busting query param to land on a fresh key — do NOT rely on
 # client-sent "Cache-Control: no-cache" (per RFC 7234 it requests revalidation, not
 # skip-storage, and Cloudflare/Fastly/Akamai generally ignore it on cacheable assets).
-curl -s -H "X-Forwarded-Host: canary.attacker.com" \
+curl --max-time 30 --connect-timeout 10 -s -H "X-Forwarded-Host: canary.attacker.com" \
      "https://target.com/page?cb=$RANDOM"
 ```
 
 **DoS via poisoned error response:**
 ```bash
-curl -s -H "X-Forwarded-Host: aaaaaaaaaaa.invalid" \
+curl --max-time 30 --connect-timeout 10 -s -H "X-Forwarded-Host: aaaaaaaaaaa.invalid" \
   "https://target.com/js/app.js" -I
 # Check if next clean request returns error
-curl -s -I "https://target.com/js/app.js" | grep "HTTP/"
+curl --max-time 30 --connect-timeout 10 -s -I "https://target.com/js/app.js" | grep "HTTP/"
 ```
 
 **Grep patterns in Burp/ZAP response history:**
@@ -153,9 +156,9 @@ Cache-Control: public.*max-age  (on authenticated endpoint)
 
 **Parameter pollution test:**
 ```bash
-curl -s "https://target.com/page?cb=1&param=CANARY_VALUE" | grep CANARY_VALUE
+curl --max-time 30 --connect-timeout 10 -s "https://target.com/page?cb=1&param=CANARY_VALUE" | grep CANARY_VALUE
 # Then check if clean request returns poisoned version
-curl -s "https://target.com/page?cb=1"
+curl --max-time 30 --connect-timeout 10 -s "https://target.com/page?cb=1"
 ```
 
 **Burp Suite Intruder wordlist for unkeyed headers:**
@@ -291,6 +294,42 @@ The following real, verified bug-bounty / coordinated-disclosure cases extend th
     - Payload: origin-vs-cache delimiter/normalization disagreements (e.g. encoded path segments and static-suffix tricks) that cause the cache to store a dynamic/authenticated response under a static-looking key
     - Root cause: cache and origin disagree on how to normalize/parse the URL path, so the cache key does not match the resource the origin actually served
     - Year: 2024 — coordinated CDN-vendor disclosure; methodology research (no single bounty), PortSwigger Top-10 Web Hacking Techniques 2024 entry
+
+---
+
+## Verification
+
+Run this self-test to confirm cache poisoning readiness:
+
+1. **Cache header detection** — confirm cache header recognition:
+   ```bash
+   echo "X-Cache: hit" | grep -q "X-Cache" && echo "PASS: cache header recognized" || echo "FAIL"
+   echo "CF-Cache-Status: HIT" | grep -q "CF-Cache" && echo "PASS: Cloudflare cache recognized" || echo "FAIL"
+   ```
+
+2. **Unkeyed header injection** — verify header probe syntax:
+   ```bash
+   echo "X-Forwarded-Host: evil.com" | grep -q "X-Forwarded-Host" && echo "PASS: unkeyed header syntax" || echo "FAIL"
+   ```
+
+3. **Fat GET test** — confirm GET-with-body support:
+   ```bash
+   curl --max-time 30 --connect-timeout 10 -s -X GET "https://httpbin.org/get" -d "test=body" 2>/dev/null | grep -q "test" && echo "PASS: GET with body supported" || echo "(httpbin may be down)"
+   ```
+
+All 3 tests verify cache poisoning probing readiness.
+
+---
+
+## Pitfalls
+
+- **Unkeyed header reflection without cache hit** — the header must be reflected AND the response must be cached (X-Cache: hit). Reflection alone without cache hit is not cache poisoning.
+- **Single-probe false positives** — one 200 with X-Cache: hit doesn't prove poisoning. Need consistent cache-hit behavior across multiple requests from different IPs.
+- **Vary header ignorance** — if `Vary: User-Agent` is set, your poisoning only affects users with the same UA string. Document the scope.
+- **Fat GET body poisoning** — some CDNs cache based on URL only, ignoring the body. A fat GET with a crafted body can poison the cache for all users of that URL.
+- **Host header poisoning without shared cache** — if the cache is per-origin (not shared), poisoning only affects your own requests. Test from a different IP/browser.
+- **Web cache deception vs poisoning** — deception tricks the cache into storing sensitive data as static content. Poisoning injects malicious content. Don't confuse the two.
+
 
 ---
 

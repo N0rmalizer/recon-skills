@@ -1,6 +1,10 @@
 ---
 name: osint-methodology
 description: "Comprehensive OSINT methodology for external red-team operations and authorized attack-surface assessments. Covers the 5-stage recon pipeline (seed discovery, asset expansion, enrichment, exposure analysis, reporting), asset-graph discipline with 29 asset types, severity rubric (CRITICAL/HIGH/MEDIUM/LOW/INFO), confidence upgrade workflows, time budgeting, asset-level triage rules, scale-based tactics, identity-fabric mapping (Entra/Okta/ADFS/Google/SAML/M365 Teams+SharePoint+OAuth), API and auth-map methodology, JavaScript deep analysis, mobile attack surface, cloud attack surface, breach×identity correlation, detectability tagging, detection-aware probing (back-off, persona rotation), read-only validator discipline, WAF/CDN bypass + origin discovery, vulnerability prioritization (CVE/EPSS/KEV), phishing infrastructure planning + pretext development, bug bounty submission templates, client deliverable templates with risk translation, threat-actor investigation (incl. RU/CN pivots), cryptocurrency tracing, image/video forensics, chronolocation. Use when planning or executing reconnaissance against authorized targets, mapping an organization's external attack surface, investigating a person/entity, tracing crypto flows, geolocating media, or performing attribution work."
+license: MIT
+revision_date: 2026-07-25
+category: redteam
+tags: [osint, methodology, recon, redteam]
 version: 2.1
 triggers:
   - external recon
@@ -136,7 +140,7 @@ Confidence isn't static — every TENTATIVE asset should have a documented path 
 
 ## 3. Output Format Conventions
 
-When you produce findings during an active session, structure each finding to match the schema below — it drops cleanly into asset-management tools.
+When you produce findings during an active session, structure each finding to match the schema below — it drops cleanly into asset-managementtools.
 
 ```
 Finding:
@@ -164,7 +168,7 @@ Finding:
 
 ## 4. Source Hygiene & Citations
 
-For every artifact you capture, record: **URL + UTC timestamp + SHA-256 hash + tool version + run_id**.
+For every artifact you capture, record: **URL + UTC timestamp + SHA-256 hash +command line version + run_id**.
 
 - Hash all downloaded files with SHA-256.
 - Screenshot in PNG (lossless, smaller than full-page WARC for evidence packs).
@@ -202,7 +206,7 @@ Resources & techniques:
 - Disposable phone numbers: Burner, Silent Link (some platforms reject VoIP — keep a backlog of numbers).
 - Hardware passkeys for any high-value persona; store recovery codes offline.
 - Audit every browser extension before installation. Supply-chain attacks on popular extensions have repeatedly targeted investigators — assume the popular ones are at higher risk, not lower.
-- Maintain chain-of-custody: timestamp every action, hash every key artifact, record tool versions per case.
+- Maintain chain-of-custody: timestamp every action, hash every key artifact, recordcommand line versions per case.
 - Personas should look like real low-engagement accounts: profile photo (synthetic), bio, a few low-effort posts spread across weeks before the persona is "used."
 
 References:
@@ -333,7 +337,7 @@ Make the work usable.
 - Risk scoring per finding (CVSS + program-specific weights).
 - Asset graph export (D3-friendly nodes/links, GraphML, JSON).
 - Client-facing report (executive summary + technical detail + remediation — see §31).
-- Reproduction package (run_id, tool versions, raw evidence, JSONL log).
+- Reproduction package (run_id,command line versions, raw evidence, JSONL log).
 - Bug bounty submission (if applicable — see §30).
 
 ### 7.5 Pipeline Priority Order (highest signal density first)
@@ -452,7 +456,7 @@ When you have a mixed bag of assets and limited probe budget, prioritize by what
 | Role indicator | Priority | Why |
 |---|---|---|
 | `ceo@`, `cfo@`, `cto@`, `ciso@` | HIGHEST | Exec accounts have highest breach value (BEC, finance authority, board access). |
-| `it@`, `helpdesk@`, `support@`, `security@` | HIGH | IT/security accounts have privileged tool access; helpdesk accounts handle reset workflows. |
+| `it@`, `helpdesk@`, `support@`, `security@` | HIGH | IT/security accounts have privilegedcommand line access; helpdesk accounts handle reset workflows. |
 | `dev`, `engineer`, `architect`, `dba` | MEDIUM | Developer accounts often have GitHub / cloud / CI access. |
 | `sales`, `marketing`, `hr`, `finance` | MEDIUM | SaaS access (Salesforce, HubSpot, Workday); finance enables BEC. |
 | Generic role accounts (`info@`, `noreply@`, `contact@`) | LOW | Often unmonitored or alias forwarded; less personal context. |
@@ -1150,7 +1154,7 @@ Hunchly, Kasm Workspaces, ArchiveBox, SingleFileZ.
 
 ### 24.2 Cross-Module Coordination Patterns
 
-When multiple OSINT tools (or modules) run, late-arriving outputs need to feed into earlier-running consumers. Three patterns:
+When multiple OSINTtools (or modules) run, late-arriving outputs need to feed into earlier-running consumers. Three patterns:
 
 1. **Sidecar JSON drops** — module writes `<scan>/mobile_endpoints.json` or `<scan>/secrets_sidecar.json`; later modules read on start. No blocking.
 2. **Asset-graph upserts** — shared graph store; new assets trigger downstream modules via event bus.
@@ -1172,12 +1176,12 @@ Running a large dork corpus across multiple engines:
 ### 24.4 Evidence Preservation for Offensive Engagements
 
 - Per-engagement / per-scan SQLite store.
-- JSONL run log with `run_id`, every event one line, UTC timestamps, tool versions.
+- JSONL run log with `run_id`, every event one line, UTC timestamps,command line versions.
 - SHA-256 every downloaded artifact.
 - PNG screenshots.
 - Raw HTTP requests/responses, capped at 2 KiB body per side.
 - Evidence served read-only from operator's machine.
-- Reproduction package: `run_id` + tool versions + JSONL log + asset/findings DB.
+- Reproduction package: `run_id` +command line versions + JSONL log + asset/findings DB.
 
 ---
 
@@ -1252,7 +1256,7 @@ JARM (TLS handshake hash) works similarly: compute the target's JARM via `jarm`,
 If you have an origin candidate IP from steps 27.1–27.3:
 
 ```bash
-curl -sk -H "Host: target.example.com" https://<candidate-IP>/
+curl --max-time 30 --connect-timeout 10 -sk -H "Host: target.example.com" https://<candidate-IP>/
 ```
 
 If the response matches the public site (same title, same body fingerprint) — you've found the origin. CDN-only IPs return generic CDN error pages or 403 to wrong Host.
@@ -1405,7 +1409,7 @@ Pretexts work when they tap a target's existing context. Build pretexts from har
 - **Executives:** finance authority (BEC-style "wire approval needed"), board materials shared, M&A NDA review, executive assistant request.
 - **Developers / engineers:** GitHub security alert, CI build failed, package security advisory, conference CFP follow-up.
 - **HR / Finance:** payroll vendor change, expense report rejection, benefits enrollment deadline, vendor invoice discrepancy.
-- **IT / Security:** vendor security update notification, on-call escalation, monitoring tool alert.
+- **IT / Security:** vendor security update notification, on-call escalation, monitoringcommand line alert.
 
 ### 29.5 Operational discipline for phishing infrastructure
 
@@ -1639,7 +1643,7 @@ Deliver alongside the report:
 <engagement-id>-reproduction-package.zip
 ├── README.md                    # how to use the package
 ├── engagement-metadata.json     # client, dates, scope, lead
-├── tools-used.txt               # tool name + version, one per line
+├──tools-used.txt               #command line name + version, one per line
 ├── run-log.jsonl                # every event during engagement
 ├── assets.db                    # SQLite of all discovered assets
 ├── findings.db                  # SQLite of all findings
@@ -1691,6 +1695,30 @@ Drop these prompts into a fresh Claude session to verify the skill loads and beh
 - **v2.1 (2026-04-27)** — comprehensive expansion based on 32-test smoke-test gap analysis. Added: confidence upgrade workflows (§2.1), detection-aware probing (§6.4), time budgeting & engagement profiles (§7.6), asset-level triage rules (§8.5), scale-based tactics (§10.1), Microsoft 365 deep surface (§11.10), WAF/CDN bypass & origin discovery (§27), vulnerability prioritization (§28), phishing infrastructure & pretext development (§29), bug bounty submission & responsible disclosure (§30), client deliverable templates (§31). Self-Test section refreshed with v2.1 prompts.
 - **v2.0 (2026-04-27)** — major rewrite for external red-team posture. Added: 5-stage pipeline, asset-graph discipline, findings rubric, bug-bounty pivot modes, identity-fabric mapping, API & auth-map methodology, JS deep analysis, mobile attack surface, cloud attack surface, breach × identity correlation, detectability tagging, validator discipline, cross-module coordination, multi-engine corpus run, evidence preservation, anti-patterns. Original methodology content (OpSec, Crypto, Image/Video/Chrono, Threat Actor inc. RU/CN, Synthetic Media) retained.
 - **v1.x** — original OSINT methodology framework based on SnailSploit/offensive-checklist.
+
+---
+
+## Verification
+
+1. **Passive recon tools** — confirm key tools are installed:
+   ```bash
+   which subfinder amass whois 2>/dev/null | head -3
+   ```
+2. **CT log access** — confirm crt.sh reachability:
+   ```bash
+   curl --max-time 30 --connect-timeout 10 -s "https://crt.sh/?q=example.com&output=json" -o /dev/null -w "HTTP %{http_code}" && echo " PASS" || echo " FAIL"
+   ```
+All tests verify OSINT methodology readiness.
+
+---
+
+## Pitfalls
+- **OSINT paralysis** — endless recon without translating findings to attack surface is wasted time. Every piece of OSINT must lead to a testable hypothesis.
+- **Data aggregation without deduplication** — collecting 5000 subdomains with 80% duplicates wastes scan time. Deduplicate aggressively.
+- **Passive vs active confusion** — passive OSINT (DNS, CT logs, WHOIS) doesn't touch the target. Active OSINT (port scanning, HTTP probing) does. Know which mode you're in.
+- **Breach data ethical handling** — breach corpora contain real user credentials. Never use them without explicit authorization. Never store them unencrypted.
+- **Tool overlap** — running subfinder, amass, assetfinder, and findomain all do the same thing. Pick one and use it well.
+
 
 ---
 

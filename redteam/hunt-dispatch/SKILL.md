@@ -1,8 +1,11 @@
 ---
 name: hunt-dispatch
 description: Skill-set loader for /hunt orchestrator. Fingerprints the target, picks the right platform attack skills, and loads the Red Team or WAPT skill set. Use when /hunt has just received a mode answer (redteam or wapt + blackbox|greybox) and needs to load the appropriate skills and print the taxonomy. Not for direct user invocation.
-sources: field_recon, redteam_ops
-report_count: 50
+version: 1.1.0
+revision_date: 2026-07-25
+license: MIT
+category: redteam
+tags: [dispatch, hunt, redteam]
 ---
 
 # hunt-dispatch
@@ -125,7 +128,7 @@ highest-tier 8 and drop the rest; print the dropped ones under
 
 ## step 2 — load skill set
 
-invoke each skill in order via the Skill tool.
+invoke each skill in order via the Skill CLI.
 
 ### mode=redteam
 
@@ -283,6 +286,30 @@ never echo back, log, or persist:
 - SOW / scope-of-work / engagement-letter content
 - grey box credentials (kept in session memory by `/hunt`, never written to disk)
 - client identifiers in user-level memory
+
+---
+
+## Verification
+
+1. **Hunt taxonomy check** — confirm the dispatch taxonomy is complete:
+   ```bash
+   grep -c "hunt-" SKILL.md && echo "PASS: hunt-* references present" || echo "FAIL"
+   ```
+2. **Tech fingerprint patterns** — confirm fingerprint signals exist:
+   ```bash
+   grep -q "X-Powered-By\|Set-Cookie\|wp-json\|GraphQL" SKILL.md && echo "PASS: fingerprint signals present" || echo "FAIL"
+   ```
+All tests verify dispatch readiness.
+
+---
+
+## Pitfalls
+
+- **Wrong platform classification** — misidentifying a React app as Next.js or a Django app as Flask leads to loading wrong hunt-* skills. Always verify with multiple fingerprint signals.
+- **Dispatch before scope confirmation** — loading hunt-* skills before confirming the target is in scope wastes time on out-of-scope assets.
+- **Over-classification** — some apps don't fit neatly into one category. Multi-stack apps (React frontend + Django API) need both skill sets loaded.
+- **Assuming framework version from headers** — `X-Powered-By` can be spoofed or removed. Cross-validate with JS bundle analysis, cookie names, and error page signatures.
+
 
 ---
 

@@ -1,8 +1,14 @@
 ---
 name: google-dorks-catalog
 description: "High-precision Google dorks for exposed configs, secrets, and credentials -- real-world validated"
-sources: field_ops, google_hacking
-report_count: 100+
+version: 1.1.0
+revision_date: 2026-07-25
+license: MIT
+platforms: [linux]
+compatibility: N/A (reference catalog)
+disable-model-invocation: true
+tags: [meta, google-dorks, secrets, passive-recon, osint]
+category: meta
 ---
 
 # Google Dorks Catalog -- Exposed Configs & Secrets
@@ -36,7 +42,7 @@ site:$target "private_key" "client_email" extension:json
 ### Exposed Configuration Files (ALL Extensions)
 
 ```
-site:target.com ext:log | ext:txt | ext:conf | ext:cnf | ext:ini | ext:env | ext:sh | ext:bak | ext:backup | ext:swp | ext:old | ext:~ | ext:git | ext:svn | ext:htpasswd | ext:htaccess | ext:json
+site:$target ext:log | ext:txt | ext:conf | ext:cnf | ext:ini | ext:env | ext:sh | ext:bak | ext:backup | ext:swp | ext:old | ext:~ | ext:git | ext:svn | ext:htpasswd | ext:htaccess | ext:json
 ```
 
 This covers:
@@ -53,47 +59,47 @@ This covers:
 
 #### Supabase
 ```
-site:target.com "supabase.co" "anon_key" OR "SUPABASE_ANON_KEY"
+site:$target "supabase.co" "anon_key" OR "SUPABASE_ANON_KEY"
 ```
 
 #### Firebase
 ```
-site:target.com "firebase-adminsdk" "private_key_id" extension:json
+site:$target "firebase-adminsdk" "private_key_id" extension:json
 ```
 
 #### AWS
 ```
-site:target.com "AKIA" filetype:env NOT example NOT test
+site:$target "AKIA" filetype:env NOT example NOT test
 ```
 
 #### SendGrid
 ```
-site:target.com "SG." filetype:env NOT example
+site:$target "SG." filetype:env NOT example
 ```
 
 #### MongoDB
 ```
-site:target.com "mongodb+srv://" "password"
+site:$target "mongodb+srv://" "password"
 ```
 
 #### PostgreSQL
 ```
-site:target.com "postgresql://" "password" ext:env
+site:$target "postgresql://" "password" ext:env
 ```
 
 #### JWT Secrets
 ```
-site:target.com "JWT_SECRET" OR "jwt_secret" filetype:env
+site:$target "JWT_SECRET" OR "jwt_secret" filetype:env
 ```
 
 #### OpenAI API Keys
 ```
-site:target.com "sk-" filetype:env OR filetype:txt
+site:$target "sk-" filetype:env OR filetype:txt
 ```
 
 #### GitHub Tokens
 ```
-site:target.com "ghp_" OR "gho_" OR "ghu_"
+site:$target "ghp_" OR "gho_" OR "ghu_"
 ```
 
 ## GitHub Code Search Patterns
@@ -127,13 +133,13 @@ params = {"q": 'mongodb+srv://+password+filename:.env'}
 
 ```bash
 # Extract SANs directly from the certificate
-openssl s_client -connect target.com:443 -servername target.com </dev/null 2>/dev/null | \
-  openssl x509 -noout -ext subjectAltName | grep -oP 'DNS:[^,]+' | cut -d: -f2 | sort -u
+openssl s_client -connect $TARGET:443 -servername $TARGET </dev/null 2>/dev/null | \
+  openssl x509 -noout -ext subjectAltName | grep -Eo 'DNS:[^,]+' | cut -d: -f2 | sort -u
 ```
 
 ## Real-World Cases
 
-**Real-world case MPF Argentina**: SSO certificate revealed fiscales.gob.ar, fiscales.gov.ar, mpf.gov.ar that didn't appear in conventional CT searches.
+**Real-world case (redacted)**: SSO certificate revealed ORG_DOMAIN_1, ORG_DOMAIN_2, ORG_DOMAIN_3 that didn't appear in conventional CT searches.
 
 ## Pitfalls
 
@@ -147,7 +153,7 @@ openssl s_client -connect target.com:443 -servername target.com </dev/null 2>/de
 
 ```bash
 # Test dork results manually
-curl -sk "https://target.com/.env" | head -5
+curl --max-time 30 --connect-timeout 10 -sk "https://$TARGET/.env" | head -5
 # Verify GitHub found secrets
 python3 -c "import json; print(json.loads(open('result.json').read()))"
 ```

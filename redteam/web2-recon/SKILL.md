@@ -1,8 +1,11 @@
 ---
 name: web2-recon
 description: Web2 recon pipeline — subdomain enumeration (subfinder, Chaos API, assetfinder), live host discovery (dnsx, httpx), URL crawling (katana, waybackurls, gau), directory fuzzing (ffuf), JS analysis (LinkFinder, SecretFinder), continuous monitoring (new subdomain alerts, JS change detection, GitHub commit watch). Use when starting recon on any web2 target or when asked about asset discovery, subdomain enum, or attack surface mapping.
-sources: field_recon, projectdiscovery_research, portswigger_research, chaos_projectdiscovery
-report_count: 100
+version: 1.1.0
+revision_date: 2026-07-25
+license: MIT
+category: redteam
+tags: [web2, recon, redteam]
 ---
 
 # WEB2 RECON PIPELINE
@@ -33,7 +36,7 @@ censys_secret: YOUR_CENSYS_SECRET
 shodan: [YOUR_SHODAN_KEY]
 EOF
 
-# 4. Verify all tools installed
+# 4. Verify alltools installed
 which subfinder httpx dnsx nuclei katana waybackurls gau dalfox ffuf anew gf interactsh-client
 ```
 
@@ -60,14 +63,14 @@ which subfinder httpx dnsx nuclei katana waybackurls gau dalfox ffuf anew gf int
 TARGET="target.com"
 
 # Step 0: Passive — crt.sh certificate transparency (no API key needed)
-curl -s "https://crt.sh/?q=%.${TARGET}&output=json" \
+curl --max-time 30 --connect-timeout 10 -s "https://crt.sh/?q=%.${TARGET}&output=json" \
   | jq -r '.[].name_value' \
   | sed 's/\*\.//g' \
   | sort -u > /tmp/subs.txt
 echo "[+] crt.sh: $(wc -l < /tmp/subs.txt) subdomains"
 
 # Step 1: Chaos API (ProjectDiscovery — most comprehensive source)
-curl -s "https://dns.projectdiscovery.io/dns/$TARGET/subdomains" \
+curl --max-time 30 --connect-timeout 10 -s "https://dns.projectdiscovery.io/dns/$TARGET/subdomains" \
   -H "Authorization: $CHAOS_API_KEY" \
   | jq -r '.[]' >> /tmp/subs.txt
 
@@ -252,7 +255,7 @@ Score before spending time. Skip if score < 4.
 
 ```bash
 # Response headers reveal backend
-curl -sI https://target.com | grep -iE "server|x-powered-by|x-aspnet|x-runtime|x-generator"
+curl --max-time 30 --connect-timeout 10 -sI https://target.com | grep -iE "server|x-powered-by|x-aspnet|x-runtime|x-generator"
 
 # Common signals:
 # Server: nginx + X-Powered-By: PHP/7.4 → PHP backend
@@ -297,7 +300,7 @@ TARGET="target.com"
 KNOWN="/tmp/$TARGET-subs-known.txt"
 
 subfinder -d $TARGET -silent > /tmp/$TARGET-subs-fresh.txt
-curl -s "https://dns.projectdiscovery.io/dns/$TARGET/subdomains" \
+curl --max-time 30 --connect-timeout 10 -s "https://dns.projectdiscovery.io/dns/$TARGET/subdomains" \
   -H "Authorization: $CHAOS_API_KEY" \
   | jq -r '.[]' >> /tmp/$TARGET-subs-fresh.txt
 
@@ -319,14 +322,14 @@ fi
 REPO="TargetOrg/target-app"
 LAST_SHA="/tmp/$REPO-last-sha.txt"
 
-CURRENT=$(curl -s "https://api.github.com/repos/$REPO/commits?per_page=1" | jq -r '.[0].sha')
+CURRENT=$(curl --max-time 30 --connect-timeout 10 -s "https://api.github.com/repos/$REPO/commits?per_page=1" | jq -r '.[0].sha')
 KNOWN=$(cat $LAST_SHA 2>/dev/null)
 
 if [ "$CURRENT" != "$KNOWN" ]; then
   echo "New commit on $REPO: $CURRENT"
   echo $CURRENT > $LAST_SHA
   # Get changed files
-  curl -s "https://api.github.com/repos/$REPO/commits/$CURRENT" \
+  curl --max-time 30 --connect-timeout 10 -s "https://api.github.com/repos/$REPO/commits/$CURRENT" \
     | jq -r '.files[].filename' | grep -E "auth|middleware|route|permission|role|admin"
 fi
 
@@ -364,7 +367,7 @@ done
 pip install trufflehog3 2>/dev/null || true
 trufflehog filesystem --only-verified recon/$TARGET/ 2>/dev/null
 
-# SecretFinder — manual JS bundle scan (already in tools/)
+# SecretFinder — manual JS bundle scan (already intools/)
 source ~/tools/SecretFinder/.venv/bin/activate
 cat /tmp/urls.txt | grep "\\.js$" | head -100 | while read url; do
   python3 ~/tools/SecretFinder/SecretFinder.py -i "$url" -o cli 2>/dev/null
@@ -382,7 +385,7 @@ BusyBox grep does NOT support `-P` (PCRE/Perl regex). Use Python3 for regex matc
 
 ```bash
 # Extract Firebase API keys from JS bundle
-curl -sk "https://$TARGET/static/js/main.*.js" 2>/dev/null | python3 -c "
+curl --max-time 30 --connect-timeout 10 -sk "https://$TARGET/static/js/main.*.js" 2>/dev/null | python3 -c "
 import sys, re
 content = sys.stdin.read()
 for k in re.findall(r'AIza[0-9A-Za-z_-]{35}', content):
@@ -396,8 +399,8 @@ for s in re.findall(r'(?:secret|jwt[_-]?secret|token)[\"\']?\s*[:=]\s*[\"]([a-zA
 " 2>/dev/null
 
 # For React SPAs with chunked bundles — find the main bundle first
-main_js=$(curl -sk "https://$TARGET:8080/" 2>/dev/null | grep -oP 'src="([^"]+\.js)"' | sed 's/src="//;s/"//' | head -1)
-[ -n "$main_js" ] && curl -sk "https://$TARGET:8080/$main_js" | python3 -c "
+main_js=$(curl --max-time 30 --connect-timeout 10 -sk "https://$TARGET:8080/" 2>/dev/null | grep -Eo 'src="([^"]+\.js)"' | sed 's/src="//;s/"//' | head -1)
+[ -n "$main_js" ] && curl --max-time 30 --connect-timeout 10 -sk "https://$TARGET:8080/$main_js" | python3 -c "
 import sys, re
 content = sys.stdin.read()
 for m in re.findall(r'https?://[^\"\\s,;\\)]+', content):
@@ -408,7 +411,7 @@ for m in re.findall(r'apiUrl[\"\\']?\s*[:=]\s*[\"\\']([^\"\\']+)[\"\\']', conten
 " 2>/dev/null
 ```
 
-This technique discovered `apiUrl: https://patientportal.com:8081` from a React SPA bundle in field recon, revealing an internal API backend on a non-standard port.
+This technique discovered `apiUrl: https://health-saas.example.com:8081` from a React SPA bundle in field recon, revealing an internal API backend on a non-standard port.
 
 ## GITHUB DORKING FOR TARGET
 
@@ -504,10 +507,13 @@ dnsx -version   # if SIGSEGV: use the dig fallback below
 httpx -version  # if SIGSEGV: use the curl fallback below
 ```
 
-### `dnsx` → `dig` fallback
+### `dnsx` (preferred) or `dig` fallback
 
 ```bash
-# Replaces: dnsx -l subs.txt -a -resp -silent
+# Preferred: dnsx (concurrent, 50-100x faster at scale)
+dnsx -silent -l subs.txt -a -resp-only -o resolved.txt
+
+# Fallback: dig (sequential, only if dnsx binary unavailable)
 while read s; do
   ips=$(dig +short +tries=1 +time=3 "$s" \
     | grep -E '^[0-9.]+$' \
@@ -521,7 +527,7 @@ done < subs.txt
 ```bash
 # Replaces: httpx -l subs.txt -silent -status-code -title -tech-detect
 while read s; do
-  resp=$(curl -s -L -m 5 -o /tmp/body \
+  resp=$(curl --max-time 30 --connect-timeout 10 -s -L -m 5 -o /tmp/body \
     -w "%{http_code}|%{url_effective}|%{header_server}" \
     "https://$s")
   code=$(echo "$resp" | cut -d'|' -f1)
@@ -673,6 +679,30 @@ Full attack-chain analysis is in `hunt-api-misconfig` → `NSwag / Swagger / Ope
 
 ---
 
+## Verification
+
+1. **Core recon tools** — confirm key tools are installed:
+   ```bash
+   which subfinder httpx nuclei katana 2>/dev/null | wc -l | xargs -I{} echo "{} of 4 core tools found"
+   ```
+2. **HTTP probe** — confirm httpx works:
+   ```bash
+   echo "example.com" | httpx -silent -status-code 2>/dev/null && echo "PASS: httpx operational" || echo "NOTE: httpx not installed"
+   ```
+All tests verify web2 recon readiness.
+
+---
+
+## Pitfalls
+- **Recon without triage** — collecting 10,000 subdomains without prioritizing which to test is data collection, not recon.
+- **HTTP probe without HTTPS** — many services only respond on HTTPS. Test both protocols.
+- **Screen shot collection without analysis** — automated screenshots are useful only if you review them. Unique login pages, error messages, and CMS identifiers are the value.
+- **Port scanning without service identification** — open port 8443 might be anything. Banner grab and identify the actual service.
+- **Stale recon data** — subdomain data older than 30 days is increasingly unreliable. Refresh recon for each engagement.
+
+
+---
+
 ## Related Skills & Chains
 
 - **`offensive-osint`** — When recon needs concrete probes / wordlists / regexes beyond the basic pipeline. Workflow primitive: this skill produces the URL set; `offensive-osint` provides the secret regexes, GraphQL/Swagger paths, and identity-fabric probes you apply to that URL set.
@@ -693,11 +723,11 @@ Full attack-chain analysis is in `hunt-api-misconfig` → `NSwag / Swagger / Ope
 ### Worker Environment Pitfalls
 
 #### write_file blocked on protected paths
-The Hermes `write_file` tool blocks writes to paths like `/root/output/` with: `"Write denied: ... is a protected system/credential file."`
+The `write_file` tool blocks writes to paths like `$OUTDIR/` with: `"Write denied: ... is a protected system/credential file."`
 
 **Workaround 1 — cat heredoc** (best for short content without interpolation):
 ```bash
-cat > /root/output/report.md << 'ENDOFFILE'
+cat > $OUTDIR/report.md << 'ENDOFFILE'
 ... content ...
 ENDOFFILE
 ```
@@ -708,7 +738,7 @@ python3 << 'PYEOF'
 content = """... large file content with any special characters ...
 dollar signs $, backticks `, quotes ' and ", all are fine in triple-quoted strings
 """
-with open("/root/output/report.md", "w") as f:
+with open("$OUTDIR/report.md", "w") as f:
     f.write(content)
 print("Written")
 PYEOF
@@ -716,12 +746,12 @@ PYEOF
 
 **Workaround 3 — execute_code with Python** (when terminal heredoc doesn't fit the workflow):
 ```python
-# Use Hermes' execute_code tool with a Python snippet
+# Use execute_code with Python snippet
 import os
 content = """..."""
-with open("/root/output/report.md", "w") as f:
+with open("$OUTDIR/report.md", "w") as f:
     f.write(content)
-os.chmod("/root/output/report.md", 0o644)
+os.chmod("$OUTDIR/report.md", 0o644)
 ```
 
 #### nmap broken on Alpine workers
@@ -729,9 +759,9 @@ os.chmod("/root/output/report.md", 0o644)
 
 **Option A — nmap without version detection** (works fine, just no -sV):
 ```bash
-nmap --top-ports 1000 -T4 <target> -oN /root/output/nmap-results.txt
+nmap --top-ports 1000 -T4 <target> -oN $OUTDIR/nmap-results.txt
 # Or full port scan (slower but complete):
-nmap -p- -T4 <target> -oN /root/output/nmap-full.txt
+nmap -p- -T4 <target> -oN $OUTDIR/nmap-full.txt
 ```
 
 **Option B — naabu** (faster, lighter, from ProjectDiscovery):
@@ -744,7 +774,7 @@ naabu -host $TARGET -p 22,80,443,3306,5432,6379,8080,8081,8443,9000,9090,27017 -
 Alpine uses BusyBox grep without `-P`. Use `-E` or Python3 for complex regex:
 ```bash
 # grep -P fails; use python3
-curl -sk "https://target.com/file.js" | python3 -c "
+curl --max-time 30 --connect-timeout 10 -sk "https://target.com/file.js" | python3 -c "
 import sys, re
 for m in re.findall(r'AIza[0-9A-Za-z_-]{35}', sys.stdin.read()):
     print(f'Key: {m}')
@@ -777,7 +807,7 @@ Beyond just `/wp-json/wp/v2/users`, probe these endpoints systematically:
 
 ```bash
 # Full namespace enumeration
-curl -sk "https://target.com/wp-json/" | python3 -c "
+curl --max-time 30 --connect-timeout 10 -sk "https://target.com/wp-json/" | python3 -c "
 import sys, json
 d = json.load(sys.stdin)
 print('Namespaces:')
@@ -794,14 +824,14 @@ for ep in "/wp-json/wp/v2/users" "/wp-json/wp/v2/posts?per_page=3" \
           "/wp-json/contact-form-7/v1/" "/wp-json/gf/v2/" \
           "/wp-json/yoast/v1/" "/wp-json/redirection/v1/"; do
   echo "=== $ep ==="
-  curl -sk -o /tmp/ep.txt -w "HTTP %{http_code} | %{size_download}B\n" "https://target.com$ep"
+  curl --max-time 30 --connect-timeout 10 -sk -o /tmp/ep.txt -w "HTTP %{http_code} | %{size_download}B\n" "https://target.com$ep"
   head -c 300 /tmp/ep.txt
   echo
 done
 
 # Cross-WordPress subdirectory discovery (e.g., /magical/ has different plugins)
 for sub in "/magical" "/blog" "/shop" "/wp2" "/old" "/beta" "/test" "/staging"; do
-  code=$(curl -sk -o /dev/null -w "%{http_code}" "https://target.com${sub}/wp-json/")
+  code=$(curl --max-time 30 --connect-timeout 10 -sk -o /dev/null -w "%{http_code}" "https://target.com${sub}/wp-json/")
   [ "$code" = "200" ] && echo "WordPress install at ${sub}/ (HTTP ${code}) with different plugins possible"
 done
 ```
@@ -816,7 +846,7 @@ for origin in "https://evil.com" "null" "https://evil.com:443"; do
                   "/wp-json/wp/v2/posts" "/wp-json/wc/v3/" \
                   "/wp-json/elementor/v1/globals"; do
     echo "--- Origin: $origin on $endpoint ---"
-    curl -sk -H "Origin: $origin" -D /tmp/cors_headers.txt -o /dev/null "https://target.com$endpoint"
+    curl --max-time 30 --connect-timeout 10 -sk -H "Origin: $origin" -D /tmp/cors_headers.txt -o /dev/null "https://target.com$endpoint"
     grep -i "access-control" /tmp/cors_headers.txt || echo "NO CORS"
   done
 done
@@ -830,18 +860,18 @@ Many targets expose critical files on non-obvious paths. Probe these systematica
 # PHP info (often named inconsistently)
 for path in "/info.php" "/test.php" "/phpinfo.php" "/php-info.php" "/p.php" \
             "/info/" "/debug.php" "/wp-info.php"; do
-  curl -sk -o /dev/null -w "PATH %s -> HTTP %{http_code}\n" "https://target.com$path"
+  curl --max-time 30 --connect-timeout 10 -sk -o /dev/null -w "PATH %s -> HTTP %{http_code}\n" "https://target.com$path"
 done
 
 # Config and backup files
 for path in "/.env" "/.git/config" "/wp-config.php.bak" "/wp-config.txt" \
             "/wp-content/debug.log" "/backup.sql" "/db.sql" "/db_backup.sql" \
             "/sitemap.xml" "/robots.txt"; do
-  curl -sk -o /dev/null -w "%s -> HTTP %{http_code} | %{size_download}B\n" "https://target.com$path"
+  curl --max-time 30 --connect-timeout 10 -sk -o /dev/null -w "%s -> HTTP %{http_code} | %{size_download}B\n" "https://target.com$path"
 done
 
 # Actually download phpinfo when found (contains 400+ config entries)
-curl -sk "https://target.com/info.php" | python3 -c "
+curl --max-time 30 --connect-timeout 10 -sk "https://target.com/info.php" | python3 -c "
 import sys, re
 content = sys.stdin.read()
 patterns = {'PHP Version': r'<tr><td class=\"e\">PHP Version</td><td class=\"v\">([^<]+)</td></tr>',
@@ -855,7 +885,7 @@ print(f'Total entries: {len(re.findall(r\"<tr><td class=.e.>\", content))}')
 "
 ```
 
-In Wave 9 field recon, `wines.com` had PHPInfo exposed at BOTH `/info.php` AND `/test.php` (839 config entries each).
+In Wave 9 field recon, `ecommerce.example.com` had PHPInfo exposed at BOTH `/info.php` AND `/test.php` (839 config entries each).
 
 ### Cross-TLD pivot discipline
 
@@ -866,12 +896,12 @@ Always grep JS bundles for plausible sibling TLDs:
 ```bash
 # pull all JS, grep for sibling-TLD candidates
 for url in $(cat live-hosts.txt); do
-  curl -s "$url" | grep -oE 'src="[^"]+\.js"' | sed 's/src="//;s/"//'
+  curl --max-time 30 --connect-timeout 10 -s "$url" | grep -oE 'src="[^"]+\.js"' | sed 's/src="//;s/"//'
 done | sort -u > js-urls.txt
 
 # then on each JS file
 for j in $(cat js-urls.txt); do
-  curl -s "$j" | grep -oE '[a-z0-9.-]+\.(io|app|one|dev|test|cloud|ai|co)' | sort -u
+  curl --max-time 30 --connect-timeout 10 -s "$j" | grep -oE '[a-z0-9.-]+\.(io|app|one|dev|test|cloud|ai|co)' | sort -u
 done | sort -u > sibling-tld-candidates.txt
 ```
 
@@ -926,7 +956,7 @@ Same distinction for CloudFront:
 - **"Error - 404"** with `Server: CloudFront` = distribution exists, origin returned 404 — NOT a takeover.
 - **"The request could not be satisfied"** with `X-Cache: Error from cloudfront` = origin missing entirely — potential takeover.
 
-Phase 2C verified both patterns live. Always check the EXACT response body string before filing a takeover finding — the takeover-scanner tools (subzy, subjack) match on multiple fingerprints and frequently false-positive on the "still owned, just empty" case.
+Phase 2C verified both patterns live. Always check the EXACT response body string before filing a takeover finding — the takeover-scannertools (subzy, subjack) match on multiple fingerprints and frequently false-positive on the "still owned, just empty" case.
 
 ### WordPress recon — REST, XMLRPC, CORS, and cross-subdirectory plugins
 
@@ -938,10 +968,10 @@ WordPress is the most common web2 CMS on the internet. These five quick checks c
 
 ```bash
 # Full namespace list — reveals every plugin's registered endpoints
-curl -sk "https://target.com/?rest_route=/" | python3 -m json.tool
+curl --max-time 30 --connect-timeout 10 -sk "https://target.com/?rest_route=/" | python3 -m json.tool
 
 # Compare with /wp-json/ — they can differ on dual-WP installs
-curl -sk "https://target.com/wp-json/" | python3 -m json.tool
+curl --max-time 30 --connect-timeout 10 -sk "https://target.com/wp-json/" | python3 -m json.tool
 ```
 
 Cross-check both on the root domain AND on any `/subdirectory/` WordPress installs (see §4 below).
@@ -952,7 +982,7 @@ WordPress REST API often mirrors `Access-Control-Allow-Origin` back from the req
 
 ```bash
 # Test if CORS reflects any origin with credentials
-curl -sk -I "https://target.com/wp-json/wp/v2/users" \
+curl --max-time 30 --connect-timeout 10 -sk -I "https://target.com/wp-json/wp/v2/users" \
   -H "Origin: https://evil.com" | grep -iE 'access-control'
 
 # True positive: BOTH headers appear
@@ -967,7 +997,7 @@ Test BOTH the root path AND `/wp-json/wp/v2/users` — some servers only send CO
 In minimal environments (BusyBox grep without `-P`), hand extraction via Python avoids the broken grep:
 
 ```bash
-curl -sk -X POST "https://target.com/xmlrpc.php" \
+curl --max-time 30 --connect-timeout 10 -sk -X POST "https://target.com/xmlrpc.php" \
   -H "Content-Type: text/xml" \
   -d '<?xml version="1.0"?><methodCall><methodName>system.listMethods</methodName></methodCall>' \
   | python3 -c "
@@ -990,12 +1020,12 @@ A single domain can host multiple independent WordPress installs at different pa
 ```bash
 # Check each known WP subpath for plugin differences
 for sub in "/magical" "/blog" "/shop" "/wp2" "/old" "/beta" "/test" "/staging"; do
-  ns_count=$(curl -sk "https://target.com${sub}/?rest_route=/" |
+  ns_count=$(curl --max-time 30 --connect-timeout 10 -sk "https://target.com${sub}/?rest_route=/" |
     python3 -c "import sys,json; d=json.load(sys.stdin); print(len(d.get('namespaces',[])))" 2>/dev/null)
   if [ -n "$ns_count" ] && [ "$ns_count" -gt 0 ]; then
     echo "REST namespaces at ${sub}/: ${ns_count}"
     for plugin in "elementskit" "revslider" "elementor" "woocommerce" "gravityforms"; do
-      code=$(curl -sk -o /dev/null -w "%{http_code}" \
+      code=$(curl --max-time 30 --connect-timeout 10 -sk -o /dev/null -w "%{http_code}" \
         "https://target.com${sub}/wp-content/plugins/${plugin}/readme.txt" 2>/dev/null)
       [ "$code" != "404" ] && [ -n "$code" ] && echo "  PLUGIN: ${plugin}"
     done
@@ -1008,7 +1038,7 @@ done
 Yoast SEO's author sitemap leaks author slugs that embed email addresses (e.g., `author/adminleasemymarketing-com/` = `admin@leasemarketing.com`). This is a common second-order enumeration vector for spear-phishing:
 
 ```bash
-curl -sk "https://target.com/author-sitemap.xml" | grep -oE 'author/[^"]+' | sort -u
+curl --max-time 30 --connect-timeout 10 -sk "https://target.com/author-sitemap.xml" | grep -oE 'author/[^"]+' | sort -u
 # Slugs often follow the pattern: name+email → admin<at>domain-com
 ```
 
@@ -1031,7 +1061,7 @@ Create a **comparison table per target** using four categories:
 
 ```bash
 # 1. Read the consolidated vulns file and all prior wave output files
-WAVE_DIR="/root/output/recon_us/deep"
+WAVE_DIR="$OUTDIR/recon_output/deep"
 for wave in wave6 wave7 wave8; do
   echo "=== $wave ==="
   cat $WAVE_DIR/$wave/*.md | grep -E "^(###|##.*Target|## New|# Target|CORS|XMLRPC|WP User|Port|MySQL|FTP|SSH)"
@@ -1080,11 +1110,11 @@ TABLE
 #### Example from Wave 9 field recon (7 targets, 4-wave comparison)
 
 This methodology revealed **12 new findings** across 7 targets in the 4-wave comparison:
-- **wines.com**: MySQL 3306 + FTP 21 newly open (never found in waves 6-8); XMLRPC regressed 200→301 (hardened)
-- **realpro.com**: Exchange servers + SSH + VPN portals discovered (not in prior waves)
-- **restonic.com**: CORS credential reflection on ALL endpoints (missed in waves 6-8)
-- **biglots.com**: staging.biglots.com accessible + 20+ internal subdomains leaked
-- **patientportal.com**: Port 8081 open (new); MySQL 3306 still open (4-wave persistence)
+- **ecommerce.example.com**: MySQL 3306 + FTP 21 newly open (never found in waves 6-8); XMLRPC regressed 200→301 (hardened)
+- **realestate.example.com**: Exchange servers + SSH + VPN portals discovered (not in prior waves)
+- **mattress.example.com**: CORS credential reflection on ALL endpoints (missed in waves 6-8)
+- **retail.example.com**: staging.retail.example.com accessible + 20+ internal subdomains leaked
+- **health-saas.example.com**: Port 8081 open (new); MySQL 3306 still open (4-wave persistence)
 
 The full comparison table lives in `references/wave9-seven-targets.md`.
 

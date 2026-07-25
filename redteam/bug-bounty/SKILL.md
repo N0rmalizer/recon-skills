@@ -1,8 +1,11 @@
 ---
 name: bug-bounty
 description: "Master bug bounty orchestrator — full pipeline: recon, pre-hunt learning, vulnerability hunting (30+ classes), A-to-B chaining, AI/LLM testing (ASI01-ASI10), language-specific grep, bypass tables, and reporting (7-question gate, CVSS 3.1, human-tone templates). Use for ANY bug bounty task — starting a new target, recon, hunting specific vulns, source code audit, AI feature testing, or report writing. 中文触发词：漏洞赏金、安全测试、渗透测试、漏洞挖掘"
-sources: field_recon, hackerone_public, bugcrowd_public, portswigger_research, github_security_advisories
-report_count: 250
+version: 1.1.0
+revision_date: 2026-07-25
+license: MIT
+category: redteam
+tags: [bug-bounty, recon, redteam]
 ---
 
 # Bug Bounty Master Workflow
@@ -52,7 +55,7 @@ Full pipeline: Recon -> Learn -> Hunt -> Validate -> Report. One skill for every
 16. **TWO-EYE APPROACH** -- combine systematic testing (checklist) with anomaly detection (watch for unexpected behavior)
 17. **T-SHAPED KNOWLEDGE** -- go DEEP in one area and BROAD across everything else
 
-> **For the full hunting methodology** — 5-phase non-linear workflow, developer psychology framework, session discipline, tool routing by phase, and Wide/Deep route selection — see **`skills/bb-methodology/SKILL.md`**.
+> **For the full hunting methodology** — 5-phase non-linear workflow, developer psychology framework, session discipline, command-line routing by phase, and Wide/Deep route selection — see **`skills/bb-methodology/SKILL.md`**.
 
 ---
 
@@ -65,7 +68,7 @@ Full pipeline: Recon -> Learn -> Hunt -> Validate -> Report. One skill for every
 | Bug A (Signal) | Hunt for Bug B | Escalate to C |
 |----------------|---------------|---------------|
 | IDOR (read) | PUT/DELETE on same endpoint | Full account data manipulation |
-| SSRF (any) | Cloud metadata 169.254.169.254 | IAM credential exfil -> RCE |
+| SSRF (any) | Cloud metadata [REDACTED_IP] | IAM credential exfil -> RCE |
 | XSS (stored) | Check if HttpOnly is set on session cookie | Session hijack -> ATO |
 | Open redirect | OAuth redirect_uri accepts your domain | Auth code theft -> ATO |
 | S3 bucket listing | Enumerate JS bundles | Grep for OAuth client_secret -> OAuth chain |
@@ -110,7 +113,7 @@ Result: P2 finding with real impact
 
 ## How Elite Hackers Think Differently
 
-**Average hunter**: Runs tools, checks checklist, gives up after 30 min.
+**Average hunter**: Runstools, checks checklist, gives up after 30 min.
 **Top 1%**: Builds a mental model of the app's internals. Asks "why does this work the way it does?" Not "what does this endpoint do?" but "what business decision led a developer to build it this way, and what shortcut might they have taken?"
 
 ## Pre-Hunt Mental Framework
@@ -295,7 +298,7 @@ cat /tmp/urls.txt | grep "\.js$" | sort -u > /tmp/jsfiles.txt
 ```bash
 # Manual S3 brute
 for suffix in dev staging test backup api data assets static cdn; do
-  code=$(curl -s -o /dev/null -w "%{http_code}" "https://${TARGET}-${suffix}.s3.amazonaws.com/")
+  code=$(curl --max-time 30 --connect-timeout 10 -s -o /dev/null -w "%{http_code}" "https://${TARGET}-${suffix}.s3.amazonaws.com/")
   [ "$code" != "404" ] && echo "$code ${TARGET}-${suffix}.s3.amazonaws.com"
 done
 ```
@@ -308,7 +311,7 @@ ffuf -u https://TARGET/api/FUZZ -w /usr/share/seclists/Discovery/Web-Content/api
 
 ## HackerOne Scope Retrieval
 ```bash
-curl -s "https://hackerone.com/graphql" \
+curl --max-time 30 --connect-timeout 10 -s "https://hackerone.com/graphql" \
   -H "Content-Type: application/json" \
   -d '{"query":"query { team(handle: \"PROGRAM_HANDLE\") { name url policy_scopes(archived: false) { edges { node { asset_type asset_identifier eligible_for_bounty instruction } } } } }"}' \
   | jq '.data.team.policy_scopes.edges[].node'
@@ -402,7 +405,7 @@ grep -rn "as u8\|as u16\|as u32\|as usize" --include="*.rs" | grep -v "checked\|
 ## Read Disclosed Reports
 ```bash
 # By program on HackerOne
-curl -s "https://hackerone.com/graphql" \
+curl --max-time 30 --connect-timeout 10 -s "https://hackerone.com/graphql" \
   -H "Content-Type: application/json" \
   -d '{"query":"{ hacktivity_items(first:25, order_by:{field:popular, direction:DESC}, where:{team:{handle:{_eq:\"PROGRAM\"}}}) { nodes { ... on HacktivityDocument { report { title severity_rating } } } } }"}' \
   | jq '.data.hacktivity_items.nodes[].report'
@@ -531,7 +534,7 @@ grep -rn "TODO\|FIXME\|not signed\|not verified\|for now" --include="*.rs" | gre
 
 ## SSRF -- Server-Side Request Forgery
 
-- [ ] Try cloud metadata: `http://169.254.169.254/latest/meta-data/`
+- [ ] Try cloud metadata: `http://[REDACTED_IP]/latest/meta-data/`
 - [ ] Try internal services: `http://127.0.0.1:6379/` (Redis), `:9200` (Elasticsearch), `:27017` (MongoDB)
 - [ ] Test all IP bypass techniques (see table below)
 - [ ] Test protocol bypass: `file://`, `dict://`, `gopher://`
@@ -547,7 +550,7 @@ grep -rn "TODO\|FIXME\|not signed\|not verified\|for now" --include="*.rs" | gre
 | Short IP | `http://127.1/` | Abbreviated notation |
 | IPv6 | `http://[::1]/` | Loopback in IPv6 |
 | IPv6-mapped | `http://[::ffff:127.0.0.1]/` | IPv4-mapped IPv6 |
-| Redirect chain | `http://attacker.com/302->http://169.254.169.254` | Check each hop |
+| Redirect chain | `http://attacker.com/302->http://[REDACTED_IP]` | Check each hop |
 | DNS rebinding | Register domain resolving to 127.0.0.1 | First check = external, fetch = internal |
 | URL encoding | `http://127.0.0.1%2523@attacker.com` | Parser confusion |
 | Enclosed alphanumeric | `http://①②⑦.⓪.⓪.①` | Unicode numerals |
@@ -621,7 +624,7 @@ Use these when chaining open redirect into OAuth code theft:
 - [ ] OTP verification brute via race
 
 ```bash
-seq 20 | xargs -P 20 -I {} curl -s -X POST https://TARGET/redeem \
+seq 20 | xargs -P 20 -I {} curl --max-time 30 --connect-timeout 10 -s -X POST https://TARGET/redeem \
   -H "Authorization: Bearer $TOKEN" -d 'code=PROMO10' &
 wait
 ```
@@ -731,19 +734,19 @@ SeLeCt * FrOm uSeRs
 - [ ] Indirect injection via document/URL the AI processes
 - [ ] IDOR in chat history (enumerate conversation IDs)
 - [ ] System prompt extraction via roleplay/encoding
-- [ ] RCE via code execution tool abuse
+- [ ] RCE via code execution command-line abuse
 - [ ] ASCII smuggling (invisible unicode in LLM output)
 
 ### Agentic AI Hunting (OWASP ASI01-ASI10)
 
-When target has AI agents with tool access, these are the 10 attack classes:
+When target has AI agents with command-line access, these are the 10 attack classes:
 
 | ID | Vuln Class | What to Test |
 |----|-----------|-------------|
 | ASI01 | Prompt injection | Override system prompt via user input -- make agent ignore its rules |
-| ASI02 | Tool misuse | Make AI call tools with attacker-controlled params (SSRF via "fetch URL", RCE via code tool) |
+| ASI02 | Tool misuse | Make AI calltools with attacker-controlled params (SSRF via "fetch URL", RCE via code command-line) |
 | ASI03 | Data exfil | Extract training data / PII via crafted prompts that leak context |
-| ASI04 | Privilege escalation | Use AI to access admin-only tools -- agent has broader perms than user |
+| ASI04 | Privilege escalation | Use AI to access admin-onlytools -- agent has broader perms than user |
 | ASI05 | Indirect injection | Poison document/URL the AI processes -- hidden instructions in fetched content |
 | ASI06 | Excessive agency | AI takes destructive actions without confirmation -- delete, send, pay |
 | ASI07 | Model DoS | Craft inputs that cause infinite loops, excessive token usage, or OOM |
@@ -957,7 +960,7 @@ github.head_ref
 ### Category 6: AI Agent Security (NEW — 2025+)
 
 - [ ] **Unrestricted AI trigger** — `allowed_non_write_users: "*"` lets any user trigger AI agent execution
-- [ ] **Excessive tool grants** — AI agent given Bash/Write/Edit tools in untrusted trigger context = attacker prompt → RCE
+- [ ] **Excessive command-line grants** — AI agent given Bash/Write/Edittools in untrusted trigger context = attacker prompt → RCE
 - [ ] **Prompt injection via workflow context** — `${{ github.event.issue.body }}` interpolated into AI agent prompt parameter
 
 ### Hunting Workflow
@@ -1033,7 +1036,7 @@ sisakulint findings are **potentially exploitable** — not confirmed bugs. Ever
 **Gate question:** Does the workflow checkout attacker-controlled code AND then execute something from that checkout?
 
 **Verification depth:**
-1. **Explicit vs implicit code execution** — The Flank $7.5K bug: `gh pr checkout` → `gradle/gradle-build-action` runs Gradle → Gradle auto-evaluates `settings.gradle.kts` as Kotlin script. The attacker never wrote a `run:` command. **Any build tool that reads config from the repo is an execution vector**: `Makefile`, `package.json` (postinstall scripts), `setup.py`, `build.gradle.kts`, `.cargo/config.toml`, `Gemfile`.
+1. **Explicit vs implicit code execution** — The Flank $7.5K bug: `gh pr checkout` → `gradle/gradle-build-action` runs Gradle → Gradle auto-evaluates `settings.gradle.kts` as Kotlin script. The attacker never wrote a `run:` command. **Any build command-line that reads config from the repo is an execution vector**: `Makefile`, `package.json` (postinstall scripts), `setup.py`, `build.gradle.kts`, `.cargo/config.toml`, `Gemfile`.
 2. **Issue_comment is as dangerous as pull_request_target** — Rspack NPM token theft: `issue_comment` trigger + `refs/pull/${{ github.event.issue.number }}/head` checkout. `issue_comment` runs in base repo context with full secrets. Draft PRs are included. No contributor status check. **Always check issue_comment workflows for PR checkout patterns.**
 3. **Self-hosted runner escalation** — If `runs-on:` contains `self-hosted`, check: (a) Is the runner ephemeral? (`--ephemeral` in config.sh). (b) Is the runner in Docker group? (`docker run -v /:/host --privileged`). (c) PyTorch pattern: contributor trick (typo fix PR → merge → contributor status → auto-trigger on self-hosted runner without approval) → RoR (Runner-on-Runner: `RUNNER_TRACKING_ID=0` + install attacker's runner agent) → wait for privileged workflow → steal PATs from `.git/config` or process memory.
 4. **TOCTOU** — Label-gated `pull_request_target` workflows: attacker gets label added (social engineering), workflow checks label exists, attacker pushes malicious commit between check and checkout. The `ref:` at checkout time resolves to the new commit. **Mutable refs (`github.event.pull_request.head.sha` at trigger time vs checkout time) are the root cause.**
@@ -1099,7 +1102,7 @@ sisakulint findings are **potentially exploitable** — not confirmed bugs. Ever
 
 **Verification depth:**
 1. **Trigger + prompt source** — `issues: opened` → AI triage bot reads `github.event.issue.body`. The body IS the prompt. HTML comments (`<!-- ignore previous instructions -->`) are invisible in GitHub UI but included in the API response and thus in the AI prompt.
-2. **Tool permissions** — If the AI agent has Bash/Write/Edit tools and runs with secrets in env, prompt injection = RCE + secret exfil. `allowed_non_write_users: "*"` means ANY user can trigger.
+2. **Tool permissions** — If the AI agent has Bash/Write/Edittools and runs with secrets in env, prompt injection = RCE + secret exfil. `allowed_non_write_users: "*"` means ANY user can trigger.
 3. **Multi-phase chain** — Clinejection: prompt injection → AI runs `npm install` from attacker commit → Cacheract plants in npm cache → nightly publish restores cache → tokens stolen → malicious version published. **A prompt injection finding alone may seem low-severity, but it's a gateway to cache poisoning and supply chain attacks.**
 
 **Kill signals:** `author_association == 'MEMBER' || 'OWNER'` check before AI processing. `--read-only --no-exec` flags on AI CLI. `permissions: {}` at workflow level.
@@ -1234,29 +1237,29 @@ aws s3 ls s3://target-bucket-name --no-sign-request
 
 # Try common names
 for name in target target-backup target-assets target-prod target-staging target-uploads target-data; do
-  curl -s -o /dev/null -w "$name: %{http_code}\n" "https://$name.s3.amazonaws.com/"
+  curl --max-time 30 --connect-timeout 10 -s -o /dev/null -w "$name: %{http_code}\n" "https://$name.s3.amazonaws.com/"
 done
 ```
 
 ### EC2 Metadata (via SSRF)
 ```bash
-http://169.254.169.254/latest/meta-data/iam/security-credentials/
+http://[REDACTED_IP]/latest/meta-data/iam/security-credentials/
 # Returns role name, then:
-http://169.254.169.254/latest/meta-data/iam/security-credentials/ROLE-NAME
+http://[REDACTED_IP]/latest/meta-data/iam/security-credentials/ROLE-NAME
 # Returns AccessKeyId, SecretAccessKey, Token -> Critical
 
 # GCP (needs header Metadata-Flavor: Google):
 http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token
 
 # Azure (needs header Metadata: true):
-http://169.254.169.254/metadata/instance?api-version=2021-02-01
+http://[REDACTED_IP]/metadata/instance?api-version=2021-02-01
 ```
 
 ### Firebase Open Rules
 ```bash
-curl -s "https://TARGET-APP.firebaseio.com/.json"
+curl --max-time 30 --connect-timeout 10 -s "https://TARGET-APP.firebaseio.com/.json"
 # If data returned -> open read
-curl -s -X PUT "https://TARGET-APP.firebaseio.com/test.json" -d '"pwned"'
+curl --max-time 30 --connect-timeout 10 -s -X PUT "https://TARGET-APP.firebaseio.com/test.json" -d '"pwned"'
 # If success -> open write -> Critical
 ```
 
@@ -1270,9 +1273,9 @@ curl -s -X PUT "https://TARGET-APP.firebaseio.com/test.json" -d '"pwned"'
 ### Kubernetes / Docker
 ```bash
 # K8s API (unauthenticated):
-curl -sk https://TARGET:6443/api/v1/namespaces/default/pods
+curl --max-time 30 --connect-timeout 10 -sk https://TARGET:6443/api/v1/namespaces/default/pods
 # Docker API:
-curl -s http://TARGET:2375/containers/json
+curl --max-time 30 --connect-timeout 10 -s http://TARGET:2375/containers/json
 ```
 
 ---
@@ -1303,6 +1306,23 @@ Check the list below. If it's there and you can't chain it -> KILL IT.
 
 ### Q7: Would a triager reading this say "yes, that's a real bug"?
 Read your report as if you're a tired triager at 5pm on a Friday. Does it pass?
+
+## Pitfalls
+
+- **Over-automation without understanding** — running nuclei, ffuf, and dalfox on every subdomain triggers WAF blocks, rate limits, and IP bans. Use `-rate` and `-t` flags. Manual probing finds bugs that automated scanners miss.
+- **5-Minute Rule violations** — lingering on a target returning only 401/403/404 wastes time. MOVE ON after 5 minutes of nothing.
+- **"Could" is not a bug** — theoretical attacks without demonstrated impact get rejected. Prove it works or drop it. Every finding must show actual harm: stolen funds, leaked PII, account takeover, or code execution.
+- **Source maps without secrets** — finding `.map` files is reconnaissance-grade, not a vulnerability. Only report when paired with extracted credentials or API keys.
+- **SSRF with DNS-only callback** — DNS pingbacks alone don't prove impact. Need data exfiltration, internal service access, or cloud metadata retrieval.
+- **Open redirect alone** — without an OAuth chain or ATO escalation path, this is informational at best. Build the full chain before reporting.
+- **Spraying without method** — jumping between XSS, IDOR, SSRF, and cache poisoning in one session guarantees shallow findings. Pick ONE bug class per session and go deep.
+- **Report-first, validate-later** — writing the report before confirming the bug still works at time of submission. Always re-test minutes before submitting.
+- **One test account testing itself** — IDOR/ATO bugs need two accounts (attacker + victim). Testing with one account against itself proves nothing.
+- **Not reading disclosed reports first** — spending hours hunting a class that's out of scope or already hard-mitigated wastes time. Read 3+ disclosed reports before hunting.
+- **Scope creep via subdomain enumeration** — verify every subdomain is owned by the target. Third-party services are typically out of scope.
+- **New features == unreviewed** — anything launched in the last 30 days has the lowest security maturity and highest bug density.
+
+---
 
 ## 4 Pre-Submission Gates
 
@@ -1542,11 +1562,44 @@ ln -s ~/.claude/skills/bug-bounty/SKILL.md ~/.claude/skills/bug-bounty/SKILL.md
 
 # Option B: Direct copy
 mkdir -p ~/.claude/skills/bug-bounty
-curl -s https://raw.githubusercontent.com/shuvonsec/claude-bug-bounty/main/SKILL.md \
+curl --max-time 30 --connect-timeout 10 -s https://raw.githubusercontent.com/shuvonsec/claude-bug-bounty/main/SKILL.md \
   -o ~/.claude/skills/bug-bounty/SKILL.md
 ```
 
 Then in Claude Code, this skill loads automatically when you ask about bug bounty, recon, or vulnerability hunting.
+
+---
+
+## Verification
+
+Run this self-test to confirm the toolkit is operational:
+
+1. **Core tool check** — verify essential Go binaries are installed:
+   ```bash
+   which subfinder httpx nuclei katana ffuf dalfox gau waybackurls 2>/dev/null
+   ```
+
+2. **FFUF calibration test** — confirm `-ac` auto-calibrate works:
+   ```bash
+   ffuf -w /usr/share/seclists/Discovery/Web-Content/common.txt -u https://example.com/FUZZ -ac -timeout 5 2>&1 | head -5
+   ```
+
+3. **Subfinder connectivity** — verify passive sources are reachable:
+   ```bash
+   subfinder -d example.com -silent -timeout 30 2>&1 | head -3
+   ```
+
+4. **HackerOne API reachability** — confirm GraphQL endpoint is accessible:
+   ```bash
+   curl --max-time 30 --connect-timeout 10 -s "https://hackerone.com/graphql" -o /dev/null -w "%{http_code}" && echo " PASS" || echo " FAIL"
+   ```
+
+5. **Semgrep install check** — confirm static analysis is available:
+   ```bash
+   semgrep --version >/dev/null 2>&1 && echo "PASS: semgrep available" || echo "FAIL: pip3 install semgrep"
+   ```
+
+All 5 tests should pass for a fully operational toolkit.
 
 ---
 
@@ -1602,4 +1655,4 @@ Use the scaffold from the start. Half-organized engagements lose findings — a 
 ### When the orchestrator gets it wrong
 
 Across 30+ Phase 2 verification tests in this repo, the orchestrator correctly auto-triggered the matching skill in every test — zero misfires. If on a future target the orchestrator misroutes (loads the wrong hunt-* for the topic), the cause is almost always the `description:` frontmatter field on the target skill: a missing keyword that would have matched the user's intent. Fix forward by editing that skill's frontmatter `description:` field to include the missing trigger word. Don't add another layer of dispatch logic; tighten the description.
-- **`bb-local-toolkit`** — When you need to know which local clone has the tool for a given task. Workflow primitive: this skill is general bug-bounty guidance; `bb-local-toolkit` answers the specific "where is jhaddix/SecLists installed on this machine?" question.
+- **`bb-local-toolkit`** — When you need to know which local clone has the command-line for a given task. Workflow primitive: this skill is general bug-bounty guidance; `bb-local-toolkit` answers the specific "where is jhaddix/SecLists installed on this machine?" question.

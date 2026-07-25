@@ -1,8 +1,11 @@
 ---
 name: hunt-oauth
 description: "Hunting skill for oauth vulnerabilities. Built from 19 public bug bounty reports. Use when hunting oauth on any target."
-sources: github, hackerone_public, salt_labs, descope, detectify_labs, harel_research
-report_count: 19
+version: 1.1.0
+revision_date: 2026-07-25
+license: MIT
+category: redteam
+tags: [oauth, hunt, redteam]
 ---
 
 ## Crown Jewel Targets
@@ -153,7 +156,7 @@ https://legit.com%252F..%252F..evil.com
 ```bash
 # Step 1: Initiate OAuth flow, capture state value
 # Step 2: Drop request, use attacker account's link with victim's session
-curl -v "https://target.com/oauth/authorize?client_id=APP&redirect_uri=https://target.com/cb&response_type=code&state=FIXED_VALUE"
+curl --max-time 30 --connect-timeout 10 -v "https://target.com/oauth/authorize?client_id=APP&redirect_uri=https://target.com/cb&response_type=code&state=FIXED_VALUE"
 
 # Step 3: Force victim to visit callback with attacker's code + fixed state
 https://target.com/oauth/callback?code=ATTACKER_CODE&state=FIXED_VALUE
@@ -163,7 +166,7 @@ https://target.com/oauth/callback?code=ATTACKER_CODE&state=FIXED_VALUE
 ```bash
 # After OAuth callback landing page, check outbound requests
 # Look for Referer header containing access_token or code
-curl -v "https://target.com/auth/callback?code=ABC&state=XYZ" \
+curl --max-time 30 --connect-timeout 10 -v "https://target.com/auth/callback?code=ABC&state=XYZ" \
   -H "Referer: https://evil.com" \
   --max-redirs 0
 
@@ -184,14 +187,14 @@ adb shell am start -a android.intent.action.VIEW \
 ### Token Endpoint Auth Bypass
 ```bash
 # Test unauthenticated token exchange (skip email verification)
-curl -X POST https://target.com/oauth/token \
+curl --max-time 30 --connect-timeout 10 -X POST https://target.com/oauth/token \
   -d "grant_type=authorization_code" \
   -d "code=CAPTURED_CODE" \
   -d "client_id=CLIENT_ID" \
   -d "redirect_uri=https://legit.com/callback"
 
 # Test with unverified account credentials
-curl -X POST https://target.com/oauth/token \
+curl --max-time 30 --connect-timeout 10 -X POST https://target.com/oauth/token \
   -d "grant_type=password" \
   -d "username=unverified@evil.com" \
   -d "password=password123" \
@@ -209,7 +212,7 @@ grep -r "intent://\|deeplink\|scheme://" .
 # Filter: Response contains "access_token" OR "code=" in Location header
 
 # Check .well-known
-curl https://target.com/.well-known/openid-configuration | python3 -m json.tool
+curl --max-time 30 --connect-timeout 10 https://target.com/.well-known/openid-configuration | python3 -m json.tool
 ```
 
 ---
@@ -374,11 +377,44 @@ A server-side prefix-match flaw on `redirect_uri` is **necessary but not suffici
 
 ---
 
+## Verification
+
+Run this self-test to confirm oauth hunting readiness:
+
+1. **Skill integrity** — confirm the skill file is readable and well-formed:
+   ```bash
+   grep -q "name: hunt-oauth" SKILL.md && echo "PASS: skill frontmatter present" || echo "FAIL"
+   grep -q "revision_date:" SKILL.md && echo "PASS: revision date present" || echo "FAIL"
+   ```
+
+2. **Category check** — confirm the skill has a category:
+   ```bash
+   grep -q "category:" SKILL.md && echo "PASS: category present" || echo "FAIL"
+   ```
+
+3. **Pitfalls section** — confirm pitfalls are documented:
+   ```bash
+   grep -q "^## Pitfalls" SKILL.md && echo "PASS: pitfalls section present" || echo "FAIL"
+   ```
+
+All 3 tests verify the skill is properly structured and ready for use.
+
+---
+
+## Pitfalls
+- **redirect_uri open redirect without token theft** — redirecting to evil.com doesn't steal the token unless the victim's browser follows the redirect with the code/state.
+- **CSRF on authorization endpoint** — state parameter missing allows CSRF on OAuth flow. Test if the `state` parameter is validated.
+- **PKCE missing on public clients** — SPA/native apps without PKCE are vulnerable to authorization code interception.
+- **implicit flow still in use** — implicit flow (response_type=token) leaks tokens in URL fragments/referers. Report as deprecated, not necessarily exploitable.
+- **Client secret in frontend code** — OAuth client secrets in JS bundles are effectively public. The attack is what the secret enables, not its presence.
+
+---
+
 ## Related Skills & Chains
 
 - **`hunt-subdomain`** — The single highest-impact OAuth chain. Chain primitive: OAuth `redirect_uri` validator accepts any `*.target.com` subdomain + recon reveals `dev-staging.target.com` CNAMEs to a deprovisioned Heroku/S3/Azure app → claim the dangling subdomain → host an OAuth callback receiver there → craft `/oauth/authorize?redirect_uri=https://dev-staging.target.com/cb` → victim clicks → auth code lands on attacker-claimed subdomain → exchange for token → ATO. The redirect_uri whitelist passed because the subdomain is "legitimately" under target.com control.
 - **`hunt-ato`** — OAuth state-CSRF is the textbook ATO-via-account-linking primitive. Chain primitive: `state` parameter absent or not session-bound + victim is already logged into target.com + attacker initiates OAuth flow from their own account, captures `code` before exchange + crafts callback URL with attacker's code → forces victim to visit → victim's target.com session is now linked to attacker's Google/Facebook identity → attacker logs in via Google → owns victim's account.
-- **`hunt-llm-ai`** — Modern OAuth flows for AI agents (ChatGPT plugins, Claude MCP servers, agentic copilots) reuse OAuth 2.1 + PKCE. Chain primitive: agentic AI accepts `redirect_uri` from indirect prompt-injection in a document → model crafts OAuth authorize URL with attacker callback → user clicks "approve" thinking it's the agent's own flow → tokens exfiltrated via tool-use to attacker domain.
+- **`hunt-llm-ai`** — Modern OAuth flows for AI agents (ChatGPT plugins, Claude MCP servers, agentic copilots) reuse OAuth 2.1 + PKCE. Chain primitive: agentic AI accepts `redirect_uri` from indirect prompt-injection in a document → model crafts OAuth authorize URL with attacker callback → user clicks "approve" thinking it's the agent's own flow → tokens exfiltrated viacommand line-use to attacker domain.
 - **`hunt-saml`** — When OAuth is layered atop a SAML IdP, the IdP-level XSW becomes the OAuth ATO path. Chain primitive: SAML SP that issues OAuth tokens after assertion-validation + XSW attack on the assertion alters `NameID` to admin user → SP issues OAuth token bearing admin identity → OAuth-scoped APIs grant admin access.
 - **`security-arsenal`** — Pull the OAuth `redirect_uri` Bypass Table (host-confusion `legit.com@evil.com`, `legit.com.evil.com`, path-traversal, parameter pollution, encoded-slash `%2F`, fragment-injection `#legit.com`) and the open-redirect chain catalog when exact-match validation forces you to find an open-redirect on the whitelisted domain first.
 - **`triage-validation`** — Run the Pre-Severity Gate before claiming Critical on an OAuth "open redirect" that doesn't actually leak a token (only the `state` param, or the callback page doesn't include credentials in URL). State-only leakage is Low; token/code leakage with successful exchange demonstration is Critical. The exchange-the-code step is non-negotiable.

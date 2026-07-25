@@ -1,8 +1,11 @@
 ---
 name: m365-entra-attack
 description: Microsoft 365 / Entra ID red-team attack chain — current 2026 reality. AADSTS code reference, user enumeration vectors (with hardening status), Smart Lockout math, Conditional Access bypass options, ROPC + SAML SSO browser flow, Burp/Playwright templates. Built from authorized red-team work where ROPC spray surfaced pre-existing lockouts and CA-blocked credentials, plus real-time external attacker activity correlation. Use for any M365/Entra credential attack, password spray, user enumeration, CA-bypass exploration, or active-attacker-detection scenario.
-sources: authorized-engagement, microsoft-docs, AADInternals
-report_count: 1
+version: 1.1.0
+revision_date: 2026-07-25
+license: MIT
+category: redteam
+tags: [m365, entra, azure, attack, redteam]
 ---
 
 ## When to use this skill
@@ -366,10 +369,35 @@ For the report:
 ```bash
 pip install --break-system-packages msftrecon o365spray  # may need to clone msftrecon from GitHub
 brew install pandoc                                       # for report generation
-go install -v github.com/projectdiscovery/...             # PD toolkit for general recon
+go install -v github.com/projectdiscovery/...             # PDcommand linekit for general recon
 ```
 
 Pre-built `m365_validator.py` template at engagement working directory `engagement_log/m365_validator.py`. Adapt the `attempt()` function to your engagement.
+
+---
+
+## Verification
+
+1. **Entra ID endpoint probe** — confirm well-known endpoints:
+   ```bash
+   curl --max-time 30 --connect-timeout 10 -s "https://login.microsoftonline.com/common/.well-known/openid-configuration" | grep -q "token_endpoint" && echo "PASS" || echo "FAIL"
+   ```
+2. **Tenant discovery** — confirm tenant resolution:
+   ```bash
+   curl --max-time 30 --connect-timeout 10 -s "https://login.microsoftonline.com/example.com/.well-known/openid-configuration" -o /dev/null -w "HTTP %{http_code}" && echo " PASS" || echo " FAIL"
+   ```
+All tests verify M365/Entra readiness.
+
+---
+
+## Pitfalls
+- **Credential spray without lockout awareness** — Entra ID has Smart Lockout. Spraying without understanding lockout thresholds triggers account locks and alarms.
+- **Device code flow phishing** — the user must enter a code at `microsoft.com/devicelogin`. Without demonstrated victim interaction, this is theoretical.
+- **Managed vs Federated domain confusion** — managed domains authenticate against Entra ID directly; federated domains go to on-prem ADFS. Different attack surfaces.
+- **Guest user enumeration** — B2B guest inviter permissions can enumerate external users. Test the specific guest inviter role, not just any authenticated user.
+- **OAuth app consent phishing (illicit consent grant)** — user must click "Accept" on the consent screen. Without demonstrated consent, this is theoretical.
+- **Conditional Access bypass** — if the policy requires MFA, test if the MFA prompt can be bypassed via legacy auth, app passwords, or device-based exceptions.
+
 
 ---
 
@@ -380,3 +408,4 @@ Pre-built `m365_validator.py` template at engagement working directory `engageme
 - **`okta-attack`** — Hybrid orgs run Okta-as-IdP federated into Entra. Chain primitive: M365 `getuserrealm` returns `NameSpaceType: Federated` with AuthURL pointing to `*.okta.com` → pivot to `okta-attack` for tenant enumeration → Okta ATO → SAML assertion to Entra → full M365 access.
 - **`hunt-saml`** — Federated tenants accept signed SAML assertions; XSW or signature-stripping on the federated IdP bypasses Entra's controls entirely. Chain primitive: `getuserrealm` reveals federation → IdP fingerprinted (ADFS / Okta / PingFederate) → `hunt-saml` XSW1-XSW8 against IdP's `/adfs/ls/` or equivalent → forged assertion → Entra grants access.
 - **`redteam-report-template`** — M365 findings need clear tenant/user/CA-policy framing because the blast radius is "every Microsoft service the org uses." Chain primitive: validated finding from this skill → run through `triage-validation` 7-Question Gate → package via `redteam-report-template` with explicit blast-radius (which apps, which users, which data) for client deliverable.
+- **`password-spray-methodology`** — Universal password spray pipeline across all protocols + error code differentials

