@@ -457,8 +457,6 @@ When testing 15-20+ targets across multiple sectors, use a **dual-track approach
 - Subdomains found manually can be probed immediately while the scanner is still running
 - In Wave 5 (20 targets, 4 sectors), this approach revealed 3 CRITICAL CORS + 11 exposed WP users + 95 subdomains within 15 minutes of manual work
 
-**Minutes 0-5: Read Program Page**
-
 ### Minutes 0-5: Read Program Page
 
 ```

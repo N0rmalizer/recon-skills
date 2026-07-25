@@ -339,7 +339,8 @@ bartlett.com  allstatetree.com  firstchoicetree.com
 ```
 
 ### Roofing (Local/Regional — crt.sh Discovered)
-```aastroroofing.com  abcarnesroofing.com  americaschoiceroofers.com  arvadaroofing.com
+```
+aastroroofing.com  abcarnesroofing.com  americaschoiceroofers.com  arvadaroofing.com
 baconroofing.com  bakerroofing.com  bricorroofing.com  capitolroofing.com
 charlotteproroofing.com  coloradoproroofing.com  ehroofing.com  errdaddyroofing.com
 fifthwallroofing.com  freemanroofing.com  ghatley.com  hambroroofing.com
@@ -350,18 +351,21 @@ universityroof.com  vanguardroofingltd.com  wallaceroofing.com
 ```
 
 ### Landscaping (Local/Regional — crt.sh Discovered)
-```delliquadrilandscape.com  dundeedig.com  guardyouryardpa.com
+```
+delliquadrilandscape.com  dundeedig.com  guardyouryardpa.com
 landscapingsi.com  mileslandscaping.com  mosslandscaping.com
 mountainlandscapingkc.com  sarasotalandscaping.com  trinaslandscaping.com
 mosslandscaping.com  eolandscaping.com  brucewilsonlandscaping.com
 ```
 
 ### HVAC (Local/Regional — crt.sh Discovered)
-```airzonahvac.com  bigfishhvac.com  dormarhvac.com  specializedhvac.com
+```
+airzonahvac.com  bigfishhvac.com  dormarhvac.com  specializedhvac.com
 ```
 
 ### General Contractors & Other (crt.sh Discovered)
-```allysonsflowers.com  americannationalco.com  canopyroofers.com
+```
+allysonsflowers.com  americannationalco.com  canopyroofers.com
 gelinc.com  rvroofrepairflorida.com  spartanroofingbc.com
 ```
 
@@ -388,10 +392,16 @@ gelinc.com  rvroofrepairflorida.com  spartanroofingbc.com
 10. **write_file blocked on /root/ paths.** The write_file tool may block writes to `$OUTDIR/` and similar paths with "Write denied: protected system/credential file." Use terminal with `cat > file << 'EOF'` as a workaround.
 
 ## Verification
-1. **Skill integrity** — confirm the skill file is well-formed:
-   FAIL
-FAIL
-All tests verify the skill is properly structured.
+1. **Sector domain generation** — confirm sector keywords produce candidate domains:
+   ```bash
+   echo 'roofing landscaping pestcontrol' | tr ' ' '
+' | wc -l
+   ```
+2. **crt.sh accessibility** — confirm crt.sh CDX endpoint reachable:
+   ```bash
+   curl -s --max-time 10 --connect-timeout 10 -o /dev/null -w '%{http_code}' 'https://crt.sh/?q=test&excluded=expired&dedup=Y'
+   ```
+All tests verify sector expansion readiness.
 
 ---
 

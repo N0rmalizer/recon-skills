@@ -20,11 +20,11 @@ WordPress is the #1 CMS on the internet and the #1 source of vulnerabilities fou
 3. **Open registration** — Anyone creates a WP account → then `wp.uploadFile` via XMLRPC → webshell → RCE. Critical.
 4. **PHPInfo with exec functions not disabled** — `/info.php` or `/test.php` showing `exec/shell_exec/system/popen/proc_open` ALL available → upload webshell → RCE. Critical.
 5. **Vulnerable plugins** — ElementsKit (CVE-2023-6851 SQLi, CVE-2023-6853 file upload), Revslider (CVE-2024-2534 RCE), WPDM (CVE-2023-49753 SQLi). Critical.
-5. **WooCommerce API exposed** — `/wp-json/wc/v3/` endpoints with auth bypass or misconfigured permissions. Note: WC Store API `/wc/store/v1/checkout` requires `X-WC-Store-API-Nonce` header, returns 401 without auth. WC legacy API (`/wc-api/v3/`) can return `woocommerce_api_disabled` — that means it's intentionally off.
-6. **Hostingertools plugin** — `/wp-json/hostinger-tools-plugin/v1/` namespace with `regenerate-bypass-code`, `get-settings`, `update-settings` endpoints. All require admin auth (rest_forbidden 401). The bypass-code endpoint is a potential backdoor if admin creds are obtained.
-7. **Jetpack remote_register parameter probing** — Jetpack v4 endpoints like `remote_register` and `remote_connect` return different error messages based on parameters, enabling state probing. `local_user` parameter moves from "local_user_missing" to "nonce_missing" — confirming the endpoint is accessible but needs auth nonce.
-7. **Application Passwords feature** — `/wp-admin/authorize-application.php` available without auth.
-8. **Yoast author-sitemap email disclosure** — Author slugs reveal internal email addresses.
+6. **WooCommerce API exposed** — `/wp-json/wc/v3/` endpoints with auth bypass or misconfigured permissions. Note: WC Store API `/wc/store/v1/checkout` requires `X-WC-Store-API-Nonce` header, returns 401 without auth. WC legacy API (`/wc-api/v3/`) can return `woocommerce_api_disabled` — that means it's intentionally off.
+7. **Hostingertools plugin** — `/wp-json/hostinger-tools-plugin/v1/` namespace with `regenerate-bypass-code`, `get-settings`, `update-settings` endpoints. All require admin auth (rest_forbidden 401). The bypass-code endpoint is a potential backdoor if admin creds are obtained.
+8. **Jetpack remote_register parameter probing** — Jetpack v4 endpoints like `remote_register` and `remote_connect` return different error messages based on parameters, enabling state probing. `local_user` parameter moves from "local_user_missing" to "nonce_missing" — confirming the endpoint is accessible but needs auth nonce.
+9. **Application Passwords feature** — `/wp-admin/authorize-application.php` available without auth.
+10. **Yoast author-sitemap email disclosure** — Author slugs reveal internal email addresses.
 
 ---
 

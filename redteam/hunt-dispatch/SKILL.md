@@ -27,7 +27,7 @@ targets the platform-skill routing must be driven by all banners, not one host's
 
 use `-L` (follow redirects) — identity-provider and CDN signals
 (`login.microsoftonline.com`, `okta`, `auth0`, CDN banners) routinely sit
-behind a 30x, so a no-redirect `curl -sI` silently misses those matches. pull
+behind a 30x, so a no-redirect `curl -s --max-time 30 --connect-timeout 10I` silently misses those matches. pull
 both headers and the landing-page HTML (`__NEXT_DATA__`, `VIEWSTATE`,
 `laravel_session`, `Ignition`, framework markers live in the body, not headers).
 

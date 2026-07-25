@@ -396,6 +396,8 @@ Skill Architect agents should audit ALL existing skills each wave and:
 - Add missing frontmatter fields (sources, report_count, related_skills)
 - Add cross-references between related skills
 - Make descriptions useful for skill list browsing
+
+```
 Tier 1: Law firms, Pest control, Dental clinics
 Tier 2: Gyms, Real estate, Landscaping, Pool services
 Tier 3: Roofing, Plumbing/HVAC, Auto repair, Photography
@@ -699,5 +701,3 @@ All tests verify parallel recon readiness.
 - `references/cron-template.md` — copy-paste cron prompt template with all 3 tasks
 - `references/proxy-alpine-setup.md` — Tor + proxychains4 setup for Alpine workers
 - `references/skill-catalog.md` — complete skill catalog with descriptions
-
-```
