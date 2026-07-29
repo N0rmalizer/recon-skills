@@ -3,4 +3,3 @@
 .usage.json
 .usage.json.lock
 __pycache__/
-ignored/tests/

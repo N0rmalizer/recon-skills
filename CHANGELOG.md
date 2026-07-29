@@ -2,9 +2,9 @@
 
 ## 2026-07-25 — v1 Release
 
-### Initial release with 147 skills
+### Initial release with 144 skills
 - **recon/** (41): Subdomain enumeration, CORS credential reflection, XMLRPC exploitation, WordPress plugin hunting, JS secrets extraction, API no-auth hunting, email security, source leak hunting, port scanning, ASN infrastructure mapping, web enumeration, GitHub secret hunting, CMS detection, browser evasion, origin IP discovery, subdomain takeover, vhost enumeration, visual recon, and more.
-- **redteam/** (94): Per-class vulnerability hunting (XSS, SQLi, SSRF, RCE, IDOR, ATO, CSRF, LFI, SSTI, XXE, JWT, SAML, OAuth, GraphQL, WebSocket, cache poison, deserialization, race condition, host header, HTTP smuggling, mass assignment, prototype pollution, broken function-level auth, information disclosure, CORS, Firebase, Supabase, MCP security, LLM attacks, cloud IAM, Docker, K8s, and more). Plus methodology, reporting, and ops skills.
+- **redteam/** (93): Per-class vulnerability hunting (XSS, SQLi, SSRF, RCE, IDOR, ATO, CSRF, LFI, SSTI, XXE, JWT, SAML, OAuth, GraphQL, WebSocket, cache poison, deserialization, race condition, host header, HTTP smuggling, mass assignment, prototype pollution, broken function-level auth, information disclosure, CORS, Firebase, Supabase, MCP security, LLM attacks, cloud IAM, Docker, K8s, and more). Plus methodology and reporting skills.
 - **meta/** (6): Recon playbook, sector methodology, attack patterns reference, cross-wave delta analysis, Google dorks catalog, pentest playbook.
 - **chains/** (2): Cross-attack chaining, WordPress full compromise.
 - **auth/** (1): SAML SSO attacks.

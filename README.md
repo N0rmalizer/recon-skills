@@ -11,6 +11,9 @@ reporting.
 > These skills are for authorized security testing only. Only test targets you
 > own or have explicit written permission to test.
 
+> **Blog & research**: [hiago.sh](https://hiago.sh) - Pentest Playbook, field
+> notes, and tooling.
+
 ## What This Repository Contains
 
 Each skill is a self-contained `SKILL.md` with:
@@ -119,12 +122,6 @@ python3 scripts/validate_skills.py
 
 Structural errors fail the command. Existing style debt is reported separately
 as warnings so it can be improved incrementally.
-
-## Public Repository Hygiene
-
-Keep target-specific evidence, credentials, scan output, customer names,
-private infrastructure details, and unredacted proofs of concept outside this
-repository. Skills should capture reusable methodology, not engagement data.
 
 ## License
 

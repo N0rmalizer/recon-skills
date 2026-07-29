@@ -341,7 +341,7 @@ fi
 ## Port Scanning (often skipped — don't skip)
 
 ```bash
-# naabu — fast port scanner from ProjectDiscovery (preferred over nmap on Alpine workers)
+# naabu - fast port scanner from ProjectDiscovery
 # nmap often fails with "nse_main.lua not found" on minimal containers — naabu works.
 # Finds non-standard ports: 8080, 8443, 3000, 8888, 9000, etc.
 cat /tmp/live.txt | awk '{print $1}' | naabu -port 80,443,8080,8443,3000,4000,5000,8000,8888,9000,9090,9200,6379 -silent | tee /tmp/open-ports.txt
@@ -379,7 +379,7 @@ wget -q -r -l 1 -A "*.js" -P /tmp/js-files/ "https://$TARGET" 2>/dev/null
 grep -rn "api_key\\|apiKey\\|client_secret\\|access_token\\|private_key\\|AWS_SECRET\\|AKIA" /tmp/js-files/ 2>/dev/null
 ```
 
-### JS bundle API key extraction (BusyBox-safe — Alpine worker fallback)
+### JS bundle API key extraction (BusyBox-compatible fallback)
 
 BusyBox grep does NOT support `-P` (PCRE/Perl regex). Use Python3 for regex matching on JS bundles in Alpine containers:
 
@@ -447,7 +447,7 @@ When testing 15-20+ targets across multiple sectors, use a **dual-track approach
 4. Chase live subdomains immediately (app., dashboard., staging., etc.)
 
 **Track 2 — Automated Scanner (background)**
-- Launch a Python scanner with OPSEC delays (1.5-3.5s per-domain jitter, 5 parallel workers)
+- Launch a Python scanner with bounded delays and five parallel tasks.
 - The scanner does the systematic work: WP detection, CORS test, sensitive file check, subdomain enum for every domain
 - Check progress periodically; by the time it finishes you already have the high-signal findings
 
@@ -718,7 +718,7 @@ All tests verify web2 recon readiness.
 > this repo's 31+ skill-area live tests. The upstream pipeline covers the WHAT;
 > this layer covers the WHEN-IT-WORKS-vs-WHEN-IT-DOESN'T.
 
-### Worker Environment Pitfalls
+### Minimal Environment Pitfalls
 
 #### write_file blocked on protected paths
 The `write_file` tool blocks writes to paths like `$OUTDIR/` with: `"Write denied: ... is a protected system/credential file."`
@@ -752,7 +752,7 @@ with open("$OUTDIR/report.md", "w") as f:
 os.chmod("$OUTDIR/report.md", 0o644)
 ```
 
-#### nmap broken on Alpine workers
+#### Incomplete nmap packages
 `nmap -sV` fails with `"could not locate nse_main.lua"` — NSE not bundled. Two alternatives:
 
 **Option A — nmap without version detection** (works fine, just no -sV):

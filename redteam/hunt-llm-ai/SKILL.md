@@ -566,6 +566,6 @@ Systematic audit of 13 AI agent frameworks (CrewAI, AutoGen, AG2, LlamaIndex, Ha
 | Docker MCP | Container escape | 9.3 | Env var injection |
 | MCP Python SDK | Tool bypass | 9.3 | Schema validation bypass |
 
-Source: correctover (dev.to, 2026). Reference: ignored/research/ai-agent-frameworks-audit.md
+Source: correctover (dev.to, 2026).
 
 ```
