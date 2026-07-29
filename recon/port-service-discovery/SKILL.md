@@ -29,7 +29,7 @@ Fast port scanning with nmap to discover exposed services (MySQL, FTP, SSH, SMTP
 
 ## Prerequisites
 
-- `terminal` with nmap (available on worker container).
+- `nmap` available in the execution environment.
 - Target domain or IP address.
 - For full port scan: patience (can take 10-60 minutes for all 65535 ports).
 
@@ -237,7 +237,8 @@ echo "  Manual: dnsdumpster.com"
 
 ## Pitfalls
 
-- **nmap SYN scan requires root.** The worker container runs as root, so `-sS` (SYN scan) is available. If running from a non-root context, use `-sT` (TCP connect).
+- **nmap SYN scan requires raw-socket privileges.** Use `-sT` (TCP connect)
+  when the execution environment does not grant them.
 - **Rate limiting on port scans.** Some providers (AWS, Cloudflare) rate-limit or block port scans. Use `-T2` (polite timing) and `--max-retries 1` on sensitive targets.
 - **MySQL/MongoDB banner grab may not work.** Some DBs require TLS negotiation (MySQL 8.0+ defaults to `caching_sha2_password`). Banner may be empty.
 - **Internal API ports may time out.** Some services only respond to specific Host headers or valid HTTP requests. Use `curl` with various Host headers.

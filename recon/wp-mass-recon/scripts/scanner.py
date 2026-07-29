@@ -6,7 +6,7 @@
 
 import sys, json, subprocess, os, datetime, re, concurrent.futures
 
-OUTPUT_DIR = "/root/output/recon"
+OUTPUT_DIR = os.path.join(os.environ.get("OUTPUT_DIR", "./output"), "recon")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 UAS = [

@@ -31,9 +31,9 @@ Methodology for selecting non-regulated industry sectors with the highest WordPr
 
 ## Prerequisites
 
-- `terminal` with curl, jq, httpx, subfinder.
+- `curl`, `jq`, `httpx`, and `subfinder`.
 - Understanding of the US regulatory landscape (HIPAA, GLBA, PCI-DSS) — regulated sectors have near-zero vulnerability rates.
-- Worker container for batch scanning.
+- An execution environment with explicit concurrency and rate limits.
 
 ## How to Run
 

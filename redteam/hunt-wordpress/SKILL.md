@@ -1327,7 +1327,8 @@ result = subprocess.run(
 code = result.stdout.decode().strip()
 ```
 
-**Recommendation:** Use Fix A in your module init for all requests, and Fix B specifically for subdomain probes where DNS failures are expected. See `scripts/wp-multi-deep-probe.py` for the production implementation.
+**Recommendation:** Use Fix A in the module initialization for all requests,
+and Fix B specifically for subdomain probes where DNS failures are expected.
 
 ### 12.9 OPSEC Discipline for Deep Followup
 
@@ -1457,14 +1458,6 @@ Only return to brute force after ALL namespaces are enumerated AND at least 3 la
 See `references/wp-mass-recon-pipeline.md` for the batch sweep script, CVE matching matrix, and multi-vuln detection pipeline.
 See `references/wp-deep-followup.md` for the multi-target Wave 2 deep followup probe script with parallel dispatch and report generation.
 See `references/wave9-sector-rankings.md` for empirical sector vulnerability rankings, rate limiting data, UA block rates, exploitable combo table, and technique success/failure inventory.
-See `references/tirith-scanner-workarounds.md` for handling security-scanner write blocks when your findings/reports contain raw IPs, SSRF targets, or embeded PoC payloads.
-
-The reusable Python probe script `scripts/wp-multi-deep-probe.py` now includes:
-- **`scan_error_log()`** — Deep credential extraction from PHP error_logs: extracts DB_USER/PASSWORD/HOST/NAME, API keys (Stripe, Google, AWS, JWT), WordPress salts, SQL queries, email addresses, server paths, PHP error type breakdown, and date range analysis. Pass the raw error_log text and get back structured findings.
-- **`xmlrpc_ssrf_matrix()`** — Tests ALL 15 cloud metadata/internal SSRF endpoints via XMLRPC pingback: AWS IMDSv1 (/latest/meta-data/, /latest/user-data/, /latest/dynamic/instance-identity/document, /latest/meta-data/iam/security-credentials/*), GCP metadata (metadata.google.internal with token path), and localhost ports (:8080, :9000). Returns per-endpoint faultCode.
-- **`port_scan_http()`** — Port scan with automatic HTTP probe on open ports. Tests common service paths (/api/, /login, /admin, /health, /swagger.json, /graphql) on each open port.
-- **CORS matrix** now covers plugin-specific namespaces (solidwp-mail/v1, gf/v2, gravity-pdf/v1, hostinger-tools/v1).
-
 ```bash
 # wpscan (full scan)
 wpscan --url "https://$TARGET" --api-token "$WPSCAN_API_TOKEN"

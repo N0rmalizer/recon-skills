@@ -379,7 +379,9 @@ gelinc.com  rvroofrepairflorida.com  spartanroofingbc.com
 
 4. **Some 301/302 sites may still have CORS.** Redirect responses can carry CORS headers (brighthorizons.com had wildcard CORS on its 301 response). Test the redirect target URL if the landing page differs.
 
-5. **BusyBox grep limitation.** The worker container uses BusyBox which lacks `grep -P`. Use `grep -oE` with extended patterns. BusyBox `find` also lacks `-printf` — use `-exec echo {} \;` or shell loops instead.
+5. **BusyBox grep limitation.** Minimal environments may provide BusyBox,
+   which lacks `grep -P`. Use `grep -oE` with extended patterns. BusyBox `find`
+   also lacks `-printf`; use `-exec echo {} \;` or shell loops instead.
 
 6. **crt.sh rate limiting.** Returns HTTP 502/503 when hammered. Spread queries **3 seconds apart** and if you get repeated errors, wait 15-30s. The JSON API (`&output=json`) is especially unreliable for broad queries — use HTML output mode (`&excluded=expired&dedup=Y`) instead.
 
@@ -388,8 +390,6 @@ gelinc.com  rvroofrepairflorida.com  spartanroofingbc.com
 8. **CORS on non-WordPress sites.** Generic static sites on CloudFront or S3 may also reflect CORS. Always test on both `/` and any known API endpoint.
 
 9. **Python JSON parsing edge case.** The WP REST API user endpoint may return an object instead of a list for protected endpoints (HTTP 401 vs 200 response codes). Always check `isinstance(users, list)`.
-
-10. **write_file blocked on /root/ paths.** The write_file tool may block writes to `$OUTDIR/` and similar paths with "Write denied: protected system/credential file." Use terminal with `cat > file << 'EOF'` as a workaround.
 
 ## Verification
 1. **Sector domain generation** — confirm sector keywords produce candidate domains:
@@ -409,4 +409,3 @@ All tests verify sector expansion readiness.
 
 - `web2-recon` — The per-target technical testing pipeline (httpx, WP enum, CORS, XMLRPC, port scan, JS analysis)
 - `recon-sector` — Unified parameterized sector recon with 25 sectors in `sectors.yaml`
-- `parallel-recon-triad` — Self-improving parallel recon pipelines for continuous target coverage

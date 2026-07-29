@@ -44,7 +44,7 @@ The classic CL.TE / TE.CL payloads are NOT universally exploitable in 2026. Mode
 
 | Front-end | CL.TE | TE.CL | H2.CL | H2.TE | Notes |
 |---|---|---|---|---|---|
-| **Nginx ≥ 1.21** | NO | NO | partial (H2 ingress) | partial | RFC-strict; rejects CL+TE with HTTP 400. Verified locally on Nginx 1.27 — all 9 documented variants killed by front-end ([docs/verification/phase2h-smuggling-cachepoison.md](../../docs/verification/phase2h-smuggling-cachepoison.md)). |
+| **Nginx >= 1.21** | NO | NO | partial (H2 ingress) | partial | Common configurations reject ambiguous CL+TE requests, but behavior still depends on the complete proxy chain. |
 | **Caddy 2.x** | NO | NO | — | — | Hardened by default |
 | **Envoy ≥ 1.20** | NO | NO | partial | partial | Hardened in most paths |
 | **HAProxy ≤ 2.4** | ✓ | ✓ | — | — | **Vulnerable**, see CVE-2021-40346 |

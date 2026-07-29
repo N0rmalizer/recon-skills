@@ -28,9 +28,8 @@ Comprehensive subdomain discovery using certificate transparency logs (crt.sh), 
 
 ## Prerequisites
 
-- curl, httpx, dig, jq, dnsx.
-- `subfinder` available on the worker container.
-- Wordlist for DNS brute force at `./tools/subdomains.txt`.
+- `curl`, `httpx`, `dig`, `jq`, `dnsx`, and `subfinder`.
+- A DNS brute-force wordlist, supplied by the operator.
 
 ## How to Run
 

@@ -19,6 +19,14 @@ Every SKILL.md must have:
 
 ## Command Quality Rules
 
+### Keep execution portable
+
+- Do not assume an agent framework, container name, private host, or control API.
+- List required tools and privileges in `Prerequisites`.
+- Write generated artifacts beneath `${OUTPUT_DIR:-./output}`.
+- When root or raw sockets are optional, include an unprivileged fallback.
+- Keep target-specific evidence and credentials outside this repository.
+
 ### Use `--max-time` on every curl
 ```bash
 # BAD
@@ -106,6 +114,12 @@ metadata:
 ## No Template Duplication
 
 If two skills differ only by a sector name, platform name, or target filename, collapse them into one parameterized skill. See `recon-sector` for an example of 25 skills collapsed into 1 parameterized skill with a `sectors.yaml` database.
+
+## State-Changing Tests
+
+Default to passive or read-only validation. Any example that creates, modifies,
+deletes, sends, publishes, purchases, uploads, or changes authentication state
+must clearly require explicit authorization immediately before the command.
 
 ---
 

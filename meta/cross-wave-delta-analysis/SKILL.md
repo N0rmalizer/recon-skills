@@ -14,7 +14,6 @@ related_skills:
   - cors-credential-wordpress
   - xmlrpc-exploitation
   - attack-patterns-reference
-  - parallel-recon-triad
 ---
 
 # Cross-Wave Delta Analysis Skill
@@ -122,7 +121,6 @@ Signal critical deltas: new port 3306 (MySQL), new CORS credential reflections, 
 
 - `attack-patterns-reference` — match findings to pattern IDs (P-01 to P-25)
 - `recon-playbook` — the 4-phase pipeline that produces wave data
-- `parallel-recon-triad` — parallel cron orchestration that generates waves
 - `cross-attack-chains` — chain NEW findings into critical impact
 - `cors-credential-wordpress` — verify CORS findings classification
 - `xmlrpc-exploitation` — verify XMLRPC regression status

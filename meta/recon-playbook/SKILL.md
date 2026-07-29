@@ -19,7 +19,6 @@ related_skills:
   - source-leak-hunt
   - web-enumeration
   - cross-wave-delta-analysis
-  - parallel-recon-triad
 ---
 
 # Recon Playbook Skill
@@ -31,14 +30,16 @@ The master playbook that orchestrates all recon skills in the optimal sequence f
 - Starting a new recon engagement with a target list.
 - You have limited time and need to maximize findings.
 - After `sector-recon-methodology` produces a target list.
-- For parallel high-volume authorized engagements, see `parallel-recon-triad`.
+- For high-volume authorized engagements that require explicit concurrency and
+  rate controls.
 - Training — this is the canonical workflow for automated recon.
 
 ## Prerequisites
 
 - All recon skills loaded: `wp-mass-recon`, `subdomain-enumeration`, `cors-credential-wordpress`, `xmlrpc-exploitation`, `source-leak-hunt`, `deep-invade`.
-- Worker container with all tools available.
-- Target list at `$OUTDIR/targets.txt` (format: `domain|company|sector`).
+- The tools listed in `compatibility` available in the execution environment.
+- A target list in the form `domain|company|sector`.
+- A writable `OUTPUT_DIR` (defaults to `./output` in the examples).
 
 ## How to Run
 
@@ -305,36 +306,33 @@ Run only on high-value targets (score >= 6). Use `deep-invade` skill.
 
 After Deep Invade completes on a high-value target, generate a **3-doc documentation suite** per target in `$OUTDIR/recon_output/<domain>/`. This consolidates ALL findings into a structured deliverable for exploitation and reporting.
 
-**Model-split pattern: Pro writes, Flash dispatches in parallel via delegate_task.**
-
-- **Pro** manages the orchestrator, writes `MASTER_REPORT.md` directly (needs deep reasoning), reads all source files
-- **Flash** subagents handle the templated `ATTACK_SURFACE.md` and `EXPLOIT_CHAINS.md` via `delegate_task(tasks=[...])`
-- After Flash completes, **verify every file** — subagents can claim success without writing. If a file is missing/stale, write it from the orchestrator directly.
+The documents may be produced manually or by automation. In both cases, verify
+every artifact and its evidence links before using it for further testing.
 
 #### Document Suite
 
-| Document | Content | ~Lines | Writer | Model |
-|---|---|---|---|---|
-| `MASTER_REPORT.md` | Full report with all findings, attack chains, CVEs, PoCs, error log analysis, all waves | ~1.2k | Pro (direct) | Pro |
-| `ATTACK_SURFACE.md` | Catalog of all endpoints, ports, services, CORS matrix, subdomains, tech stack | ~600 | Flash (delegate_task) | Flash |
-| `EXPLOIT_CHAINS.md` | 7+ exploit chains with step-by-step curl PoCs, attack flow, prerequisites matrix | ~500 | Flash (delegate_task) | Flash |
+| Document | Content |
+|---|---|
+| `MASTER_REPORT.md` | Scope, verified findings, evidence, impact, limitations, and remediation |
+| `ATTACK_SURFACE.md` | Hosts, ports, services, endpoints, identities, and technology inventory |
+| `EXPLOIT_CHAINS.md` | Candidate and confirmed attack paths with prerequisites and evidence links |
 
-#### Workflow (Pro Orchestrator)
+#### Workflow
 
-1. Read ALL existing data first (deep/ findings, targets/, waves)
-2. Write MASTER_REPORT.md directly — 16 sections: exec summary, scope, recon, vulns critical/high/medium/low, users, plugins, CVEs, error log analysis, all waves, attack chains, PoCs, remediation
-3. Dispatch 2 Flash subagents in parallel for ATTACK_SURFACE.md and EXPLOIT_CHAINS.md (see Delegate Pattern below)
-4. After batch returns, VERIFY all 3 files exist and have content
-5. If a file was NOT written (subagent failed silently), write it from the orchestrator directly using same data
+1. Read all current evidence and normalize target identifiers.
+2. Build `ATTACK_SURFACE.md` from observed assets and behavior.
+3. Build `EXPLOIT_CHAINS.md`; label each link as observed, inferred,
+   confirmed, or not tested.
+4. Build `MASTER_REPORT.md` from verified findings, not raw scanner labels.
+5. Verify that every claim resolves to saved evidence and sensitive values are
+   redacted.
 
-#### Delegate Pattern (Pro dispatches Flash)
-
-Use `delegate_task(tasks=[...])` to write ATTACK_SURFACE.md and EXPLOIT_CHAINS.md in parallel. Each task must get:
+Each document must receive:
 - target domain, IP, hosting provider
 - ALL known ports, subdomains, paths, CORS data, plugins, tech stack, user tables
 - Explicit file path: `$OUTDIR/recon_output/<domain>/FILENAME.md`
-- Language directive (PT-BR when Hiago context)
-- Tool instruction: use `terminal cat > heredoc` (write_file blocks $OUTDIR/ paths)
+- the reporting language required by the engagement;
+- references to the underlying evidence.
 
 #### Verification
 
@@ -345,38 +343,22 @@ for f in MASTER_REPORT.md ATTACK_SURFACE.md EXPLOIT_CHAINS.md; do
   if [ -f "$path" ]; then
     echo "OK: $f ($(wc -l < "$path") lines, $(wc -c < "$path") bytes)"
   else
-    echo "MISSING: $f — write from orchestrator directly"
+    echo "MISSING: $f"
   fi
 done
 ```
 
-**Known Pitfall: Subagent Claims vs Reality**
-
-Subagents (Flash) may report "wrote successfully" but the file was never created or still contains old content. Always verify file existence AND size/lines after subagents return. If a subagent claimed success but the file is the old version (same size/lines), do NOT re-dispatch blindly — write the file directly from the orchestrator.
-
-**Also:** Subagents sometimes show `write_file` errors for temp scripts (`/tmp/gen_docs.py`) while the actual doc files were written correctly via terminal heredoc. Don't panic at "Write denied" warnings — check the actual output directory with `ls -la $OUTDIR/recon_output/<domain>/` to determine what actually got written.
-
-**Large file workaround for subagents:** When a subagent reports success but the file is truncated (heredoc size limit ~8KB), use base64 chunking:
-```bash
-# In the subagent's goal/context, instruct:
-# "Split content into base64 chunks and write with echo | base64 -d >>"
-# Or: "Use Python open() via terminal, not write_file tool."
-```
-
-**Note**: `write_file` tool blocks `$OUTDIR/` paths (Tirith security scanner). Always use terminal `cat > heredoc`. If blocked or heredoc too large (raw IPs like [REDACTED_IP], pipe-to-python), write via Python: `terminal("python3 -c \\"...\\"")`. For very large files (>150 lines), use base64 chunking via terminal:
-
-```bash
-echo 'BASE64_CHUNK_1' | base64 -d > $OUTDIR/recon_output/<domain>/FILE.md
-echo 'BASE64_CHUNK_2' | base64 -d >> $OUTDIR/recon_output/<domain>/FILE.md
-```
+Verify file existence, size, timestamps, and evidence links regardless of how
+the documents were produced. A successful command or automation response does
+not prove that the expected artifact is complete.
 
 ### Phase 3.6 — Deep Active Validation (Wave 10+)
 
-After Phase 3.5 generates the 3-doc suite, dispatch **3 Pro subagents** (one per target) to actively test EVERY documented vector and find NEW vulnerabilities.
+After Phase 3.5 generates the documentation suite, plan a bounded validation
+pass. Split targets or test classes only when each unit has independent scope,
+output, and rate limits.
 
-**Pattern: 3 Pro agents in parallel via delegate_task, each dedicated to one target**
-
-#### What Each Pro Agent Tests
+#### Validation Coverage
 
 | Category | Tests | Target |
 |---|---|---|
@@ -387,25 +369,7 @@ After Phase 3.5 generates the 3-doc suite, dispatch **3 Pro subagents** (one per
 | Sensitive files | .env, .git, wp-config.bak, debug.log, backup.sql | 8 paths |
 | Security headers | CSP, HSTS, X-Frame-Options, Referrer-Policy | 1 test |
 
-#### Delegate Pattern
-
-```python
-tasks = [
-  {"goal": "Deep active probe of [TARGET_1] — test ALL vectors, save to deep/wave10_target1.md",
-   "context": """Full context: IP, hosting, stack, users, CORS docs, XMLRPC status, all known findings...
-                 Save to $OUTDIR/recon_output/deep/wave10_target1.md with raw curl output.""",
-   "toolsets": ["terminal"]},
-  {"goal": "Deep active probe of [TARGET_2]...",
-   "context": """...""",
-   "toolsets": ["terminal"]},
-  {"goal": "Deep active probe of [TARGET_3]...",
-   "context": """...""",
-   "toolsets": ["terminal"]}
-]
-delegate_task(tasks=tasks)
-```
-
-#### Per-Agent Mandatory Checklist
+#### Per-Target Mandatory Checklist
 
 1. Read ALL existing docs (MASTER_REPORT, ATTACK_SURFACE, EXPLOIT_CHAINS, deep/ findings)
 2. Re-confirm all endpoints — `curl --max-time 30 --connect-timeout 10 -sk -D-` for HTTP status
@@ -438,7 +402,7 @@ delegate_task(tasks=tasks)
 ## Raw Test Output (all curl commands and responses)
 ```
 
-#### After All 3 Pro Agents Complete
+#### Compare the Validation Pass
 
 ```bash
 echo "=== Wave 10 Delta Summary ==="

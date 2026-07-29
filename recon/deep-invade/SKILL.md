@@ -34,7 +34,7 @@ Comprehensive deep pentest methodology for targets flagged as high-value by wp-m
 
 ## Prerequisites
 
-- `terminal` tool access on the worker container.
+- `curl`, `python3`, and the tools required by each selected phase.
 - Target already scored >= 6 from wp-mass-recon (WordPress confirmed, at least 2 of: CORS/XMLRPC/source leak).
 - Collaborator endpoint (Burp Collaborator, interactsh, or your own server) for SSRF/blind confirmation.
 - `nmap` available on the worker for port scanning.

@@ -10,7 +10,9 @@ Este documento é parte de um **suite de 3 documentos** gerados após deep invad
 | `ATTACK_SURFACE.md` | (este) Catálogo de endpoints, portas, serviços, CORS, tecnologia | `/root/output/recon_output/<domain>/ATTACK_SURFACE.md` |
 | `EXPLOIT_CHAINS.md` | Cadeias de exploração com PoCs curl passo a passo | `/root/output/recon_output/<domain>/EXPLOIT_CHAINS.md` |
 
-Gere ATTACK_SURFACE.md e EXPLOIT_CHAINS.md em paralelo via delegate_task (Flash), enquanto Pro escreve MASTER_REPORT.md diretamente. Consulte o skill `recon-playbook` seção Phase 3.5 para o fluxo completo.
+Os documentos podem ser produzidos manualmente ou por automacao. Em ambos os
+casos, valide a existencia, o conteudo e os links para evidencias antes de usar
+o material em novas fases. Consulte `recon-playbook`, Phase 3.5.
 
 ## Quando usar
 

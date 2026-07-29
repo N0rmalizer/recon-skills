@@ -23,7 +23,9 @@ But: `curl -sI https://example.com/wp-json/wp/v2/users -H "Origin: https://evil.
 Redirects hide real 200 responses. Example: `curl -sI -L https://[MATTRESS_RETAILER]/xmlrpc.php` returned non-XML content, but `curl -sI https://[MATTRESS_RETAILER]/xmlrpc.php` (no -L) returned `HTTP/1.1 200 OK` with real XMLRPC content.
 
 ### 4. Security scanner may block `-k` flag
-Tirith/Ascot security scanners flag `curl -sk` as suspicious when piped to an interpreter. Use `curl -s` without `-k` for HTTPS, or save to file first and read with `head`.
+Do not pipe untrusted HTTP responses directly into an interpreter. Save the
+response, inspect it, and process the local file. Avoid `-k` unless certificate
+validation is explicitly outside the test objective.
 
 ## Probe Script Template
 

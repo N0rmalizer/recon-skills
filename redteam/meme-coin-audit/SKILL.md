@@ -313,7 +313,7 @@ All tests verify Web3 audit readiness.
 
 ---
 
-## Operator Notes (Claude-BugHunter)
+## Operator Notes
 
 > Engagement-derived + 2026-specific additions to the vendored foundation.
 > Wisdom from real authorized engagements + Phase 2 verification across

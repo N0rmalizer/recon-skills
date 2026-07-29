@@ -539,7 +539,7 @@ If all 5 tests pass, the methodology discipline rules are verifiable. Tests 1-2 
 
 ---
 
-## Operator Notes (Claude-BugHunter)
+## Operator Notes
 
 > Engagement-derived additions to the vendored foundation. Wisdom from real
 > authorized engagements + Phase 2 verification across this repo's 31+

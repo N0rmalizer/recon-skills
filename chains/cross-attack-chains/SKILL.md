@@ -245,7 +245,9 @@ After all chains, include a remediation table organized by chain:
 
 ### Pitfalls
 
-- **Security scans may block documentation writes containing cloud metadata IPs** — `[REDACTED_IP]`, `metadata.google.internal`, `10.x.x.x` IPs in heredocs can trigger tirith/security-gate rules. When writing files with live IP examples, the scanner sees the content as an execution context, not documentation. If blocked, either: (a) break the IP into variables (`${OCTET1}.${OCTET2}.${OCTET3}.${OCTET4}`), (b) use placeholders like `CLOUD_METADATA_IP` in the doc and expand separately, or (c) write the file in chunks.
+- **Keep dangerous examples inert.** Use placeholders such as
+  `CLOUD_METADATA_IP` in reusable documentation. Resolve them only inside an
+  explicitly authorized validation procedure.
 - **~500+ lines** is a typical target for comprehensive documents — under 300 lines looks thin to clients.
 - **Every PoC must be reproducible with the exact curl/Python shown** — never paste a command you haven't run. Triagers/clients will copy-paste it.
 - **Expected responses matter** — include both success AND failure responses so the reader knows what to look for.

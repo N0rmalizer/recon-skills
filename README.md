@@ -1,95 +1,131 @@
-# Recon & Pentest Skill Pack
+# Recon & Pentest Skills
 
 <p align="center">
-  <img src="banner.png" alt="Recon & Pentest Skill Pack" width="800">
+  <img src="banner.png" alt="Recon and pentest skills" width="800">
 </p>
 
-Field-validated offensive security skills for authorized reconnaissance, vulnerability hunting, and exploit chaining. Terminal-native. Research-backed. MIT licensed.
+A runtime-agnostic library of executable playbooks for authorized
+reconnaissance, vulnerability validation, attack-path analysis, and security
+reporting.
 
-> **Disclaimer**: These skills are for authorized security testing only. Only test targets you own or have explicit written permission to test. Unauthorized scanning may violate computer fraud laws. The author assumes no liability for misuse.
+> These skills are for authorized security testing only. Only test targets you
+> own or have explicit written permission to test.
 
-> **Blog & research**: [hiago.sh](https://hiago.sh) — Pentest Playbook, field notes, and tooling.
+## What This Repository Contains
 
----
+Each skill is a self-contained `SKILL.md` with:
+
+- clear activation conditions;
+- explicit prerequisites;
+- reproducible commands and procedures;
+- false-positive and rate-limit guidance;
+- verification criteria;
+- references, scripts, or templates where they improve repeatability.
+
+The library is organized by security domain:
+
+```text
+recon-skills/
+|-- auth/       Authentication and SSO testing
+|-- chains/     Multi-step attack-path analysis
+|-- infra/      Infrastructure-focused techniques
+|-- meta/       Engagement planning and cross-skill workflows
+|-- recon/      Discovery, enumeration, and focused validation
+`-- redteam/    Vulnerability-class and platform playbooks
+```
+
+The repository deliberately does not define an agent runtime, scheduler,
+container topology, chat interface, model provider, or deployment platform. A
+human operator, an agent, or an automation system can consume the same skills.
+
+## Operating Model
+
+Use the library as an evidence-driven pipeline:
+
+```text
+scope
+  -> passive discovery
+  -> active enumeration
+  -> service and technology classification
+  -> hypothesis-driven validation
+  -> attack-path analysis
+  -> evidence review
+  -> reporting
+```
+
+Start with `meta/recon-playbook`, then load only the skills relevant to the
+observed surface. Prefer focused validation over indiscriminate scanning.
+
+Set a writable output location before running examples:
+
+```bash
+export OUTPUT_DIR="${OUTPUT_DIR:-./output}"
+mkdir -p "$OUTPUT_DIR"
+```
+
+Commands assume standard Linux tooling unless a skill states otherwise. Tool
+availability, network policy, concurrency, credentials, and isolation remain
+the responsibility of the execution environment.
+
+## High-Signal Entry Points
+
+| Skill | Purpose |
+|---|---|
+| `meta/recon-playbook` | End-to-end recon workflow and escalation gates |
+| `redteam/bb-methodology` | Bug bounty methodology and prioritization |
+| `redteam/web2-recon` | Broad web attack-surface discovery |
+| `redteam/offensive-osint` | External intelligence and asset pivots |
+| `recon/subdomain-enumeration` | Passive and active subdomain discovery |
+| `recon/port-service-discovery` | Port and service classification |
+| `recon/web-enumeration` | Web paths, files, and technology enumeration |
+| `recon/js-secrets-extraction` | Client-side bundle and secret analysis |
+| `chains/cross-attack-chains` | Evidence-based attack-path construction |
+| `redteam/triage-validation` | Finding validation before reporting |
+| `redteam/evidence-hygiene` | Reproducible and redacted evidence capture |
+| `redteam/report-writing` | Client and bug bounty reporting |
+
+The `hunt-*` skills cover individual vulnerability classes and platform
+surfaces. Use `find` or `rg` to locate a topic:
+
+```bash
+find . -name SKILL.md -print | sort
+rg -n "SSRF|OAuth|GraphQL|Kubernetes" --glob 'SKILL.md'
+```
+
+## Portability Contract
+
+Skills must not assume:
+
+- a specific orchestrator, model, or agent framework;
+- a fixed host, container name, user, private IP, or SSH topology;
+- a privileged shell;
+- a fixed output path;
+- a particular tool wrapper when a standard CLI is sufficient.
+
+When a command needs persistent output, use `OUTPUT_DIR`, defaulting to
+`./output`. When a technique requires root, raw sockets, a browser, a proxy, or
+specialized hardware, the skill must say so in `Prerequisites`.
+
+## Quality and Safety
+
+The quality baseline lives in [STYLE.md](STYLE.md). Contributor guidance lives
+in [AGENTS.md](AGENTS.md). The operating principles live in [SOUL.md](SOUL.md).
+
+Run the catalog validator before reviewing a change:
+
+```bash
+python3 scripts/validate_skills.py
+```
+
+Structural errors fail the command. Existing style debt is reported separately
+as warnings so it can be improved incrementally.
+
+## Public Repository Hygiene
+
+Keep target-specific evidence, credentials, scan output, customer names,
+private infrastructure details, and unredacted proofs of concept outside this
+repository. Skills should capture reusable methodology, not engagement data.
 
 ## License
 
-MIT — see [LICENSE](./LICENSE)
-
----
-
-## What's Inside
-
-```
-recon-skills/
-├── SOUL.md              — Philosophy & agent operating instructions
-├── AGENTS.md            — Complete catalog + skill standards
-├── STYLE.md             — Skill quality baseline (pitfalls, verification, rate limits)
-├── LICENSE              — MIT license
-├── recon/               — WordPress/CORS/XMLRPC recon, source leaks, JS secrets, web enum,
-│                          email sec, staging hunt, port scans, hardcoded creds, S3/MinIO XSS,
-│                          API exploitation, MCP security, LLM attacks, browser evasion, origin IP
-│                          discovery, subdomain takeover, vhost enum, GitHub secrets, ASN mapping,
-│                          visual recon, CMS detection
-├── redteam/             — hunt-* skills (XSS, SQLi, SSRF, RCE, ATO, IDOR, CORS, Firebase,
-│                          Supabase, MCP security, LLM attacks, schema-enum, write-gap, metrics, K8s, mass-assignment,
-│                          prototype-pollution, BFLA, info-disclosure, Django, FastAPI, NestJS),
-│                          plus recon-sector (parametrized, sectors.yaml database),
-│                          plus methodology/ops tools
-├── meta/                — Recon playbook, sector methodology, attack patterns, wave delta,
-│                          Google dorks, pentest playbook
-├── chains/              — Cross-attack chaining, WordPress full compromise
-├── auth/                — SAML SSO attacks
-├── infra/               — Docker privilege escalation
-├── controller           — Agent orchestration
-└── worker               — Multi-worker cluster (recon, heavy/RE, Tor)
-```
-
-## Key Skills
-
-| Category | Skill | What It Does |
-|----------|-------|-------------|
-| **meta** | `recon-playbook` | 4-phase pipeline: target gen -> quick filter -> WP deep check -> deep invade |
-| **recon** | `cors-credential-wordpress` | 8 CORS variants (V1-V8) |
-| **recon** | `xmlrpc-exploitation` | System.multicall, pingback SSRF, IMDS role guessing, wp.uploadFile |
-| **recon** | `web-enumeration` | 200+ sensitive file paths, .env extraction, path traversal, vhost enum |
-| **recon** | `js-secrets-extraction` | 12 regex patterns for API keys, JWTs, Firebase, Supabase in JS bundles |
-| **recon** | `email-security` | DMARC/SPF/DKIM checks, SMTP spoofing, header analysis |
-| **chains** | `cross-attack-chains` | Attack chain methodology: CORS+XMLRPC->RCE, SSRF->IMDS, etc |
-| **chains** | `wordpress-full-compromise` | Kill chains for full WordPress takeover |
-| **meta** | `attack-patterns-reference` | 25 patterns (P-01 to P-25), 18 WP abuse patterns, 8 CORS variants |
-| **meta** | `cross-wave-delta-analysis` | Compare waves: NEW / REGRESSION / PERSISTENT / CHANGE |
-| **meta** | `sector-recon-methodology` | Tier-based sector selection + per-sector vulnerability baselines |
-| **meta** | `google-dorks-catalog` | 100+ dork patterns by service type + GitHub code search |
-| **redteam** | `recon-sector` | Parameterized sector recon: sectors.yaml database |
-
-
-## Research
-
-Incorporates external security research:
-
-- **AI Agent Framework Audit** (2026): 56+ vulns across 13 frameworks, 7 CVEs (CVE-2026-2287)
-- **HuntBook Methodology** (su6osec): XSS, SQLi, SSRF modern techniques
-- **PortSwigger Research** (2025): SAML bypass, WebSocket attacks, HTTP anomaly detection
-- **Tool Benchmarks**: dnsx 2x, httpx 5.6x, naabu 8x, ffuf vs curl rate-limit reality
-
-See  and  for details.
-
-## Quick Start
-
-Clone into your agent's skills directory and reference via skill name:
-
-```bash
-git clone https://github.com/uphiago/recon-skills.git
-```
-
-Skills are self-contained markdown files with YAML frontmatter. Each skill documents trigger conditions, commands, verification steps, and pitfalls. See [STYLE.md](./STYLE.md) for the quality baseline and writing guidelines.
-
-## Skill Standards
-
-Every skill follows the [STYLE.md](./STYLE.md) baseline:
-
-- **Conditions**: Trigger rules for when to use the skill
-- **Commands**: Terminal-native commands with `--max-time` and rate limiting
-- **Verification**: How to confirm findings
-- **Pitfalls**: Known gotchas and edge cases
+MIT. See [LICENSE](LICENSE).

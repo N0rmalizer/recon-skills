@@ -33,9 +33,10 @@ Batch WordPress vulnerability detection pipeline for scanning dozens to hundreds
 
 ## Prerequisites
 
-- `terminal` access to the worker container (curl, httpx, python3, jq).
-- Target list file at `$OUTDIR/targets.txt` in format `domain|company|sector` (one per line).
-- Worker container has `parallel_batch.py` available or you use the inline commands below.
+- `curl`, `httpx`, `python3`, and `jq`.
+- A target list in `domain|company|sector` format, one target per line.
+- A writable `OUTPUT_DIR`; examples default to `./output`.
+- The bundled scanner or the inline commands below.
 
 ## How to Run
 
