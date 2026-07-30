@@ -180,14 +180,6 @@ for ns in plugins:
                             break
 ```
 
-## Real Production Results
-
-### E-commerce Target (GPL Plugin)
-- **Plugin**: GPL v1 (`/gpl/v1/publish-builder-pro`) — POST without auth
-- **Impact**: Published posts, pages, and WooCommerce products without authentication
-- **Additional**: Hidden admin login URL leaked via `/gpl/v1/login-url`
-- **Stack**: WordPress 6.9+, WooCommerce, Elementor Pro
-
 ## Pitfalls
 
 - **401 vs 400**: A 401 means auth is enforced. A 400 with "Missing parameter" means the endpoint IS accessible but needs correct arguments.

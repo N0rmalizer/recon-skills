@@ -18,7 +18,10 @@ related_skills:
 
 # Port & Service Discovery Skill
 
-Fast port scanning with nmap to discover exposed services (MySQL, FTP, SSH, SMTP, internal APIs, Redis, MongoDB) on WordPress and web targets. MySQL on port 3306 open to the internet is one of the rarest but most critical findings — confirmed on health-saas.example.com (healthcare SaaS). Port scanning reveals the infrastructure layer that HTTP-based recon misses.
+Use scoped Nmap discovery to identify services adjacent to web applications,
+including databases, remote administration, mail, caches, and non-standard API
+ports. An open port is an observation; service identity and unauthorized access
+require separate validation.
 
 ## When to Use
 

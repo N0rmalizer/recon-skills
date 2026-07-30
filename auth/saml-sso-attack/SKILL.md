@@ -240,24 +240,6 @@ echo "  5. Submit forged SAMLResponse to SP ACS endpoint"
 echo "  6. If SP accepts → XSW confirmed"
 ```
 
-## Real Production Results
-
-### TARGET_ORG_A (SimpleSAMLphp IdP)
-- SAML metadata exposed at `/saml2/idp/metadata.php`
-- WordPress SP with 79 XMLRPC methods active behind SSO
-- SSO blocks direct WP access but XMLRPC bypasses SSO entirely
-- User enumeration possible via timing differential
-
-### ADFS (TARGET_ORG_C / GOVERNMENT_TARGET / TARGET_ORG_D)
-- ADFS WS-Trust endpoint at `/adfs/services/trust` exposed
-- `UsernameMixed` endpoint allows credential testing
-- Combined with Office 365 tenant ID extraction
-
-### SSO-Protected WordPress (common pattern)
-- WordPress behind SSO redirects all `/wp-admin/` to IdP
-- But `/wp-json/` and `/xmlrpc.php` are NOT behind SSO
-- REST API and XMLRPC remain accessible without SSO authentication
-
 ## Pitfalls
 
 - **XSW is complex.** Requires understanding of XML namespaces, canonicalization, and SAML response structure.

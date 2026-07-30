@@ -73,8 +73,11 @@ dnsx -silent -a -resp-only -l subs.txt
 - If `output/` is empty, do not claim `report_count: N` in frontmatter.
 - If a finding has never been confirmed on a real target, say so. Do not fabricate.
 
-### Cross-references must be bidirectional
-- If skill A references skill B in `related_skills`, skill B must reference skill A.
+### Cross-references must be intentional
+- Use `related_skills` for a concrete next step, prerequisite, or companion
+  technique.
+- References may be directional. Do not add a reverse reference unless it also
+  helps an operator navigate from the other skill.
 
 ### No broken references
 - Any script path referenced in a skill must exist in the repo.

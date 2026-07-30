@@ -45,7 +45,7 @@ Batch WordPress vulnerability detection pipeline for scanning dozens to hundreds
 httpx -silent -l targets.txt -threads 50 -tech-detect -status-code -title -o $OUTDIR/alive.txt
 
 # Phase 2: WP detection, user enum, CORS, XMLRPC (20 workers)
-python3 $OUTDIR/recon_output/new_targets/parallel_batch.py $OUTDIR/targets.txt 20
+python3 parallel_batch.py "${OUTPUT_DIR:-./output}/targets.txt" 20
 ```
 
 Or run the 4-phase pipeline manually using the commands in Procedure.
@@ -242,7 +242,9 @@ with concurrent.futures.ThreadPoolExecutor(max_workers=20) as ex:
 - **SPA catch-all false positives:** Single-page apps return 200 for every path. Always verify `.env` has `DB_`/`APP_`/`_KEY`/`_SECRET` patterns; `.git/config` has `[core]`; SQL files have `CREATE TABLE`/`INSERT INTO`. Skip bodies with `<html` or `<script` in first 100 chars.
 - **Cloudflare/WAF blocking:** httpx may show tech as "Cloudflare" but WP is behind it. Try HTTP/1.0 for WP Engine-hosted sites: `curl --max-time 30 --connect-timeout 10 -sk --http1.0 "https://TARGET/wp-json/..."`
 - **Rate limiting:** WP Engine and Hostinger throttle after ~50 requests. Use 2-4s jitter between requests. Chrome/125 UA has 0% block rate; curl/8.4 UA has 5% block rate; Python urllib has 15%.
-- **WordPress on subpaths:** Check `/blog/`, `/magical/`, `/wp/` in addition to root. ecommerce.example.com has `/magical/` with separate, more vulnerable WP install.
+- **WordPress on subpaths:** Check justified candidates such as `/blog/` and
+  `/wp/` in addition to the root; secondary installations can have different
+  versions and controls.
 - **Non-standard XMLRPC paths:** Some hosts rename xmlrpc.php. Verify with `system.listMethods` (not just HTTP 200) — look for `<string>` tags in response XML.
 - **Registration form false positives:** Many sites show login form on `?action=register` without actually allowing registration. The v2 check requires ALL THREE strings: `register` + `user_login` + `wp-submit`.
 

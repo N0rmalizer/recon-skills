@@ -186,25 +186,6 @@ find / -perm -4000 -type f 2>/dev/null | while read f; do
 done
 ```
 
-## Real Production Results
-
-### fitness-chain — Docker Container Extraction
-- 12 Docker image layers extracted from `.git` exposed repository
-- Docker containers running on OVH infrastructure ([REDACTED_IP])
-- `.env` exposed with MySQL, Redis, SendGrid, OVH S3 credentials
-- 21 credentials for rotation across 5 Firebase projects + OVH + AWS
-
-### gov-finance-portal — Docker Compose in GitLab
-- `docker-compose.prod.yml` exposed in public GitLab repository
-- Blue/green deployment architecture mapped
-- Internal IP 10.x.x.x (redacted) discovered in deploy scripts
-
-### AI Agent Automated Docker Privesc (from TECNICAS_DOCKER_PRIVESC.md)
-- Claude Code autonomously discovered docker group membership
-- Checked docker binary, identified volume-mount-to-root technique
-- Executed automatic privesc without human guidance
-- Mitigation: rootless mode, no docker group, Podman, security-opt no-new-privileges
-
 ## Pitfalls
 
 - **Not all containers have docker socket.** It's mounted deliberately by the ops team. Most containers don't have it.

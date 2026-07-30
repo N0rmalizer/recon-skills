@@ -182,7 +182,9 @@ curl --max-time 30 --connect-timeout 10 -sI "https://TARGET/" | grep -iE "age:|m
 
 **Government agency Vite dev mode**: 45 TypeScript files served publicly with VITE_JWT_SECRET and VITE_API_TOKEN in plain text.
 
-**Batch probe methodology** (June 2026): See `references/batch-probe-methodology.md` for a full probe script template, catch-all detection patterns, CORS endpoint-specificity lessons, and real results from 15+ pool sector targets + 7 critical target re-tests.
+See `references/batch-probe-methodology.md` for a bounded probe template,
+catch-all detection, endpoint-specific CORS checks, and XML-RPC response
+classification.
 
 ## Pitfalls
 

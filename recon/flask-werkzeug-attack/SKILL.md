@@ -149,21 +149,6 @@ curl --max-time 30 --connect-timeout 10 -sk -X DELETE "https://target.com:PORT/s
 curl --max-time 30 --connect-timeout 10 -sk -D- "https://target.com:PORT/sitemap.xml" | grep -i access-control
 ```
 
-## Real Production Example
-
-### Target: health-saas.example.com (Port 8084, June 2026)
-
-| Finding | Value |
-|---------|-------|
-| Trigger path | `/sitemap.xml` (HTTP 500) |
-| Error | `NameError: name 'Response' is not defined` |
-| Framework | Flask (Python 3.10) |
-| Server path | `/var/www/html/target-app-backend/venv/lib/python3.10/site-packages/flask/app.py` |
-| SECRET | `vYQ93K...8cww` (exposed in HTML) |
-| Console | DISABLED (`EVALEX=false`, `CONSOLE_MODE=false`) |
-| CORS | `Access-Control-Allow-Origin: *` on error page |
-| Other endpoints | POST `/login` returns JSON, POST `/register` returns HTTP 403 |
-
 ## Pitfalls
 
 - **EVALEX=false means NO RCE through the console.** Do not waste time trying to execute code when console mode is disabled.

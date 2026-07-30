@@ -167,15 +167,6 @@ done < "$TARGETS_FILE"
 - Directory listing MUST show actual `Index of` header — not assume from 200 status alone.
 - All findings should be saved to per-target markdown files under `$OUTDIR/`.
 
-## Real Production Results
-
-From cross-sector mass recon across 28 sectors:
-- Churches showed the highest WordPress vulnerability rate (volunteer-maintained, no WAF, shared hosting).
-- Debug log exposure with full PII confirmed across plumbing, HVAC, roofing, carpet cleaning, moving companies, and property management sectors.
-- CORS credential reflection confirmed across daycare, dental, auto dealer, and property management WordPress sites.
-- Directory listing exposing PDF invoices, CSV form exports, and photo galleries with EXIF geolocation confirmed across multiple sectors.
-- Open XMLRPC with system.multicall found across virtually all sectors on unmaintained WordPress installs.
-
 ## Related Skills
 
 - `wp-mass-recon` — batch scanner for high-volume WordPress probing.

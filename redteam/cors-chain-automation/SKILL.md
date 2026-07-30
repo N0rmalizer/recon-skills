@@ -1,6 +1,6 @@
 ---
 name: cors-chain-automation
-description: "Multi-endpoint CORS credential test automation — batch-probes API endpoints for CORS misconfiguration, distinguishes exploitable reflect-any-origin + credentials from false positives (ACAO: * alone), generates browser PoCs, and chains findings to subdomain takeover or CSRF. Built on technique from hunt-cors with automation for bulk recon across large target sets. Use when you have a list of API endpoints or targets and need to systematically find credential-exploitable CORS issues at scale."
+description: Use when a bounded list of authorized API endpoints needs consistent CORS triage before browser validation.
 version: 1.1.0
 revision_date: 2026-07-25
 license: MIT
@@ -8,30 +8,29 @@ category: redteam
 tags: [cors, automation, chain, redteam]
 ---
 
-# CORS-CHAIN-AUTOMATION — Multi-Endpoint CORS Credential Test Automation
+# Multi-Endpoint CORS Triage
 
 ## When to Use
 
 Use when you have a list of API endpoints or target domains and need to systematically find credential-exploitable CORS misconfigurations at scale. Distinguishes the 3 exploitable patterns (reflect-any-origin + credentials, null-origin trust, subdomain-regex bypass) from false positives (ACAO: * alone, ACAC without reflected origin, same-origin-only). Generates ready-to-use browser PoC HTML files for confirmed findings.
 
-## CORS Variations Catalog — 8 Distinct Types
+## CORS Variations
 
-Field recon across 600+ domains revealed 8 distinct CORS misconfiguration variations. Each requires a slightly different detection approach:
-
-| # | Variation | ACAO | ACAC | Example Target | Wave Found |
-|---|-----------|------|------|---------------|------------|
-| V1 | Origin Reflection + Credentials (Classic) | Reflected | true | landscaping.example.com, mattress.example.com | W1 |
-| V2 | Null Origin Reflection (Sandboxed Iframe Bypass) | null | true | dental.example.com | W6 |
-| V3 | Wildcard (No Credentials) | * | false | health-saas.example.com, bakery.example.com | W5 |
-| V4 | Credentialed Preflight (OPTIONS only) | Reflected on OPTIONS | true on OPTIONS | Multiple WP endpoints | W8 |
-| V5 | Auth-Required Endpoint Leak (401/403 still emit CORS) | Reflected | true | mattress.example.com gf/v2 | W7 |
-| V6 | Multi-Origin Reflection (any origin works) | Multiple | true | realestate.example.com | W6 |
-| V7 | Plugin-Specific CORS (only on plugin REST namespaces) | Reflected | true | media.example.com (gravity-pdf/v1) | W5 |
-| V8 | Staging-Environment-Only CORS | Reflected | true | staging.retail.example.com | W5 |
+| # | Variation | Initial signal | Required follow-up |
+|---|-----------|----------------|--------------------|
+| V1 | Origin reflection with credentials | Reflected origin and `ACAC: true` | Credentialed browser reads protected data |
+| V2 | Null-origin trust | `ACAO: null` and `ACAC: true` | Sandboxed browser proof |
+| V3 | Wildcard without credentials | `ACAO: *` | Determine whether the data is already public |
+| V4 | Credentialed preflight | OPTIONS accepts origin and method | Actual browser request succeeds |
+| V5 | Protected-route CORS | CORS appears on a 401 or 403 | Approved session returns protected data |
+| V6 | Broad origin reflection | Several unrelated origins are reflected | Controlled-origin browser proof |
+| V7 | Namespace-specific CORS | Only one API or plugin namespace reflects | Validate that namespace's data or action |
+| V8 | Environment-specific CORS | Policies differ across environments | Demonstrate impact within scope |
 
 ### Critical Implementation Lesson — Test ALL Endpoints, Not Just /users
 
-**This is the #1 CORS detection mistake across all waves.** Earlier waves missed CORS on mattress.example.com and [RETAILER] because CORS was tested only on `/wp/v2/users`. CORS credential reflection on WordPress affects ALL REST endpoints, not just users:
+Do not infer policy for an entire application from one route. Test the bounded
+set of endpoints supported by the application map:
 
 ```bash
 # WRONG — tests only /users:
@@ -282,7 +281,6 @@ done < "$CORS_RESULTS"
 
 ## Reference Files
 
-- `references/cors-8-variant-catalog.md` — Complete 8-variant CORS catalog with per-variant detection commands, frequency data, and example targets
 
 ## Common Root Causes
 

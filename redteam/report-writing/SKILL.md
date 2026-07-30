@@ -585,17 +585,19 @@ Skills, README files, and any public-facing documentation must be **fully agnost
 Use agnostic patterns instead:
 
 ```
-BAD:  "ecommerce.example.com had PHPInfo + XMLRPC -> RCE"
+BAD:  "customer.example had PHPInfo + XMLRPC -> RCE"
 GOOD: "e-commerce target had PHPInfo + XMLRPC -> RCE"
 
-BAD:  "info@[RETAILER] exposed via REST API"
+BAD:  "info@company-name.example exposed via REST API"
 GOOD: "corporate email pattern exposed via REST API"
 
-BAD:  "health-saas.example.com MySQL 3306 OPEN"
+BAD:  "customer.example MySQL 3306 OPEN"
 GOOD: "healthcare SaaS target had MySQL 3306 exposed"
 ```
 
-Per-target findings with full detail live in private output directories (e.g., `$OUTDIR/recon_output/`). Skills store **patterns, techniques, and methodology** — never company-specific data. This applies to all SKILL.md files, README, SOUL.md, AGENTS.md, and any public-facing documentation.
+Per-target findings with full detail live beneath the operator-selected
+`OUTPUT_DIR`. Skills store patterns, techniques, and methodology rather than
+engagement evidence.
 
 **When writing a skill or README:**
 - Use `TARGET`, `example.com`, `evil.com` as placeholders

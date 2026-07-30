@@ -219,32 +219,6 @@ if echo "$VARS" | grep -qi "key\|value"; then
 fi
 ```
 
-## Real Production Results
-
-### gov-finance-portal (gitlab.cge.[GOV_PORTAL].br)
-- **3 public repositories**: cge/hdi (Helpdesk system), cge/cnpj-sqlite, cge/exame-front-cge
-- **461,304 CPF records** in `servidores_sigrh.json` (state employee database)
-- `.env.example` with MongoDB host, LDAP config, email server credentials
-- `deploy.sh` with internal IP `10.11.82.75`, blue/green deployment infrastructure
-- `docker-compose.prod.yml` with container architecture
-- `.gitlab-ci.yml` with CI/CD tokens and runner configurations
-- Registration OPEN at `/users/sign_up`
-
-### dev-agency (gitlab.dev-agency.com)
-- GitLab CE with SSL private keys exposed in repositories
-- Related to enterprise-portal compromise (same infrastructure)
-
-### commit history analysis (optional depth)
-```bash
-# Get recent commits (reveals developer names, email addresses)
-curl --max-time 30 --connect-timeout 10 -sk "https://$TARGET/api/v4/projects/$PROJECT_ID/repository/commits?per_page=20" | \
-  python3 -c "
-import sys, json
-for c in json.load(sys.stdin):
-    print(f'  {c[\"short_id\"]} {c[\"author_name\"]} <{c[\"author_email\"]}> {c[\"title\"][:60]}')
-" 2>/dev/null
-```
-
 ## Pitfalls
 
 - **Rate limiting.** GitLab API has rate limits (typically 300-600 requests/min). Use `--max-time` and delays.

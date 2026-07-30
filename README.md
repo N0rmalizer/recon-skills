@@ -1,12 +1,12 @@
-# Recon & Pentest Skills
+# Recon Skills
 
 <p align="center">
   <img src="banner.png" alt="Recon and pentest skills" width="800">
 </p>
 
-A runtime-agnostic library of executable playbooks for authorized
-reconnaissance, vulnerability validation, attack-path analysis, and security
-reporting.
+A curated pack of security skills for external reconnaissance, web
+applications, APIs, authentication, vulnerability validation, attack-path
+analysis, and reporting.
 
 > These skills are for authorized security testing only. Only test targets you
 > own or have explicit written permission to test.
@@ -14,18 +14,23 @@ reporting.
 > **Blog & research**: [hiago.sh](https://hiago.sh) - Pentest Playbook, field
 > notes, and tooling.
 
-## What This Repository Contains
+## What Is Included
 
-Each skill is a self-contained `SKILL.md` with:
+The catalog is primarily focused on external web security:
 
-- clear activation conditions;
-- explicit prerequisites;
-- reproducible commands and procedures;
-- false-positive and rate-limit guidance;
-- verification criteria;
-- references, scripts, or templates where they improve repeatability.
+- subdomain, DNS, port, HTTP, and technology discovery;
+- route, parameter, JavaScript, source-map, and API mapping;
+- authentication, authorization, session, OAuth, SAML, and MFA testing;
+- web vulnerability and framework-specific validation;
+- cloud, identity, container, and exposed-infrastructure pivots;
+- evidence review, attack-path analysis, and reporting.
 
-The library is organized by security domain:
+Each skill owns a focused objective and documents the prerequisites, procedure,
+pitfalls, verification criteria, and related techniques needed for that
+objective. Older skills are being migrated incrementally to the complete
+[quality baseline](STYLE.md).
+
+## Catalog
 
 ```text
 recon-skills/
@@ -37,27 +42,22 @@ recon-skills/
 `-- redteam/    Vulnerability-class and platform playbooks
 ```
 
-The repository deliberately does not define an agent runtime, scheduler,
-container topology, chat interface, model provider, or deployment platform. A
-human operator, an agent, or an automation system can consume the same skills.
+## Using the Pack
 
-## Operating Model
+Clone the repository and locate the skills that match the observed surface:
 
-Use the library as an evidence-driven pipeline:
+```bash
+git clone https://github.com/uphiago/recon-skills.git
+cd recon-skills
 
-```text
-scope
-  -> passive discovery
-  -> active enumeration
-  -> service and technology classification
-  -> hypothesis-driven validation
-  -> attack-path analysis
-  -> evidence review
-  -> reporting
+find . -name SKILL.md -print | sort
+rg -n "SSRF|OAuth|GraphQL|Kubernetes" --glob 'SKILL.md'
 ```
 
-Start with `meta/recon-playbook`, then load only the skills relevant to the
-observed surface. Prefer focused validation over indiscriminate scanning.
+For a broad external web assessment, useful entry points are
+`redteam/web2-recon`, `recon/subdomain-enumeration`,
+`recon/web-enumeration`, and `redteam/bb-methodology`. Add vulnerability or
+platform skills only when discovery produces a relevant signal.
 
 Set a writable output location before running examples:
 
@@ -67,8 +67,8 @@ mkdir -p "$OUTPUT_DIR"
 ```
 
 Commands assume standard Linux tooling unless a skill states otherwise. Tool
-availability, network policy, concurrency, credentials, and isolation remain
-the responsibility of the execution environment.
+availability, scope, network policy, concurrency, credentials, and isolation
+remain the operator's responsibility.
 
 ## High-Signal Entry Points
 
@@ -88,26 +88,9 @@ the responsibility of the execution environment.
 | `redteam/report-writing` | Client and bug bounty reporting |
 
 The `hunt-*` skills cover individual vulnerability classes and platform
-surfaces. Use `find` or `rg` to locate a topic:
-
-```bash
-find . -name SKILL.md -print | sort
-rg -n "SSRF|OAuth|GraphQL|Kubernetes" --glob 'SKILL.md'
-```
-
-## Portability Contract
-
-Skills must not assume:
-
-- a specific orchestrator, model, or agent framework;
-- a fixed host, container name, user, private IP, or SSH topology;
-- a privileged shell;
-- a fixed output path;
-- a particular tool wrapper when a standard CLI is sufficient.
-
-When a command needs persistent output, use `OUTPUT_DIR`, defaulting to
-`./output`. When a technique requires root, raw sockets, a browser, a proxy, or
-specialized hardware, the skill must say so in `Prerequisites`.
+surfaces. Skills can be followed manually or loaded as task context by an
+automation system. Commands use standard tools and write persistent artifacts
+beneath `${OUTPUT_DIR:-./output}` unless a skill documents another input.
 
 ## Quality and Safety
 

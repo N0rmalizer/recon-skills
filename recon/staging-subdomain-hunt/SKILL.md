@@ -248,40 +248,8 @@ done
 - **Staging may require VPN.** Some staging environments are IP-restricted.
   Test only from source addresses approved by the engagement.
 - **WordPress install.php on production.** Some poorly maintained production sites also have this accessible. It's not always staging-specific. Check for "Welcome to WordPress" title text to confirm it's a fresh install.
-- **CORS on staging but not production is common.** Wave9 discovered CORS on mattress.example.com and[RETAILER] that was MISSED in waves 6-8 because it was only tested on certain endpoints. Always test the full CORS matrix (10+ endpoints) on both production AND staging.
-
-## Wave9 Production Results — Massive Internal Subdomain Leaks
-
-### retail.example.com — 20+ internal subdomains leaked via crt.sh
-```
-sftp.retail.example.com      — SFTP server
-blctx.retail.example.com     — internal system
-eac.retail.example.com       — Exchange Admin Center
-jss.retail.example.com       — Jamf MDM
-vwsip.retail.example.com     — internal service
-731277-controller1    — infrastructure controller
-alweb.rfk.retail.example.com — internal app server
-mobilebiqa            — mobile BI QA
-mta.em.retail.example.com    — email transport
-goedgertr02           — internal server
-agents03              — agent/management system
-smetrics              — analytics
-help.retail.example.com      — helpdesk
-blcbusexpw02          — business system
-```
-
-None of these were publicly known before crt.sh enumeration. Certificate transparency is the #1 source for internal infrastructure discovery.
-
-### realestate.example.com — Exchange + VPN + SSH surfaced via crt.sh
-```
-owa.realestate.example.com       — Outlook Web Access (Exchange)
-srvexch01/srvexch02   — Exchange servers
-vpn.realestate.example.com       — VPN portal
-remote.realestate.example.com    — Remote access
-link.realestate.example.com      — SMTP2GO dashboard (LIVE)
-portal.realestate.example.com    — Internal portal
-install.realestate.example.com   — Installer portal
-```
+- **CORS can differ between production and staging.** Test the same bounded
+  endpoint matrix in both environments before claiming a security-control gap.
 
 ## Verification
 
@@ -289,4 +257,6 @@ install.realestate.example.com   — Installer portal
 - WordPress install.php MUST return HTTP 200 with "WordPress" + "installation" in body (not a redirect or SPA).
 - Staging weakness MUST be compared against production to confirm a security gap (e.g., production has WAF but staging doesn't).
 - Internal subdomain leaks from crt.sh must be verified to be the target's infrastructure (not unrelated domains in the same cert).
-- All discovered staging credentials/config MUST be tested for validity (don't assume staging creds work on production, but always test).
+- Discovered credentials or configuration values must be handled as sensitive
+  evidence. Test credentials only with explicit authorization and approved
+  identities; never assume staging credentials may be tried in production.

@@ -17,7 +17,10 @@ related_skills:
 
 # Error Log Mining Skill
 
-Discover and mine exposed PHP `error_log` files for server paths, database credentials, SQL queries, API keys, email addresses, and internal IP addresses. Error logs on misconfigured WordPress sites routinely expose the full server directory structure, active database queries, and sometimes hardcoded credentials from stack traces. Confirmed on ecommerce.example.com where a 1.7MB error_log revealed 47 server paths and 879 SQL queries.
+Discover and analyze exposed PHP `error_log` files for server paths, database
+errors, SQL fragments, API-key candidates, email addresses, and internal
+addresses. Collect a bounded sample and validate the sensitivity of its content
+instead of inferring impact from file size or status.
 
 ## When to Use
 
@@ -51,7 +54,7 @@ python3 analyze_log.py error_log.txt
 
 ## Quick Reference
 
-| Extraction Target | Python regex (from wave6_invade.py) | Value |
+| Extraction Target | Python regex | Value |
 |------------------|--------------------------------------|-------|
 | Server paths | `re.findall(r'/home/[^\s:)]+', txt)` | Full directory structure |
 | Email addresses | `re.findall(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', txt)` | Admin emails |
@@ -276,7 +279,7 @@ LFI_PATHS=$(grep -Eo '(?:include|require|include_once|require_once)\s*\(\s*[\x27
 [[ -n "$LFI_PATHS" ]] && echo "Potential LFI paths:" && echo "$LFI_PATHS"
 ```
 
-## Production Miner (from wave6_invade.py — ecommerce.example.com 1.7MB error_log)
+## Bounded Log Miner
 
 ```python
 import re
@@ -331,23 +334,10 @@ def mine_error_log(txt):
     return results
 ```
 
-## Real Production Results (ecommerce.example.com, Wave6)
-
-From a 1.7MB error_log at `/magical/error_log`:
-- **Server paths:** 47 unique `/home/wines/public_html/...` paths extracted
-- **Emails:** 0 found (admin emails not in error context)
-- **DB credentials:** 0 extracted (no DB conn errors in log)
-- **API keys:** 0 extracted
-- **SQL queries:** 879 queries found (full table structures, column names, JOIN patterns)
-- **WordPress salts:** Found (AUTH_KEY, SECURE_AUTH_KEY, etc.)
-- **Error breakdown:** 1021 PHP Deprecated + 646 PHP Warnings + Fatal errors
-- **Date range:** 2013 to 2018 (log from legacy install, not current code)
-
-**Key insight:** Error logs from OLD WordPress installs (`/magical/` on ecommerce.example.com) contain years of accumulated data. Always check subdirectory error logs, not just root.
-
 ## Pitfalls
 
-- **Error logs can be MASSIVE (multi-GB).** ecommerce.example.com `/error_log` was 896MB in Wave8. Always check Content-Length first. Use `curl -r 0-5000000` for 5MB samples.
+- **Error logs can be very large.** Check `Content-Length` before downloading
+  and use a bounded range such as `curl -r 0-5000000` for an initial sample.
 - **Logs may contain PII.** Email addresses, IPs, and usernames in error logs may constitute a data breach. Handle responsibly.
 - **Log rotation may truncate.** The visible error_log may only contain recent entries. Check for rotated logs (`error_log.1`, `error_log.old`, `error_log-YYYYMMDD`).
 - **Some hosts return garbage.** A 200 on `/error_log` might be a custom 404 page or SPA catch-all. Always check content for `PHP ` + error type pattern before analyzing.

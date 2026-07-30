@@ -30,8 +30,8 @@ Methodology for comparing findings across multiple recon waves on the same targe
 
 ## Prerequisites
 
-- Prior wave output files in `$OUTDIR/recon_output/deep/waveN/`.
-- Current wave output files in `$OUTDIR/recon_output/deep/waveN+1/`.
+- Prior assessment output beneath `${OUTPUT_DIR:-./output}/baseline/`.
+- Current assessment output beneath `${OUTPUT_DIR:-./output}/current/`.
 - Structured findings per target (at minimum: ports, CORS status, WP users, XMLRPC status, sensitive paths).
 
 ## How to Run
@@ -78,8 +78,8 @@ Reversed findings are regressions that later reverted to the original vulnerable
 ### Step 1 — Gather Both Waves' Data
 
 ```bash
-WAVE_OLD="$OUTDIR/recon_output/deep/wave6"
-WAVE_NEW="$OUTDIR/recon_output/deep/wave7"
+WAVE_OLD="${OUTPUT_DIR:-./output}/baseline"
+WAVE_NEW="${OUTPUT_DIR:-./output}/current"
 echo "=== Comparing $WAVE_OLD vs $WAVE_NEW ==="
 ```
 
@@ -90,19 +90,6 @@ For each target present in both waves, compare XMLRPC status, CORS headers, open
 ### Step 3 — Classify & Flag Critical Deltas
 
 Signal critical deltas: new port 3306 (MySQL), new CORS credential reflections, new WP install pages, new subdomains with admin/staging patterns.
-
-## Real-World Example: Wave9 Delta (7 targets)
-
-| Target | Wave8 State | Wave9 Delta | Category |
-|--------|-------------|-------------|----------|
-| ecommerce.example.com | XMLRPC 200 (76 methods) | 200->301 redirect | REGRESSION |
-| ecommerce.example.com | No ports reported | MySQL 3306 + FTP 21 + IMAP 143 OPEN | **NEW** (6 ports) |
-| mattress.example.com | NOT documented as CORS target | ALL endpoints reflect | **NEW** (missed W6-8) |
-| realestate.example.com | CORS known | Exchange OWA + SSH 22 + VPN portal | **NEW** (10+ subdomains) |
-|tools.example.com | SliderRev known | CORS on ALL endpoints | **NEW** (missed W6-8) |
-| health-saas.example.com | MySQL 3306 open | Still OPEN (4 waves!) | PERSISTENT |
-
-**Key insight:** CORS was MISSED on mattress.example.com and tools.example.com across 3 waves because only `/wp/v2/users` was tested. Always test ALL endpoints.
 
 ## Pitfalls
 

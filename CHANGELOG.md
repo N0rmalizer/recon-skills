@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-07-29 — Methodology and portability review
+
+- Reframed the catalog around external web, API, authentication, and focused
+  vulnerability validation.
+- Rebuilt the central recon, WordPress, API no-auth, attack-pattern, and
+  WordPress chain guidance around bounded tests and negative controls.
+- Removed engagement-derived result sections, campaign statistics, orphaned
+  field notes, private output paths, and runtime-specific workarounds.
+- Moved `llm-prompt-injection` to the vulnerability-class catalog.
+- Added repository validation for campaign artifacts and private output paths.
+- Added a lightweight GitHub Actions validation workflow.
+
 ## 2026-07-25 — v1 Release
 
 ### Initial release with 144 skills
@@ -11,9 +23,11 @@
 - **infra/** (1): Docker privilege escalation.
 
 ### Quality baseline
-- All skills follow STYLE.md: pitfalls, verification sections, --max-time on curl, grep -E for Alpine compat.
-- YAML frontmatter standardized: version, license, category on all skills.
-- No author attribution, no unverifiable target counts, no real organization data or IPs.
+- Added `STYLE.md` as the baseline for new and substantially revised skills.
+- Standardized core YAML frontmatter and unique skill names.
+- Added structural validation for metadata, links, related-skill names, and
+  runtime-specific coupling.
+- Kept incomplete legacy migrations visible as validator warnings.
 
 ### Research integration
 - AI Agent Framework Audit (correctover, 2026): 56+ vulns, CVE-2026-2287 (CrewAI RCE CVSS 9.8)

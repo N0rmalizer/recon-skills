@@ -279,9 +279,13 @@ curl --max-time 30 --connect-timeout 10 -sk "https://$TARGET/wp-json/litespeed/v
 - **REST namespace 200 ≠ plugin present.** Some themes and security plugins return 200 for all `/wp-json/` paths. Verify response content has actual plugin data (JSON with `id`, `name`, or `slug` fields).
 - **readme.txt blocked on many hosts.** WP Engine, Hostinger, and Cloudflare often block `readme.txt` at the CDN level. Fall back to REST namespaces or HTML source grep.
 - **Custom plugin slugs.** Premium plugins may have custom directory names. `gravityforms` may be `gravityforms-clientsite`. Check HTML source for actual slugs via `wp-content/plugins/` paths.
-- **SliderRev v1 endpoints 404 on 6.x.** Slider Revolution renamed its REST endpoints —[RETAILER] confirmed that ALL v1 paths return 404 while the plugin is still active. Probe non-v1 paths too: `/wp-json/sliderrevolution/sliders/`.
+- **SliderRev v1 endpoints may return 404 on 6.x.** Slider Revolution renamed
+  REST endpoints while the plugin remained active. Probe current non-v1 paths,
+  including `/wp-json/sliderrevolution/sliders/`.
 - **Plugin version comparison needs semantic versioning.** Bash string comparison (`<`) fails on `10.x` vs `2.x`. Use `sort -V` or python for complex comparisons.
-- **Elementor 500 leak = info disclosure.** `/wp-json/elementor/v1/favorites` returning HTTP 500 with stack trace (Wave8,[RETAILER]) reveals server paths and internal structure even without plugin exploitation.
+- **Elementor 500 is only a lead.**
+  `/wp-json/elementor/v1/favorites` is an information disclosure only when the
+  response contains a stack trace, server paths, or other non-public details.
 
 ## Hosting Provider Pattern (P-23 — critical for plugin detection)
 

@@ -27,20 +27,20 @@ Before discovering new targets, know what's already been tested:
 
 ```bash
 # 1. Check existing target list
-ALL_TARGETS="$OUTDIR/recon_output/new_targets/all_targets.txt"
-ALL_MASSIVE="$OUTDIR/recon_output/new_targets/all_massive.txt"
+ALL_TARGETS="${OUTPUT_DIR:-./output}/sector-expansion/all_targets.txt"
+ALL_MASSIVE="${OUTPUT_DIR:-./output}/sector-expansion/all_massive.txt"
 
 # Extract all domains from both files
 grep -ohE '[a-zA-Z0-9][a-zA-Z0-9.-]*\.[a-z]{2,}' "$ALL_TARGETS" "$ALL_MASSIVE" | sort -u > /tmp/targets_deduped.txt
 echo "Already tested: $(wc -l < /tmp/targets_deduped.txt) domains"
 
 # 2. Check what findings files exist
-ls $OUTDIR/recon_output/new_targets/*_findings.md 2>/dev/null | wc -l
+ls "${OUTPUT_DIR:-./output}"/sector-expansion/*_findings.md 2>/dev/null | wc -l
 
 # 3. Identify which sectors have been covered by inspecting findings files
 # Check for sector-specific keywords
 for sector in "dentist" "dental" "gym" "fitness" "baker" "auto_body" "carpet" "laundry" "daycare" "pest" "tree" "pet"; do
-  count=$(grep -l "$sector" $OUTDIR/recon_output/new_targets/*_findings*.md 2>/dev/null | wc -l)
+  count=$(grep -l "$sector" "${OUTPUT_DIR:-./output}"/sector-expansion/*_findings*.md 2>/dev/null | wc -l)
   echo "Sector '$sector': $count findings files"
 done
 ```
@@ -180,7 +180,7 @@ Then run the full 6-step pipeline on alive domains. The most efficient approach 
 """Batch test targets: httpx → WP REST → CORS → XMLRPC → ports"""
 import subprocess, json, sys, os, re, time
 
-OUTPUT_DIR = "$OUTDIR/recon_output/new_targets"
+OUTPUT_DIR = os.environ.get("OUTPUT_DIR", "./output") + "/sector-expansion"
 
 def run(cmd, timeout=15):
     try:

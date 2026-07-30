@@ -309,26 +309,6 @@ else
 fi
 ```
 
-## Real Production Results
-
-### delivery-platform (Firebase)
-- **Firestore `conversationsV3`**: 204K WhatsApp conversations, 173K unique phone numbers, 497 stores — PUBLICLY READABLE
-- **Firestore `stores`**: 4,000 stores with CNPJ, phone, GPS, menu — PATCH write confirmed
-- **Firebase Auth**: signup open, anyone can create accounts
-- **Storage**: 1,000+ MP3 audio files (WhatsApp voice messages) publicly accessible
-- **Impact**: Full customer communication data, store management access
-
-### visa-processing-platform (Supabase)
-- **REST API**: Anon key grants full SELECT on users (64,105 records), relatorios (46,717), purchase (676)
-- **CRUD**: DELETE confirmed on relatorio_completo, UPDATE confirmed on etapa
-- **Auth**: signup open, email auto-confirmed
-- **Storage**: relatorios and videos buckets public
-
-### fitness-chain (Firebase — 5 projects, multi-cloud)
-- 5 Firebase projects, 21 hardcoded credentials (MySQL, SendGrid, OVH S3, Algolia, ChatSkills, Redis, reCAPTCHA)
-- Service Account keys → GCP IAM escalation (storage.admin, firebaseappcheck.admin, iam.serviceAccountTokenCreator)
-- 16,179 files in Firebase Storage
-
 ## Pitfalls
 
 - **Anon key is NOT a secret.** It's designed to be public. The vulnerability is missing RLS, not the key exposure itself.

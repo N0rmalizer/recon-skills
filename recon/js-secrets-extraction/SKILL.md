@@ -67,10 +67,9 @@ for port in 443 8080 8081 8084; do
 done
 ```
 
-**Real-world case (health-saas.example.com, June 2026):**
-- Main SPA (port 443): 500KB bundle, no source map
-- Admin Portal (port 8080): 1.15MB bundle + **source map at `/static/js/main.a5a4e0fb.js.map`** (HTTP 200)
-- Source map revealed: 1,208 source files, API backend at `https://health-saas.example.com:8081`, auth services, dashboard APIs, pharmacy/drug/hospital components
+Source maps on administrative or alternate-port applications may expose a
+different route and configuration set from the public SPA. Analyze each
+authorized application independently.
 
 ## Admin Portal JS Analysis Pattern
 

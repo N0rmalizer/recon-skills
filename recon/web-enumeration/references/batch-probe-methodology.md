@@ -1,7 +1,7 @@
 # Batch Probe Methodology
 
-**Source:** Pool sector recon + critical target re-test (June 2026)
-**Covers:** WP detection, CORS credential reflection, XMLRPC, user enumeration, source leaks on 15+ targets
+**Covers:** WordPress detection, CORS credential reflection, XML-RPC,
+user-enumeration, and source-leak probes across a bounded target list.
 
 ## Key Lessons
 
@@ -20,7 +20,9 @@ But: `curl -sI https://example.com/wp-json/wp/v2/users -H "Origin: https://evil.
 **Always test:** `/wp-json/wp/v2/users`, `/wp-json/`, `/wp-json/wp/v2/posts`, `/api/me`, `/api/tokens`
 
 ### 3. Never use `-L` (redirect follow) for probe endpoints
-Redirects hide real 200 responses. Example: `curl -sI -L https://[MATTRESS_RETAILER]/xmlrpc.php` returned non-XML content, but `curl -sI https://[MATTRESS_RETAILER]/xmlrpc.php` (no -L) returned `HTTP/1.1 200 OK` with real XMLRPC content.
+Redirects can replace the endpoint response with a generic destination. Compare
+the original response and the redirect target separately before classifying
+XML-RPC behavior.
 
 ### 4. Security scanner may block `-k` flag
 Do not pipe untrusted HTTP responses directly into an interpreter. Save the
@@ -125,19 +127,6 @@ if __name__ == "__main__":
         time.sleep(3)  # Rate limiting
 ```
 
-## Real Results from This Session
-
-### Pool Sector (15 targets)
-- **Catch-all sites:** poolcorp.com, poolsupplyworld.com, lesliespool.com (Salesforce Commerce Cloud)
-- **No real WP targets found** in pool_services sector
-- All 15 targets either catch-all or non-WP e-commerce
-
-### Critical Target Re-Test Deltas
-- **[MATTRESS_RETAILER]:** CORS FIXED on root root (was reflecting), but STILL PRESENT on `/wp-json/` endpoints. XMLRPC still OPEN (80 methods). 3 WP users exposed.
-- **[REAL_ESTATE]:** Same pattern — CORS absent on root, PRESENT on WP REST API. 3 users exposed.
-- **[RETAIL_CHAIN]:** CORS on `/wp-json/`. XMLRPC was previously blocked but now OPEN again.
-- **[WINE_STORE]:** CORS FIXED, XMLRPC FIXED, but 10 WP users still enumerable.
-- **[RETAILER], [ENTERTAINMENT]:** All vectors now MITIGATED.
-
-### Corrected Delta Report
-Saved to: `/root/output/recon_output/deep/RETEST_DELTAS_CORRECTED_20260625T082729Z.md`
+Use the script as a starting point, not as a finding generator. Its output
+still requires content-aware verification for catch-all routes, CORS,
+XML-RPC, and exposed files.

@@ -172,24 +172,6 @@ masscan -p1-65535 --rate=50000 --shard 4/4 -iL /8_range.txt -oJ shard4.json
 cat shard*.json | jq -s '.[]' > merged.json
 ```
 
-## Real Production Results
-
-### government-network (/24 subnet, [REDACTED_IP]/24)
-- 40+ IPs with active services across 18 government agencies
-- Systems mapped: SEEDUC (Matricula Facil on .4,.6,.7,.8), AGENERSA (Joomla on .46), GLPI (.40), ITERJ (.47), DETRO (.57,.58), VOX (.69), Tomcat (.73), IIS 6.0 (.53)
-- PHP 5.2.11 on Windows 2008R2 exposed at .128.54
-- Apache 2.2 Win32 "It works!" exposed at .129.115
-
-### Engebras Radar Fleet (500+ IPs across Claro 3G/4G)
-- 502 radar IPs identified via Masscan on port 5000 (Werkzeug banner)
-- 2 Werkzeug versions: 3.1.3 (Python 3.10.12) and 2.0.3 (Python 3.6.9 EOL)
-- 75 radars also exposed SSH on port 22 (OpenSSH 7.6p1) + nginx on 80
-
-### Camera Hunting (Brazil, Shodan + Masscan)
-- 99,428 RTSP (port 554) devices in Brazil (Shodan stats)
-- Axis P1378-LE at [REDACTED_IP]:8010 — config dump of 988 parameters unauthenticated
-- Intelbras RX 1500 at [REDACTED_IP]
-
 ## Pitfalls
 
 - **Masscan requires root.** Uses raw sockets. Run as root or with `sudo`.

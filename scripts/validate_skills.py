@@ -26,6 +26,21 @@ FORBIDDEN_RUNTIME_PATTERNS = {
     "private runtime address": re.compile(r"\b172\.20\.0\.\d+\b"),
     "runtime security bypass": re.compile(r"\bTirith\b", re.IGNORECASE),
 }
+FORBIDDEN_PUBLIC_PATTERNS = {
+    "private output path": re.compile(
+        r"(?:/root/output|\$OUTDIR/recon_output)", re.IGNORECASE
+    ),
+    "campaign result section": re.compile(
+        r"^## Real Production (?:Results|Example)\s*$", re.MULTILINE
+    ),
+    "runtime-specific write workaround": re.compile(
+        r"\bwrite_file blocked\b", re.IGNORECASE
+    ),
+    "legacy engagement placeholder": re.compile(
+        r"\[(?:RETAILER|MATTRESS_RETAILER|REAL_ESTATE|WINE_STORE|"
+        r"RETAIL_CHAIN|ENTERTAINMENT|GOV_PORTAL|DELIVERY_PLATFORM)\]"
+    ),
+}
 LINK_PATTERN = re.compile(r"\[[^\]]+\]\(([^)]+)\)")
 NAME_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 
@@ -167,6 +182,13 @@ def main() -> int:
         for label, pattern in FORBIDDEN_RUNTIME_PATTERNS.items():
             if pattern.search(text):
                 errors.append(f"{root_doc}: contains {label}")
+
+    for path in sorted(ROOT.glob("**/*.md")):
+        rel = path.relative_to(ROOT)
+        text = path.read_text(encoding="utf-8")
+        for label, pattern in FORBIDDEN_PUBLIC_PATTERNS.items():
+            if pattern.search(text):
+                errors.append(f"{rel}: contains {label}")
 
     print(f"Validated {len(skills)} skills.")
     if warnings:

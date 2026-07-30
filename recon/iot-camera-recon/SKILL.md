@@ -15,7 +15,9 @@ related_skills:
 
 # IoT Camera Recon Skill
 
-IP camera discovery and exploitation — RTSP stream access, Axis config dump (988 parameters unauthenticated), ONVIF service enumeration, and default credential testing. Cameras are the #1 exposed IoT device class with 99,428 RTSP devices in Brazil alone (Shodan). Confirmed on Axis P1378-LE (config dump, firmware 2020), Intelbras RX 1500, and 502 Engebras traffic radars across Claro 3G/4G.
+IP camera assessment covering RTSP exposure, vendor configuration endpoints,
+ONVIF service enumeration, authentication controls, and firmware
+identification.
 
 ## When to Use
 
@@ -235,25 +237,6 @@ for cred in "admin:admin" "admin:12345" "root:pass"; do
   [[ $? -eq 0 ]] && echo "  [CRITICAL] RTSP stream accessible with $cred"
 done
 ```
-
-## Real Production Results
-
-### Axis P1378-LE ([REDACTED_IP])
-- Snapshot accessible without authentication
-- Full config dump: 988 parameters including serial number, firmware version (July 2020), Camstreamer license key
-- All endpoints unauthenticated: snapshot, config, MJPG stream, admin params
-- 6-year-old firmware with known CVEs
-
-### Engebras Radar Fleet (502 devices)
-- 502 Werkzeug/Flask radar servers across Claro 3G/4G
-- 75 also exposed SSH (OpenSSH 7.6p1) + nginx on port 80
-- Python 3.6.9 (EOL Dec 2021) on majority of fleet
-- CGNAT protects direct access from internet but internal network fully exposed
-
-### Shodan Brazil — 99,428 RTSP Devices
-- Hikvision, Dahua, Intelbras, Axis are top 4 brands
-- 554/TCP is the most common RTSP port
-- Default credentials work on ~15% of discovered devices
 
 ## Pitfalls
 

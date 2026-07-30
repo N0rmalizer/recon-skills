@@ -204,29 +204,6 @@ ADMIN_PORT=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 5 --connect-time
 [[ "$ADMIN_PORT" == "200" ]] && echo "  [CRITICAL] Admin console on port 7071 EXPOSED"
 ```
 
-## Real Production Results
-
-### IGN Argentina (ign.gob.ar)
-- Zimbra 8.8.11_GA_3787 (March 2019 — 7 years old, EOL)
-- User `admin` confirmed via SOAP AuthRequest
-- UploadServlet active — CVE-2022-37042 path traversal possible
-- Admin console at `/zimbraAdmin/` returns HTTP 500 (partial exposure)
-- SOAP endpoints: `/service/soap/` and `/service/soap/LoginRequest` active
-
-### gov-finance-portal (cge.webmail.[GOV_PORTAL].br)
-- Zimbra webmail — SOAP auth functional
-- Combined with WordPress CORS + XML-RPC on same domain
-
-### Zimbra CVE Matrix by Version
-
-| Version | CVE | Impact |
-|---------|-----|--------|
-| < 8.8.15 P34 | CVE-2022-37042 | Auth bypass via UploadServlet path traversal (RCE) |
-| < 9.0.0 P27 | CVE-2022-37042 | Auth bypass via UploadServlet path traversal (RCE) |
-| < 8.8.15 P41 | CVE-2023-37580 | Reflected XSS in /public/login.jsp |
-| < 8.8.15 P33 | CVE-2022-27925 | Admin console RCE via mboximport (authenticated) |
-| 8.8.15 | CVE-2022-30333 | Arbitrary file write via Amavis (RCE) |
-
 ## Pitfalls
 
 - **SOAP user enumeration is noisy.** Each request generates a login failure in Zimbra audit logs.

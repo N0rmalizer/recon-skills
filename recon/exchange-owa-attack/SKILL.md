@@ -16,7 +16,9 @@ related_skills:
 
 # Exchange/OWA Attack Skill
 
-Exchange Outlook Web Access (OWA) reconnaissance — NTLM Type-2 challenge decoding for AD domain/computer name extraction, OWA endpoint mapping, password spray surface assessment, and version fingerprinting for known CVEs. Confirmed on Mairie Monaco (Exchange 2019 CU15, AD domain MAIRIE.local), ENACOM Argentina (Exchange 2016, domain CNC.INTER), realestate.example.com (OWA + Exchange servers), and Panco (ADFS + Office 365).
+Exchange Outlook Web Access reconnaissance covering endpoint mapping, NTLM
+Type-2 metadata, authentication controls, and version evidence. Password or
+lockout testing requires explicit authorization and approved identities.
 
 ## When to Use
 
@@ -242,28 +244,6 @@ if echo "$AUTODISCOVER" | grep -qi "server\|internal"; then
   echo "  [+] Autodiscover response — internal server names leaked"
   echo "$AUTODISCOVER" | grep -Eo '(?:<Server>|<InternalRpcClientServer>|<ASUrl>)[^<]+' | head -5
 fi
-```
-
-## Real Production Results
-
-### Mairie Monaco — Exchange 2019 CU15
-- AD Domain: `MAIRIE.local`, NetBIOS: `MAIRIE`
-- Servers: SRV-EXCH1, SRV-EXCH2 (extracted from NTLM challenge)
-- Zero rate limiting on OWA
-- No account lockout — password spray viable
-- DMARC p=none on mairie.mc (email spoofing vector)
-
-### ENACOM Argentina — Exchange 2016 15.1.2507.61
-- AD Domain: `CNC.INTER`
-- Basic Auth enabled
-- Healthcheck exposed
-- Azure AD Tenant ID: `2f362945-6c2f-4b46-8262-13a53b733e6e` leaked in subdomain JS
-
-### Mairie Exchange Password Spray Pattern (French government naming)
-```python
-names = ["monaco", "mairie", "prince", "palais", "admin"]
-suffixes = ["2026", "2025", "2024", "123", "!"]
-passwords = [f"{n.capitalize()}{s}!" for n in names for s in suffixes]
 ```
 
 ## Pitfalls

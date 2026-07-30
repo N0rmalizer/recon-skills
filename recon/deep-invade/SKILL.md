@@ -23,14 +23,17 @@ related_skills:
 
 # Deep Invade Skill
 
-Comprehensive deep pentest methodology for targets flagged as high-value by wp-mass-recon (score >= 6). Goes beyond surface recon into SSRF via XMLRPC pingback, error log credential mining, plugin CVE exploitation, JavaScript secret extraction, subdomain/staging discovery, port scanning, and API enumeration. Proven across 7 US company targets over 9 waves of increasingly deep probes.
+Focused follow-up methodology for WordPress targets prioritized by
+`wp-mass-recon`. It connects XML-RPC SSRF validation, exposed-log analysis,
+plugin version review, JavaScript inspection, staging discovery, service
+mapping, and API enumeration.
 
 ## When to Use
 
 - `wp-mass-recon` scored a target >= 6 (CORS confirmed, XMLRPC open, source leaks found).
 - You are assigned a single high-value target for deep assessment.
 - After surface recon, you need to find the chain that leads to RCE or data breach.
-- Running Wave 6-9 style deep probes against priority targets.
+- Multiple independent signals justify a deeper, target-specific follow-up.
 
 ## Prerequisites
 
@@ -53,25 +56,15 @@ Execute probes in order. Each phase builds on the previous:
 
 ## Quick Reference
 
-| Phase | Technique | Source Wave | Tool | Time |
-|-------|-----------|-------------|------|------|
-| 1 | SSRF probe (15 IMDS paths + 14 IAM roles + GCP + internal) | Wave6/Wave7 | curl + XMLRPC pingback | 2 min |
-| 2 | Error log mining (DB creds, API keys, SQL, salts, emails) | Wave6/Wave8 | Python regex (mine_error_log) | 1 min |
-| 3 | Plugin CVE matrix (40+ namespaces + readme.txt versions) | Wave6/Wave7 | curl + regex | 3 min |
-| 4 | JS secret extraction (11 patterns, 20 bundles/target) | Wave7 | dl_and_scan_js() | 2 min |
-| 5 | Subdomain/staging (crt.sh + httpx + WP install pages) | Wave5/Wave8/Wave9 | crt.sh, httpx, curl | 5 min |
-| 6 | Port scan (nmap -F + banner grab + 21-port extended) | Wave6/Wave9 | nmap, nc, socket | 30 sec |
-| 7 | API discovery (Swagger, GraphQL, WC, GF, 20+ endpoints) | Wave6/Wave7 | curl + regex | 2 min |
-
-## Cross-Wave Evolution (How Deep Invade Gets Better Each Wave)
-
-| Wave | New Capability | Key Discovery |
-|------|---------------|---------------|
-| 5 | Staging discovery, JS bundles, SliderRev REST | staging.retail.example.com with 25 REST namespaces |
-| 6 | SSRF confirmation, CORS matrix, plugin namespaces | 15 IMDS paths all faultCode 0 on staging |
-| 7 | IMDS role guessing, Yoast sitemap, JS secrets | Google API key found in health-saas.example.com JS |
-| 8 | WP install pages, Elementor 500, backup files | staging.retail.example.com install.php HTTP 200 |
-| 9 | Pattern catalog, cross-wave synthesis, regression tracking | MySQL+FTP+IMAP opened on ecommerce.example.com, Exchange+VPN on realestate.example.com |
+| Phase | Technique | Tool | Typical time |
+|-------|-----------|------|--------------|
+| 1 | XML-RPC SSRF validation with an authorized callback | curl + callback service | 2 min |
+| 2 | Exposed error-log analysis | Python regex | 1 min |
+| 3 | Plugin namespace and version review | curl + regex | 3 min |
+| 4 | JavaScript bundle analysis | `js-secrets-extraction` | 2 min |
+| 5 | Subdomain and staging comparison | crt.sh, httpx, curl | 5 min |
+| 6 | Scoped port and service discovery | nmap | scope dependent |
+| 7 | API description and route discovery | curl + regex | 2 min |
 
 ## Procedure
 

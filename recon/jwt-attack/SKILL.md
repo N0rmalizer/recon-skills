@@ -274,27 +274,6 @@ for KID in "../../../../etc/passwd" "../../.ssh/id_rsa" "file:///etc/passwd"; do
 done
 ```
 
-## Real Production Results
-
-### gov-finance-portal — JWT Secret in Vite Source
-- JWT_SECRET `b0c1df0e3f9c1e858d3bb0b8d58a119` leaked in `src/env.ts`
-- Used for CNPJ database API (1.9M records accessible)
-- JWT was HS256 with this secret — forge any token, access any CPF/CNPJ data
-
-### delivery-platform — Hardcoded JWTs in JS Bundles
-- Bot JWT (HS256) embedded in `delivery-bot.web.app` JS bundle
-- Dashboard JWT (HS256) embedded in `app.[DELIVERY_PLATFORM]` JS bundle
-- Both tokens valid for BFF API access (reads PII from Firestore)
-
-### fintech-processor — 315 JWT Tokens in Efí Bank Logs
-- `proxy-efi-simple.php` generated JWT tokens from mTLS certificate
-- 315 valid tokens logged in `efi-simple.log` (268KB)
-- Combined with SSL cert → full Efí Bank API access
-
-### fitness-chain — JWT Sessions with 2027 Expiry
-- 3 active JWT sessions found, all expiring in 2027
-- Admin user `Andrea Huete` session — full platform access for 1+ year
-
 ## Pitfalls
 
 - **alg:none is rare.** Most JWT libraries reject it by default since 2017. But legacy apps exist.
