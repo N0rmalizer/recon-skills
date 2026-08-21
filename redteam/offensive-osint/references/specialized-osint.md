@@ -130,7 +130,7 @@ done < cves.txt | sort -t: -k2 -nr
 
 ### 31.2 Image Forensics
 
-- [Forensically](https://29a.ch/photo-forensics/), [ExifTool](https://exiftool.org/), [Jimpl](https://jimpl.com/), [Jeffrey's EXIF Viewer](http://exif.regex.info/exif.cgi), [FOCA](https://www.elevenpaths.com/labstools/foca), [Metagoofil](https://www.edge-security.com/metagoofil.php), [C2PA Verify](https://verify.contentauthenticity.org/).
+- [Forensically](https://29a.ch/photo-forensics/), [ExifTool](https://exiftool.org/), [Jimpl](https://jimpl.com/), [Jeffrey's EXIF Viewer](http://exif.regex.info/exif.cgi), [FOCA](https://www.elevenpaths.com/labstools/foca), [Metagoofil](https://www.edge-security.com/metagoofil.php), [C2PA Verify](https://verify.contentauthenticity.org/), [MetadataRemover.ai Metadata Viewer](https://metadataremover.ai/metadata-viewer/) (browser-local EXIF/IPTC/XMP; corroborate because metadata can be edited or stripped).
 
 ### 31.3 Video Analysis
 
