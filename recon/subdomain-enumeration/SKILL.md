@@ -45,6 +45,9 @@ subfinder -d "$DOMAIN" -silent > subfinder.txt
 # Merge and deduplicate
 cat crtsh.txt subfinder.txt | sort -u > all_subs.txt
 
+# crt.name
+curl "https://crt.name/v1/search?apex=$DOMAIN"
+
 # Probe live hosts
 httpx -silent -l all_subs.txt -threads 50 -status-code -tech-detect -title -o alive.txt
 ```
