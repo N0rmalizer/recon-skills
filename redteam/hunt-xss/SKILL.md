@@ -147,7 +147,7 @@ $(location
 
 1. **Map all reflection points** — Spider the target and identify every place user input appears in HTML output. Prioritize: URL parameters, form fields, Path Base /Marker , HTTP headers (User-Agent, Referer), file upload names/contents, and API response fields rendered in UI.
 
-2. **Classify by type** — Determine if each reflection is Reflected (URL param → response), Stored (database → later rendering), or DOM-based (JS reads URL/storage → DOM sink). Each requires different payload delivery and Context Aware Analysis 
+2. **Classify by type** — Determine if each reflection is Reflected (URL param → response), Stored (database → later rendering), or DOM-based (JS reads URL/storage → DOM sink). Each requires different payload delivery and Context Aware Analysis.
 
 3. **Probe sanitizer behavior** — Send harmless canary strings first: `aaa"bbb'ccc<ddd` to determine which characters are escaped. Observe if output is in HTML context, attribute context, JS context, or URL context.
 
@@ -189,10 +189,36 @@ aaa"bbb'ccc<ddd>eee`fff
 ```
 
 **Attribute context escapes:**
+- Example Attribute : value , name , id , class , title , alt , placeholder , label
 ```html
-" onmouseover="alert(1)
-' onmouseover='alert(1)
+<input type="text" value=Marker>    ->   onmouseover=alert
+<input type="text" value="Marker">  -> " onmouseover="alert(1)
+<input type="text" value='Marker'>  -> ' onmouseover='alert(1)
 `onmouseover=alert(1)
+```
+
+**Escape Function Missing / Incomplete Filter **
+- Some developers implement an escape() function incorrectly, causing only the first dangerous character to be escaped.
+- Common mistakes:
+1 - Using replace() instead of replaceAll().
+2 - Using regex without the /g flag.
+3 - Escaping only the first occurrence of <, >, ", ', etc.
+```sh
+// Example
+// insecure
+function escape(v) {
+    return v.replace(/</, "&lt;");
+}
+<input type="text" value="reflection">
+input "><svg onload=alert()>
+output &quot&gt<svg onload=alert()>
+bypass "<>"><svg onload=alert()>
+
+// example 2
+// secure
+function escape(v) {
+    return v.replaceall(/</, "&lt;");
+}
 ```
 
 **SVG-based (CSP bypass):**
