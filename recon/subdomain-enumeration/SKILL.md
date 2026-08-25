@@ -39,14 +39,14 @@ DOMAIN="example.com"
 # Passive: crt.sh
 curl --max-time 30 --connect-timeout 10 -sk "https://crt.sh/?q=%25.$DOMAIN&output=json" | jq -r '.[].name_value' | sed 's/\*\.//g' | sort -u > crtsh.txt
 
+# crt.name
+curl "https://crt.name/v1/search?apex=$DOMAIN"
+
 # Passive: subfinder
 subfinder -d "$DOMAIN" -silent > subfinder.txt
 
 # Merge and deduplicate
 cat crtsh.txt subfinder.txt | sort -u > all_subs.txt
-
-# crt.name
-curl "https://crt.name/v1/search?apex=$DOMAIN"
 
 # Probe live hosts
 httpx -silent -l all_subs.txt -threads 50 -status-code -tech-detect -title -o alive.txt
