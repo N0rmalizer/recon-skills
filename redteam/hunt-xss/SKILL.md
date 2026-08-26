@@ -203,7 +203,7 @@ aaa"bbb'ccc<ddd>eee`fff
 1 - Using replace() instead of replaceAll().
 2 - Using regex without the /g flag.
 3 - Escaping only the first occurrence of <, >, ", ', etc.
-```sh
+```js
 // Example
 // insecure
 function escape(v) {
@@ -360,6 +360,15 @@ curl --max-time 30 --connect-timeout 10 -sk "https://target.com/page" | grep -i 
 ```
 
 ---
+
+## XSS Tips & Tricks
+- Some programmers validate a value and return an error status—such as 404, 400, or 500 , if it is missing. In this scenario, ensure that you do not send the payload alone; instead, include a word or label before it.
+```js
+// Example:
+// the developer check value if Empty Return Error etc...
+<input type="text" value=""> input "><svg onload=alert()> output 404 bad requests
+<input type="text" value=""> input test"><svg onload=alert()> output 200 ok
+```
 
 ## Gate 0 Validation
 
