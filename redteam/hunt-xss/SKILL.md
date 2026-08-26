@@ -366,7 +366,7 @@ curl --max-time 30 --connect-timeout 10 -sk "https://target.com/page" | grep -i 
 ```js
 // Example:
 // the developer check value if Empty Return Error etc...
-<input type="text" value=""> input "><svg onload=alert()> output 404 bad requests
+<input type="text" value=""> input "><svg onload=alert()> output 400 bad requests
 <input type="text" value=""> input test"><svg onload=alert()> output 200 ok
 ```
 
