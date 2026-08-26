@@ -197,10 +197,10 @@ aaa"bbb'ccc<ddd>eee`fff
 `onmouseover=alert(1)
 ```
 
-**Escape Function Missing / Incomplete Filter **
+**Escape Function Missing / Incomplete Filter**
 - Some developers implement an escape() function incorrectly, causing only the first dangerous character to be escaped.
 - Common mistakes:
-1 - Using replace() instead of replaceAll().
+1 - Using replace() instead of replaceall().
 2 - Using regex without the /g flag.
 3 - Escaping only the first occurrence of <, >, ", ', etc.
 ```js
