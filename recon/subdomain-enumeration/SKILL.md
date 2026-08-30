@@ -40,7 +40,10 @@ DOMAIN="example.com"
 curl --max-time 30 --connect-timeout 10 -sk "https://crt.sh/?q=%25.$DOMAIN&output=json" | jq -r '.[].name_value' | sed 's/\*\.//g' | sort -u > crtsh.txt
 
 # crt.name
-curl "https://crt.name/v1/search?apex=$DOMAIN"
+curl -s "https://crt.name/v1/search?apex=$DOMAIN"
+
+# agniops
+curl -s "https://app.agniops.in/v1/search?domain=$DOMAIN"
 
 # Passive: subfinder
 subfinder -d "$DOMAIN" -silent > subfinder.txt
