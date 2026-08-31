@@ -4,3 +4,4 @@
 .usage.json.lock
 __pycache__/
 /output/
+docs/superpowers/
