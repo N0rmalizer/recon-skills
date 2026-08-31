@@ -298,7 +298,7 @@ gh pr create \
   --base main \
   --head review/pr-9-technical-restoration \
   --title "Restore and harden PR #9 technical skill coverage" \
-  --body "Carries PR #9 into an owner-controlled branch, restores technical 401/403 bypass coverage, corrects factual/tooling errors, removes AgniOps and author metadata, and preserves the reviewed XSS and subdomain fixes."
+  --body "Carries PR #9 into an owner-controlled branch, restores technical 401/403 bypass coverage, corrects factual/tooling errors, removes unwanted external-source and author metadata, and preserves the reviewed XSS and subdomain fixes."
 ```
 
 Expected: GitHub returns the URL of a new open PR in `uphiago/recon-skills`.
