@@ -145,9 +145,9 @@ $(location
 
 ## Step-by-Step Hunting Methodology
 
-1. **Map all reflection points** — Spider the target and identify every place user input appears in HTML output. Prioritize: URL parameters, form fields, HTTP headers (User-Agent, Referer), file upload names/contents, and API response fields rendered in UI.
+1. **Map all reflection points** — Spider the target and identify every place user input appears in HTML output. Prioritize URL parameters, form fields, path segments, unique markers, HTTP headers (User-Agent, Referer), file upload names/contents, and API response fields rendered in the UI.
 
-2. **Classify by type** — Determine if each reflection is Reflected (URL param → response), Stored (database → later rendering), or DOM-based (JS reads URL/storage → DOM sink). Each requires different payload delivery.
+2. **Classify by type** — Determine if each reflection is reflected (URL parameter → response), stored (database → later rendering), or DOM-based (JavaScript reads URL/storage → DOM sink). Each requires different delivery and context-aware analysis.
 
 3. **Probe sanitizer behavior** — Send harmless canary strings first: `aaa"bbb'ccc<ddd` to determine which characters are escaped. Observe if output is in HTML context, attribute context, JS context, or URL context.
 
@@ -188,12 +188,21 @@ aaa"bbb'ccc<ddd>eee`fff
 ?redirect=javascript:alert(document.domain)
 ```
 
-**Attribute context escapes:**
-```html
-" onmouseover="alert(1)
-' onmouseover='alert(1)
-`onmouseover=alert(1)
+**Attribute context:**
+- Treat `value`, `name`, `id`, `class`, `title`, `alt`, `placeholder`, and `label` as separate contexts.
+- Keep attribute values quoted and use context-specific output encoding. A benign canary such as `aaa"bbb'ccc` shows whether delimiters are encoded; it is not an XSS finding by itself.
+- Event-handler attributes such as `onmouseover` and `onerror` are executable sinks, not safe attributes.
+
+**Escape Function Missing / Incomplete Filter**
+- Replacing one character or only the first occurrence is not a defense. `replaceall()` is not a JavaScript API, and `replaceAll()` still does not provide context-aware XSS protection.
+- Do not recommend a generic `escape()` helper. HTML body, quoted attribute, JavaScript, CSS, URL, and DOM sinks require different controls.
+- For a text-only DOM sink, prefer a safe API:
+
+```js
+element.textContent = untrustedValue;
 ```
+
+- For server-rendered output, use the framework's context-aware encoder/sanitizer and verify the resulting browser context. See the [OWASP XSS Prevention Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Cross_Site_Scripting_Prevention_Cheat_Sheet.html).
 
 **SVG-based (CSP bypass):**
 ```html
@@ -334,6 +343,9 @@ curl --max-time 30 --connect-timeout 10 -sk "https://target.com/page" | grep -i 
 ```
 
 ---
+
+## XSS Tips & Tricks
+A `400`, `404`, or `500` response to a payload is only an input-handling signal. It does not prove sanitization or a vulnerability. Repeat with a unique benign marker, compare status, headers, and body against a baseline, classify the output context, and confirm execution in a current browser before reporting. Use test accounts and non-sensitive canaries; do not exfiltrate real data.
 
 ## Gate 0 Validation
 

@@ -100,7 +100,6 @@ dnsx -silent -a -resp-only -l subs.txt
 name: skill-name
 description: One sentence, <=60 chars, ends with period. No marketing words.
 version: 1.0.0
-author: uphiago
 license: MIT
 platforms: [linux]
 compatibility: Requires <tools>
