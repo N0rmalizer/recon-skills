@@ -30,29 +30,59 @@ Comprehensive subdomain discovery using certificate transparency logs (crt.sh), 
 
 - `curl`, `httpx`, `dig`, `jq`, `dnsx`, and `subfinder`.
 - A DNS brute-force wordlist, supplied by the operator.
+- Approval to disclose the domain to third-party passive sources such as crt.sh, crt.name, AgniOps, and subfinder providers.
 
 ## How to Run
 
 ```bash
-DOMAIN="example.com"
+DOMAIN="${1:-example.com}"
+OUTPUT_ROOT="${OUTPUT_DIR:-./output}"
+OUTDIR="$OUTPUT_ROOT/subdomains/$DOMAIN"
+
+if [[ ! "$DOMAIN" =~ ^[A-Za-z0-9.-]+$ ]]; then
+  echo "Invalid domain: $DOMAIN" >&2
+  exit 2
+fi
+
+mkdir -p "$OUTDIR"
+
+# Basic/raw examples for manual inspection. The bounded commands below are
+# recommended for collection and should be used instead of these queries when
+# avoiding duplicate requests matters.
+# curl -s "https://crt.sh/?q=%25.$DOMAIN&output=json"
+# curl -s "https://crt.name/v1/search?apex=$DOMAIN"
+# curl -s "https://app.agniops.in/v1/search?domain=$DOMAIN"
 
 # Passive: crt.sh
-curl --max-time 30 --connect-timeout 10 -sk "https://crt.sh/?q=%25.$DOMAIN&output=json" | jq -r '.[].name_value' | sed 's/\*\.//g' | sort -u > crtsh.txt
+curl -fsS --max-time 30 --connect-timeout 10 "https://crt.sh/?q=%25.$DOMAIN&output=json" \
+  | jq -r '.[].name_value' \
+  | sed 's/\*\.//g' \
+  | sort -u > "$OUTDIR/crtsh.txt"
 
-# crt.name
-curl -s "https://crt.name/v1/search?apex=$DOMAIN"
+# crt.name (historical CT data; resolve names before probing)
+curl -fsS --max-time 30 --connect-timeout 10 "https://crt.name/v1/search?apex=$DOMAIN" \
+  | sed 's/\r$//' \
+  | sed 's/^\*\.//' \
+  | sort -u > "$OUTDIR/crtname.txt"
 
-# agniops
-curl -s "https://app.agniops.in/v1/search?domain=$DOMAIN"
+# AgniOps — optional third-party source; treat results as untrusted.
+# Source: https://app.agniops.in/
+curl -fsS --max-time 30 --connect-timeout 10 "https://app.agniops.in/v1/search?domain=$DOMAIN" \
+  | sed 's/\r$//' \
+  | sed 's/^\*\.//' \
+  | sort -u > "$OUTDIR/agniops.txt"
 
 # Passive: subfinder
-subfinder -d "$DOMAIN" -silent > subfinder.txt
+subfinder -d "$DOMAIN" -silent -timeout 30 > "$OUTDIR/subfinder.txt"
 
 # Merge and deduplicate
-cat crtsh.txt subfinder.txt | sort -u > all_subs.txt
+cat "$OUTDIR/crtsh.txt" "$OUTDIR/crtname.txt" "$OUTDIR/agniops.txt" "$OUTDIR/subfinder.txt" \
+  | grep -E '^[A-Za-z0-9.-]+\.[A-Za-z]{2,}$' \
+  | sort -u > "$OUTDIR/all_subs.txt"
 
 # Probe live hosts
-httpx -silent -l all_subs.txt -threads 50 -status-code -tech-detect -title -o alive.txt
+httpx -silent -l "$OUTDIR/all_subs.txt" -threads 50 -rate-limit 2 \
+  -status-code -tech-detect -title -o "$OUTDIR/alive.txt"
 ```
 
 ## Quick Reference
@@ -60,6 +90,7 @@ httpx -silent -l all_subs.txt -threads 50 -status-code -tech-detect -title -o al
 | Source | Method | Coverage | Speed |
 |--------|--------|----------|-------|
 | crt.sh | Certificate transparency | Excellent (most certs) | Fast (1-5s) |
+| AgniOps | Optional third-party passive source | Supplemental; verify before probing | Manual/bounded |
 | subfinder | Passive APIs (VirusTotal, Shodan, DNSdumpster, etc.) | Very good | Fast (30-60s) |
 | dnsx | Bulk DNS A/AAAA/CNAME resolution (100x faster than dig) | Good (uncovers non-HTTP) | Fast (10-30s) |
 | httpx probe | Live HTTP/HTTPS check | Best for web attack surface | Fast (30-60s) |
@@ -71,14 +102,21 @@ httpx -silent -l all_subs.txt -threads 50 -status-code -tech-detect -title -o al
 
 ```bash
 DOMAIN="$1"
-OUTDIR="$OUTDIR/subdomains/$DOMAIN"
+OUTPUT_ROOT="${OUTPUT_DIR:-./output}"
+OUTDIR="$OUTPUT_ROOT/subdomains/$DOMAIN"
+
+if [[ ! "$DOMAIN" =~ ^[A-Za-z0-9.-]+$ ]]; then
+  echo "Invalid domain: $DOMAIN" >&2
+  exit 2
+fi
+
 mkdir -p "$OUTDIR"
 
 echo "[*] Passive enumeration for $DOMAIN..."
 
 # crt.sh — certificate transparency logs
 echo "[*] crt.sh query..."
-curl -sk --max-time 30 --connect-timeout 10 "https://crt.sh/?q=%25.$DOMAIN&output=json" 2>/dev/null | \
+curl -fsS --max-time 30 --connect-timeout 10 "https://crt.sh/?q=%25.$DOMAIN&output=json" 2>/dev/null | \
   jq -r '.[].name_value' 2>/dev/null | \
   sed 's/\*\.//g' | \
   sed 's/^www\.//' | \
@@ -87,8 +125,28 @@ curl -sk --max-time 30 --connect-timeout 10 "https://crt.sh/?q=%25.$DOMAIN&outpu
 crt_count=$(wc -l < "$OUTDIR/crtsh.txt")
 echo "  crt.sh: $crt_count entries"
 
+# crt.name — historical certificate-transparency data
+echo "[*] crt.name query..."
+curl -fsS --max-time 30 --connect-timeout 10 "https://crt.name/v1/search?apex=$DOMAIN" 2>/dev/null | \
+  sed 's/\r$//' | \
+  sed 's/^\*\.//' | \
+  sort -u > "$OUTDIR/crtname.txt"
+crtname_count=$(wc -l < "$OUTDIR/crtname.txt")
+echo "  crt.name: $crtname_count entries (historical; resolve before probing)"
+
+# AgniOps — optional third-party source.
+# Source: https://app.agniops.in/
+# Treat its output as untrusted and resolve names before probing.
+echo "[*] AgniOps query (optional)..."
+curl -fsS --max-time 30 --connect-timeout 10 "https://app.agniops.in/v1/search?domain=$DOMAIN" 2>/dev/null | \
+  sed 's/\r$//' | \
+  sed 's/^\*\.//' | \
+  sort -u > "$OUTDIR/agniops.txt"
+agniops_count=$(wc -l < "$OUTDIR/agniops.txt")
+echo "  AgniOps: $agniops_count entries (third-party; resolve before probing)"
+
 # Also query with %25. (wildcard)
-curl -sk --max-time 30 --connect-timeout 10 "https://crt.sh/?q=%25.%25.$DOMAIN&output=json" 2>/dev/null | \
+curl -fsS --max-time 30 --connect-timeout 10 "https://crt.sh/?q=%25.%25.$DOMAIN&output=json" 2>/dev/null | \
   jq -r '.[].name_value' 2>/dev/null | \
   sed 's/\*\.//g' | \
   sort -u > "$OUTDIR/crtsh_wildcard.txt"
@@ -100,7 +158,7 @@ subf_count=$(wc -l < "$OUTDIR/subfinder.txt")
 echo "  subfinder: $subf_count entries"
 
 # Merge all passive sources
-cat "$OUTDIR"/crtsh.txt "$OUTDIR"/crtsh_wildcard.txt "$OUTDIR"/subfinder.txt 2>/dev/null | \
+cat "$OUTDIR"/crtsh.txt "$OUTDIR"/crtsh_wildcard.txt "$OUTDIR"/crtname.txt "$OUTDIR"/agniops.txt "$OUTDIR"/subfinder.txt 2>/dev/null | \
   sed 's/^www\.//' | \
   grep -E '^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$' | \
   sort -u > "$OUTDIR/all_passive.txt"
@@ -114,7 +172,8 @@ echo "[+] Total unique subdomains (passive): $total"
 
 ```bash
 DOMAIN="$1"
-OUTDIR="$OUTDIR/subdomains/$DOMAIN"
+OUTPUT_ROOT="${OUTPUT_DIR:-./output}"
+OUTDIR="$OUTPUT_ROOT/subdomains/$DOMAIN"
 
 echo "[*] Resolving subdomains..."
 
@@ -146,7 +205,8 @@ done
 
 ```bash
 DOMAIN="$1"
-OUTDIR="$OUTDIR/subdomains/$DOMAIN"
+OUTPUT_ROOT="${OUTPUT_DIR:-./output}"
+OUTDIR="$OUTPUT_ROOT/subdomains/$DOMAIN"
 
 echo "[*] Probing live hosts..."
 
@@ -188,7 +248,8 @@ dig +short "$DOMAIN" TXT 2>/dev/null | grep -i 'spf\|v=spf' | head -3
 
 ```bash
 DOMAIN="$1"
-OUTDIR="$OUTDIR/subdomains/$DOMAIN"
+OUTPUT_ROOT="${OUTPUT_DIR:-./output}"
+OUTDIR="$OUTPUT_ROOT/subdomains/$DOMAIN"
 
 echo "[*] Categorizing subdomains..."
 
@@ -232,7 +293,8 @@ grep -iE 'old|old\.|v1|v2|legacy|archive|backup|bak' "$OUTDIR/all_passive.txt"
 
 ```bash
 DOMAIN="$1"
-OUTDIR="$OUTDIR/subdomains/$DOMAIN"
+OUTPUT_ROOT="${OUTPUT_DIR:-./output}"
+OUTDIR="$OUTPUT_ROOT/subdomains/$DOMAIN"
 
 echo "[*] Checking for subdomain takeover opportunities..."
 
@@ -269,6 +331,7 @@ done < "$OUTDIR/all_passive.txt"
 ## Pitfalls
 
 - **crt.sh rate limiting.** crt.sh may return empty JSON if rate-limited. Use delays or query the PostgreSQL dump directly.
+- **AgniOps is optional.** Source: [AgniOps](https://app.agniops.in/). Treat its output as untrusted, confirm its terms and rate limits, and resolve names before probing.
 - **subfinder requires API keys.** Some sources (VirusTotal, Shodan) require API keys in `~/.config/subfinder/provider-config.yaml`. Without them, results are limited.
 - **Wildcard DNS.** If `*.example.com` resolves to the same IP, all subdomains will appear "live" in httpx. Check for wildcard by resolving a random string: `dig RANDOMSTRING.example.com`.
 - **Cloudflare proxying.** Subdomains behind Cloudflare will show Cloudflare IPs, not origin IPs. Use SecurityTrails or DNSDumpster for historical DNS records.
