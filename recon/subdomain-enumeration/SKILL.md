@@ -46,17 +46,16 @@ fi
 
 mkdir -p "$OUTDIR"
 
-# Basic/raw examples for manual inspection. The bounded commands below are
-# recommended for collection and should be used instead of these queries when
-# avoiding duplicate requests matters.
-# curl -s "https://crt.sh/?q=%25.$DOMAIN&output=json"
-# curl -s "https://crt.name/v1/search?apex=$DOMAIN"
-
-# Passive: crt.sh
-curl -fsS --max-time 30 --connect-timeout 10 "https://crt.sh/?q=%25.$DOMAIN&output=json" \
-  | jq -r '.[].name_value' \
+# Passive: crt.sh (retry: it frequently returns 502 while its database refreshes)
+for attempt in 1 2 3; do
+  curl -fsS --max-time 30 --connect-timeout 10 \
+    "https://crt.sh/?q=%25.$DOMAIN&output=json" -o "$OUTDIR/crtsh_raw.json" && break
+  sleep 15
+done
+jq -r '.[].name_value' "$OUTDIR/crtsh_raw.json" 2>/dev/null \
   | sed 's/\*\.//g' \
   | sort -u > "$OUTDIR/crtsh.txt"
+# If crt.sh stays down, crtsh.txt ends up empty: keep going with crt.name/subfinder.
 
 # crt.name (historical CT data; resolve names before probing)
 curl -fsS --max-time 30 --connect-timeout 10 "https://crt.name/v1/search?apex=$DOMAIN" \
@@ -105,16 +104,23 @@ mkdir -p "$OUTDIR"
 
 echo "[*] Passive enumeration for $DOMAIN..."
 
-# crt.sh — certificate transparency logs
+# crt.sh — certificate transparency logs (retry: it frequently returns 502 while its database refreshes)
 echo "[*] crt.sh query..."
-curl -fsS --max-time 30 --connect-timeout 10 "https://crt.sh/?q=%25.$DOMAIN&output=json" 2>/dev/null | \
-  jq -r '.[].name_value' 2>/dev/null | \
+for attempt in 1 2 3; do
+  curl -fsS --max-time 30 --connect-timeout 10 \
+    "https://crt.sh/?q=%25.$DOMAIN&output=json" -o "$OUTDIR/crtsh_raw.json" 2>/dev/null && break
+  sleep 15
+done
+jq -r '.[].name_value' "$OUTDIR/crtsh_raw.json" 2>/dev/null | \
   sed 's/\*\.//g' | \
   sed 's/^www\.//' | \
   sort -u > "$OUTDIR/crtsh.txt"
 
 crt_count=$(wc -l < "$OUTDIR/crtsh.txt")
 echo "  crt.sh: $crt_count entries"
+if [[ ! -s "$OUTDIR/crtsh.txt" ]]; then
+  echo "  [!] crt.sh unavailable or empty after retries; results are incomplete" >&2
+fi
 
 # crt.name — historical certificate-transparency data
 echo "[*] crt.name query..."
@@ -126,8 +132,12 @@ crtname_count=$(wc -l < "$OUTDIR/crtname.txt")
 echo "  crt.name: $crtname_count entries (historical; resolve before probing)"
 
 # Also query with %25. (wildcard)
-curl -fsS --max-time 30 --connect-timeout 10 "https://crt.sh/?q=%25.%25.$DOMAIN&output=json" 2>/dev/null | \
-  jq -r '.[].name_value' 2>/dev/null | \
+for attempt in 1 2 3; do
+  curl -fsS --max-time 30 --connect-timeout 10 \
+    "https://crt.sh/?q=%25.%25.$DOMAIN&output=json" -o "$OUTDIR/crtsh_wildcard_raw.json" 2>/dev/null && break
+  sleep 15
+done
+jq -r '.[].name_value' "$OUTDIR/crtsh_wildcard_raw.json" 2>/dev/null | \
   sed 's/\*\.//g' | \
   sort -u > "$OUTDIR/crtsh_wildcard.txt"
 
