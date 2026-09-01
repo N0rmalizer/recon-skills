@@ -190,19 +190,18 @@ aaa"bbb'ccc<ddd>eee`fff
 
 **Attribute context:**
 - Treat `value`, `name`, `id`, `class`, `title`, `alt`, `placeholder`, and `label` as separate contexts.
-- Keep attribute values quoted and use context-specific output encoding. A benign canary such as `aaa"bbb'ccc` shows whether delimiters are encoded; it is not an XSS finding by itself.
 - Event-handler attributes such as `onmouseover` and `onerror` are executable sinks, not safe attributes.
+- A benign canary such as `aaa"bbb'ccc` shows whether delimiters are encoded; it is not an XSS finding by itself.
 
-**Escape Function Missing / Incomplete Filter**
-- Replacing one character or only the first occurrence is not a defense. `replaceall()` is not a JavaScript API, and `replaceAll()` still does not provide context-aware XSS protection.
-- Do not recommend a generic `escape()` helper. HTML body, quoted attribute, JavaScript, CSS, URL, and DOM sinks require different controls.
-- For a text-only DOM sink, prefer a safe API:
-
-```js
-element.textContent = untrustedValue;
+```html
+" onmouseover="alert(1)
+' onmouseover='alert(1)
+`onmouseover=alert(1)
 ```
 
-- For server-rendered output, use the framework's context-aware encoder/sanitizer and verify the resulting browser context. See the [OWASP XSS Prevention Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Cross_Site_Scripting_Prevention_Cheat_Sheet.html).
+**Escape Function Missing / Incomplete Filter**
+- Replacing one character, or only the first occurrence, is not a defense. `replaceall()` is not a JavaScript API, and `replaceAll()` still does not provide context-aware XSS protection.
+- Test each context separately (HTML body, quoted attribute, JavaScript, CSS, URL, DOM sink); a filter that only handles one context is still incomplete.
 
 **SVG-based (CSP bypass):**
 ```html
@@ -345,7 +344,7 @@ curl --max-time 30 --connect-timeout 10 -sk "https://target.com/page" | grep -i 
 ---
 
 ## XSS Tips & Tricks
-A `400`, `404`, or `500` response to a payload is only an input-handling signal. It does not prove sanitization or a vulnerability. Repeat with a unique benign marker, compare status, headers, and body against a baseline, classify the output context, and confirm execution in a current browser before reporting. Use test accounts and non-sensitive canaries; do not exfiltrate real data.
+A `400`, `404`, or `500` response to a payload is only an input-handling signal. It does not prove sanitization or a vulnerability. Repeat with a unique benign marker, compare status, headers, and body against a baseline, classify the output context, and confirm execution in a current browser before reporting.
 
 ## Gate 0 Validation
 
